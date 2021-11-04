@@ -1,11 +1,11 @@
-#ifndef __MESYTEC_MVLC_INT_TYPES_H__
-#define __MESYTEC_MVLC_INT_TYPES_H__
+#ifndef __MESYTEC_MCPD_INT_TYPES_H__
+#define __MESYTEC_MCPD_INT_TYPES_H__
 
 #include <cstdint>
 
 namespace mesytec
 {
-namespace mvlc
+namespace mcpd
 {
 
 typedef uint8_t  u8;
@@ -21,4 +21,4 @@ typedef int64_t s64;
 }
 }
 
-#endif /* __MESYTEC_MVLC_INT_TYPES_H__ */
+#endif /* __MESYTEC_MCPD_INT_TYPES_H__ */
