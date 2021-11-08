@@ -8,6 +8,13 @@ namespace mesytec
 namespace mcpd
 {
 
+static const u32 CommandFailBit = 1u << 15;
+static const std::size_t McpdParamCount = 4;
+
+static const std::size_t CommandPacketMaxDataWords = 726;
+static const std::size_t DataPacketMaxDataWords = 715;
+
+#pragma pack(push, 1)
 struct CommandPacketHeader
 {
     u16 bufferLength;
@@ -19,8 +26,8 @@ struct CommandPacketHeader
     u8 deviceId;
     u16 time[3];
     u16 headerChecksum;
-    u16 data[750];
-}; // FIXME: this is >1500 bytes which is too long for a single udp packet (@mtu=1500)
+    u16 data[CommandPacketMaxDataWords];
+};
 
 struct DataPacketHeader
 {
@@ -32,20 +39,27 @@ struct DataPacketHeader
     u8 deviceStatus;
     u8 deviceId;
     u16 time[3];
-    u16 param[4][3];
-    u16 data[750];
-}; // FIXME: this is >1500 bytes which is too long for a single udp packet (@mtu=1500)
+    u16 param[McpdParamCount][3];
+    u16 data[DataPacketMaxDataWords];
+};
+#pragma pack(pop)
+
+// Standard MTU is 1500 bytes
+// IPv4 header is 20 bytes
+// UDP header is 8 bytes
+static const std::size_t MaxPacketSize = 1500 - (20 + 8);
+
+static_assert(sizeof(CommandPacketHeader) <= MaxPacketSize,
+              "CommandPacket too large for standard MTU");
+
+static_assert(sizeof(DataPacketHeader) <= MaxPacketSize,
+              "DataPacket too large for standard MTU");
 
 static const u32 BUFTYPE = 0x8000;
 static const u32 CMDBUFLEN = 1u;
 static const u32 CMDHEADLEN = 10u;
 static const u32 STDBUFLEN = 1;
 static const u16 BufferTerminator = 0xffff;
-
-// Standard MTU is 1500 bytes
-// IPv4 header is 20 bytes
-// UDP header is 8 bytes
-static const std::size_t MaxPacketSize = 1500 - 20 - 8;
 
 enum class CommandType: u16
 {
@@ -61,11 +75,11 @@ enum class CommandType: u16
     SetCell = 9,
     SetAuxTimer = 10,
     SetParam = 11,
-    GetParam = 12,
+    GetParams = 12,
     SetGain = 13,
     SetThreshold = 14,
     SetPulser = 15,
-    SetMode = 16,
+    SetMpsdMode = 16,
     SetDAC = 17,
     SendSerial = 18,
     ReadSerial = 19,
@@ -73,13 +87,127 @@ enum class CommandType: u16
     SetTTLOutputs = 21,
     GetBusCapabilities = 22,
     SetBusCapabilities = 23,
-    GetParameters = 24,
+    GetMpsdParams = 24,
     SetFastTxMode = 25,
     GetVersion = 51,
 };
 
 static const char *DefaultMcpdIpAddress = "192.168.168.121";
 static const u16 DefaultMcpdPort = 54321u;
+
+struct McpdParams
+{
+    u16 adc[2];
+    u16 dac[2];
+    u16 ttlOut;
+    u16 ttlIn;
+    u16 eventCounters[3];
+    u16 params[McpdParamCount][3];
+};
+
+namespace bus_capabilities
+{
+    // FIXME: improve the names once I understand them
+    static const unsigned PosOrAmp = 1u << 0;
+    static const unsigned TofPosOrAmp = 1u << 1;
+    static const unsigned TofPosAndAmp = 1u << 2;
+};
+
+struct BusCapabilities
+{
+    u8 available;
+    u8 selected;
+};
+
+enum class TimingRole
+{
+    Slave = 0,
+    Master = 1,
+};
+
+enum class BusTermination
+{
+    On = 0,
+    Off = 1,
+};
+
+enum class CellName: u16
+{
+    // Frontpanel monitor/chooper inputs.
+    Monitor0 = 0,
+    Monitor1 = 1,
+    Monitor2 = 2,
+    Monitor3 = 3,
+
+    // Backpanel digital inputs
+    DigitalIn1 = 4,
+    DigitalIn2 = 5,
+
+    // Backpanel ADC inputs.
+    ADC1 = 6,
+    ADC2 = 7,
+};
+
+enum class TriggerSource: u16
+{
+    NoTrigger = 0,
+    AuxTimer0,
+    AuxTimer1,
+    AuxTimer2,
+    AuxTimer3,
+    RisingEdgeRearInput1,
+    RisingEdgeRearInput2,
+    CompareRegister, // Counter-type cells only
+};
+
+namespace compare_register_special_values
+{
+    // Values from 0 to 20 specify the bit index to trigger on.
+    static const u16 TriggerOnCounterOverflow = 21;
+    static const u16 TriggerOnRisingEdge = 22;
+}
+
+static const std::size_t CellCount = 6;
+
+enum class CounterSource: u16
+{
+    Monitor0 = 0,
+    Monitor1 = 1,
+    Monitor2 = 2,
+    Monitor3 = 3,
+    DigitalIn1 = 4,
+    DigitalIn2 = 5,
+    AllDigitalAndAdcInputs = 6,
+    EventCounter,
+    MasterClock,
+};
+
+enum class ChannelPosition
+{
+    Left,
+    Right,
+    Center,
+};
+
+enum class PulserState
+{
+    Off,
+    On
+};
+
+enum class MpsdMode
+{
+    Position,
+    Amplitude,
+};
+
+struct MpsdParameters
+{
+    u8 mpsdId;
+    u16 busTxCaps;
+    u16 fastTxFormat;
+    u16 firmwareRevision;
+};
 
 #if 0
 class Mcpd
