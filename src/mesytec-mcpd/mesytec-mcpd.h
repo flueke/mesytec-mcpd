@@ -8,8 +8,9 @@ namespace mesytec
 namespace mcpd
 {
 
-static const u32 CommandFailBit = 1u << 15;
+static const u16 CommandFailBit = 1u << 15;
 static const std::size_t McpdParamCount = 4;
+static const std::size_t McpdParamWords = 3;
 
 static const std::size_t CommandPacketMaxDataWords = 726;
 static const std::size_t DataPacketMaxDataWords = 715;
@@ -39,7 +40,7 @@ struct DataPacketHeader
     u8 deviceStatus;
     u8 deviceId;
     u16 time[3];
-    u16 param[McpdParamCount][3];
+    u16 param[McpdParamCount][McpdParamWords];
     u16 data[DataPacketMaxDataWords];
 };
 #pragma pack(pop)
@@ -208,6 +209,52 @@ struct MpsdParameters
     u16 fastTxFormat;
     u16 firmwareRevision;
 };
+
+enum class EventType
+{
+    Neutron,
+    Trigger
+};
+
+inline const char *to_string(const EventType &et)
+{
+    switch (et)
+    {
+        case EventType::Neutron:
+            return "Neutron";
+        case EventType::Trigger:
+            return "Trigger";
+    }
+
+    return "<unknown EventType>";
+}
+
+namespace event_constants
+{
+    static const std::size_t IdBits = 1u;
+    static const std::size_t IdShift = 47u;
+    static const std::size_t IdMask = (1u << IdBits) - 1;
+
+    static const std::size_t MpsdIdBits = 3u;
+    static const std::size_t MpsdIdShift = 44u;
+    static const std::size_t MpsdIdMask = (1u << MpsdIdBits) - 1;
+
+    static const std::size_t ChannelBits = 5u;
+    static const std::size_t ChannelShift = 39u;
+    static const std::size_t ChannelMask = (1u << ChannelBits) - 1;
+
+    static const std::size_t AmplitudeBits = 10u;
+    static const std::size_t AmplitudeShift = 29u;
+    static const std::size_t AmplitudeMask = (1u << AmplitudeBits) - 1;
+
+    static const std::size_t PositionBits = 10u;
+    static const std::size_t PositionShift = 19u;
+    static const std::size_t PositionMask = (1u << PositionBits) - 1;
+
+    static const std::size_t TimestampBits = 19u;
+    static const std::size_t TimestampShift = 0u;
+    static const std::size_t TimestampMask = (1u << TimestampBits) - 1;
+}
 
 #if 0
 class Mcpd

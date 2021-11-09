@@ -1,7 +1,8 @@
-#include "mesytec-mcpd.h"
 #include <ios>
 #include <stdexcept>
 #include <spdlog/spdlog.h>
+#include <thread>
+#include <fstream>
 
 #ifndef __WIN32
 #include <netinet/ip.h> // sockaddr_in
@@ -44,6 +45,8 @@
 
 #include <iostream>
 
+#include "mesytec-mcpd.h"
+
 // FIXME: the timeout case does currently not work in receive_one_packet. the
 // code reaches recv() and blocks
 
@@ -52,8 +55,8 @@ namespace
 {
 using namespace mesytec::mcpd;
 
-static const unsigned DefaultWriteTimeout_ms = 500;
-static const unsigned DefaultReadTimeout_ms  = 500;
+static const unsigned DefaultWriteTimeout_ms = 5000;
+static const unsigned DefaultReadTimeout_ms  = 5000;
 
 
 // Does IPv4 host lookup for a UDP socket. On success the resulting struct
@@ -307,7 +310,7 @@ static inline std::error_code receive_one_packet(int sockfd, u8 *dest, size_t si
 }
 #else
 static inline std::error_code receive_one_packet(int sockfd, u8 *dest, size_t size,
-                                                 u16 &bytesTransferred, int)
+                                                 size_t &bytesTransferred, int)
 {
     bytesTransferred = 0u;
 
@@ -329,6 +332,47 @@ static inline std::error_code receive_one_packet(int sockfd, u8 *dest, size_t si
 }
 #endif
 
+const char *to_string(const CommandType &cmd)
+{
+    switch (cmd)
+    {
+        case CommandType::Reset: return "Reset";
+        case CommandType::StartDAQ: return "StartDAQ";
+        case CommandType::StopDAQ: return "StopDAQ";
+        case CommandType::ContinueDAQ: return "ContinueDAQ";
+        case CommandType::SetId: return "SetId";
+        case CommandType::SetProtoParams: return "SetProtoParams";
+        case CommandType::SetTiming: return "SetTiming";
+        case CommandType::SetClock: return "SetClock";
+        case CommandType::SetRunId: return "SetRunId";
+        case CommandType::SetCell: return "SetCell";
+        case CommandType::SetAuxTimer: return "SetAuxTimer";
+        case CommandType::SetParam: return "SetParam";
+        case CommandType::GetParams: return "GetParams";
+        case CommandType::SetGain: return "SetGain";
+        case CommandType::SetThreshold: return "SetThreshold";
+        case CommandType::SetPulser: return "SetPulser";
+        case CommandType::SetMpsdMode: return "SetMpsdMode";
+        case CommandType::SetDAC: return "SetDAC";
+        case CommandType::SendSerial: return "SendSerial";
+        case CommandType::ReadSerial: return "ReadSerial";
+        case CommandType::SetTTLOutputs: return "SetTTLOutputs";
+        case CommandType::GetBusCapabilities: return "GetBusCapabilities";
+        case CommandType::SetBusCapabilities: return "SetBusCapabilities";
+        case CommandType::GetMpsdParams: return "GetMpsdParams";
+        case CommandType::SetFastTxMode: return "SetFastTxMode";
+        case CommandType::GetVersion: return "GetVersion";
+    }
+
+    return "<unknown>";
+}
+
+const char *mcpd_cmd_to_string(u16 cmd)
+{
+    cmd &= ~CommandFailBit;
+    return to_string(static_cast<CommandType>(cmd));
+}
+
 u16 calculate_checksum(const CommandPacketHeader &cmd)
 {
     u16 result = 0u;
@@ -347,6 +391,13 @@ unsigned get_data_length(const CommandPacketHeader &packet)
     return dataLen;
 }
 
+unsigned get_data_length(const DataPacketHeader &packet)
+{
+    assert(packet.bufferLength >= packet.headerLength);
+    unsigned dataLen = packet.bufferLength - packet.headerLength;
+    return dataLen;
+}
+
 template<typename Out>
 Out &format(Out &out, const CommandPacketHeader &packet)
 {
@@ -355,9 +406,13 @@ Out &format(Out &out, const CommandPacketHeader &packet)
     out << fmt::format("  bufferType=0x{:04X}", packet.bufferType) << std::endl;
     out << fmt::format("  headerLength={}", packet.headerLength) << std::endl;
     out << fmt::format("  bufferNumber={}", packet.bufferNumber) << std::endl;
-    bool cmdFailed = (packet.cmd & (1u << 15));
-    out << fmt::format("  cmd={}/0x{:04X} ({})",
-                       packet.cmd, packet.cmd, cmdFailed ? "failed" : "success")
+    bool cmdFailed = (packet.cmd & CommandFailBit);
+    out << fmt::format("  cmd={}/0x{:04X}/{} {}",
+                       packet.cmd,
+                       packet.cmd,
+                       mcpd_cmd_to_string(packet.cmd),
+                       cmdFailed ? "(failed)" : ""
+                      )
         << std::endl;
     out << fmt::format("  deviceStatus=0x{:02X}", packet.deviceStatus) << std::endl;
     out << fmt::format("  deviceId=0x{:02X}", packet.deviceId) << std::endl;
@@ -375,6 +430,43 @@ Out &format(Out &out, const CommandPacketHeader &packet)
 }
 
 std::string to_string(const CommandPacketHeader &packet)
+{
+    std::stringstream ss;
+    format(ss, packet);
+    return ss.str();
+}
+
+template<typename Out>
+Out &format(Out &out, const DataPacketHeader &packet)
+{
+    out << "DataPacket:" << std::endl;
+    out << fmt::format("  bufferLength={}", packet.bufferLength) << std::endl;
+    out << fmt::format("  bufferType=0x{:04X}", packet.bufferType) << std::endl;
+    out << fmt::format("  headerLength={}", packet.headerLength) << std::endl;
+    out << fmt::format("  bufferNumber={}", packet.bufferNumber) << std::endl;
+    out << fmt::format("  runId={}", packet.runId) << std::endl;
+    out << fmt::format("  deviceStatus=0x{:02X}", packet.deviceStatus) << std::endl;
+    out << fmt::format("  deviceId=0x{:02X}", packet.deviceId) << std::endl;
+    out << fmt::format("  time={}, {}, {}", packet.time[0], packet.time[1], packet.time[2]) << std::endl;
+
+    for (size_t i=0; i<McpdParamCount; ++i)
+    {
+        auto &param = packet.param[i];
+        out << fmt::format("  param[{}]: {} {} {}",
+                           i, param[0], param[1], param[2]) << std::endl;
+    }
+
+    u16 dataLen = get_data_length(packet);
+
+    out << fmt::format("  calculated data length={}", dataLen) << std::endl;
+
+    for (unsigned i=0; i<dataLen; ++i)
+        out << fmt::format("    data[{}] = 0x{:04X}", i, packet.data[i]) << std::endl;
+
+    return out;
+}
+
+std::string to_string(const DataPacketHeader &packet)
 {
     std::stringstream ss;
     format(ss, packet);
@@ -412,7 +504,7 @@ std::error_code command_transaction(
     }
 
     {
-        u16 bytesTransferred = 0u;
+        size_t bytesTransferred = 0u;
 
         if (auto ec = receive_one_packet(
             sock,
@@ -427,10 +519,10 @@ std::error_code command_transaction(
         spdlog::trace("response: {}", to_string(response));
 
         if (response.cmd & CommandFailBit)
-            throw std::runtime_error("cmd failbit set in response from mcpd!"); // FIXME: return ec
+            throw std::runtime_error("cmd failbit set in response from mcpd!"); // FIXME: return custom ec
 
         if (response.cmd != request.cmd)
-            throw std::runtime_error("cmd -> response mismatch!"); // FIXME: return ec
+            throw std::runtime_error("cmd -> response mismatch!"); // FIXME: return custom ec
     }
 
     return {};
@@ -442,7 +534,7 @@ std::error_code prepare_command_packet(
     u8 mcpdId,
     const u16 *data, u16 dataSize)
 {
-    if (dataSize > CommandPacketMaxDataWords)
+    if (dataSize + 1 > CommandPacketMaxDataWords)
         return std::make_error_code(std::errc::no_buffer_space);
 
     dest = {};
@@ -626,6 +718,19 @@ std::error_code mcpd_set_protocol_parameters(
         "0.0.0.0", // dataDestAddress: "this computer"
         dataDestPort);
 }
+
+std::error_code mcpd_set_ip_address(
+    int sock, u8 mcpdId,
+    const std::string &address)
+{
+    return mcpd_set_protocol_parameters(
+        sock, mcpdId,
+        address, // mcpdAddress
+        "0.0.0.0", // cmdDestAddress
+        0, // cmdDestPort
+        "0.0.0.0", // dataDestAddress
+        0); // dataDestPort
+};
 
 std::error_code mcpd_set_run_id(int sock, u8 mcpdId, u16 runId)
 {
@@ -948,7 +1053,7 @@ int main(int argc, char *argv[])
 
     struct sockaddr_in cmdAddr = {};
 
-    if (auto ec = lookup(DefaultMcpdIpAddress, DefaultMcpdPort, cmdAddr))
+    if (auto ec = lookup("192.168.168.42", DefaultMcpdPort, cmdAddr))
         throw ec;
 
     int cmdSock = socket(AF_INET, SOCK_DGRAM, 0);
@@ -994,31 +1099,16 @@ int main(int argc, char *argv[])
     // -----------------------------------------------------------------------
     //
 
-    McpdVersionInfo versionInfo = {};
-    u8 mcpdId = 42u;
-
-    if (auto ec = mcpd_get_version(cmdSock, mcpdId, versionInfo))
-        throw ec;
-
     using std::cout;
     using std::endl;
 
-    cout << "cpu major=" << versionInfo.cpu[0] << endl;
-    cout << "cpu minor=" << versionInfo.cpu[1] << endl;
-    cout << "fpga major=" << static_cast<u16>(versionInfo.fpga[0]) << endl;
-    cout << "fpga minor=" << static_cast<u16>(versionInfo.fpga[1]) << endl;
-    cout << endl;
+    //
+    // data socket setup --------------------------------------------------------
+    //
+    struct sockaddr_in dataAddr = {};
 
-
-    // XXX: Need to carry the mcpdId around and update it on each change
-    u8 mcpdNewId = 42u;
-    if (auto ec = mcpd_set_id(cmdSock, mcpdId, mcpdNewId))
+    if (auto ec = lookup("192.168.168.42", DefaultMcpdPort+1, dataAddr))
         throw ec;
-    mcpdId = mcpdNewId;
-
-    //
-    // data socket setup
-    //
 
     int dataSock = socket(AF_INET, SOCK_DGRAM, 0);
 
@@ -1034,6 +1124,7 @@ int main(int argc, char *argv[])
         struct sockaddr_in localAddr = {};
         localAddr.sin_family = AF_INET;
         localAddr.sin_addr.s_addr = INADDR_ANY;
+        localAddr.sin_port = htons(DefaultMcpdPort+1); // note: this is the local port!
 
         if (::bind(dataSock, reinterpret_cast<struct sockaddr *>(&localAddr),
                    sizeof(localAddr)))
@@ -1043,8 +1134,8 @@ int main(int argc, char *argv[])
     }
 
     // connect
-    if (::connect(dataSock, reinterpret_cast<struct sockaddr *>(&cmdAddr),
-                            sizeof(cmdAddr)))
+    if (::connect(dataSock, reinterpret_cast<struct sockaddr *>(&dataAddr),
+                            sizeof(dataAddr)))
     {
         auto ec = std::error_code(errno, std::system_category());
         //logger->error("connect() failed for command socket: {}", ec.message().c_str());
@@ -1069,21 +1160,125 @@ int main(int argc, char *argv[])
         throw std::system_error(errno, std::system_category());
     }
 
-    // XXX: leftoff here
 
+    u16 localDataPort = ntohs(localDataAddr.sin_port);
 
-    // TODO: Create and bind an extra socket for the data stream. Figure out the local
-    // port of the socket and setup the mcpd to use that port
-    u16 localDataPort = 0;
+    cout << fmt::format("localDataPort={}, 0x{:04x}", localDataPort, localDataPort) << endl << endl;
 
-    /*
-    mcpd_set_protocol_parameters(
+#if 0
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    if (auto ec = mcpd_set_protocol_parameters(
         cmdSock,
         mcpdId,
         0,
-        localDataPort);
-        */
+        localDataPort))
+        throw ec;
+#endif
+#if 0
+    if (auto ec = mcpd_set_ip_address(cmdSock, mcpdId, "192.168.168.42"))
+        throw ec;
+#endif
+#if 0
+    McpdVersionInfo versionInfo = {};
+    u8 mcpdId = 42u;
 
+    if (auto ec = mcpd_get_version(cmdSock, mcpdId, versionInfo))
+        throw ec;
+
+
+    cout << "cpu major=" << versionInfo.cpu[0] << endl;
+    cout << "cpu minor=" << versionInfo.cpu[1] << endl;
+    cout << "fpga major=" << static_cast<u16>(versionInfo.fpga[0]) << endl;
+    cout << "fpga minor=" << static_cast<u16>(versionInfo.fpga[1]) << endl;
+    cout << endl;
+
+
+    // XXX: Need to carry the mcpdId around and update it on each change
+    u8 mcpdNewId = 42u;
+    if (auto ec = mcpd_set_id(cmdSock, mcpdId, mcpdNewId))
+        throw ec;
+    mcpdId = mcpdNewId;
+#endif
+    u8 mcpdId =  0u;
+#if 0
+
+    if (auto ec = mcpd_stop_daq(cmdSock, mcpdId))
+        throw ec;
+#endif
+
+#if 1
+
+    for (u8 mpsdId=0; mpsdId<2; ++mpsdId)
+    {
+
+        // sets the gain for all channels
+#if 1
+        if (auto ec = mpsd_set_gain(
+                cmdSock, mcpdId,
+                mpsdId, 8, 200))
+            throw ec;
+#endif
+
+#if 0
+        // threshold
+        if (auto ec = mpsd_set_threshold(
+                cmdSock, mcpdId, mpsdId, 255))
+            throw ec;
+
+#endif
+
+#if 0
+        // enable pulser for all channels
+        for (u8 channel = 0; channel < 8; ++channel)
+        {
+            u8 amplitude = 255;
+
+            if (auto ec = mpsd_set_pulser(
+                    cmdSock, mcpdId, mpsdId, channel, ChannelPosition::Center,
+                    amplitude, PulserState::On))
+                throw ec;
+        }
+#endif
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+
+#endif
+
+    return 0;
+
+    if (auto ec = mcpd_start_daq(cmdSock, mcpdId))
+        throw ec;
+
+    cout << "daq started, writing data to ./mcpd.lst" << endl;
+    std::ofstream lstOut("./mcpd.list");
+    //getchar();
+
+    const int PacketsToReceive = 10000;
+
+    for (int i=0; i<PacketsToReceive; ++i)
+    {
+        DataPacketHeader dataPacket = {};
+
+        size_t bytesTransferred = 0u;
+        if (auto ec = receive_one_packet(
+                dataSock,
+                reinterpret_cast<u8 *>(&dataPacket),
+                sizeof(dataPacket),
+                bytesTransferred,
+                DefaultReadTimeout_ms))
+        {
+            spdlog::error("data packet read loop: {}", ec.message());
+        }
+        else
+        {
+            //spdlog::trace("data packet #{}: {}", i, to_string(dataPacket));
+            lstOut.write(reinterpret_cast<const char *>(&dataPacket), sizeof(dataPacket));
+        }
+    }
+
+    if (auto ec = mcpd_stop_daq(cmdSock, mcpdId))
+        throw ec;
 
     return 0;
 }
