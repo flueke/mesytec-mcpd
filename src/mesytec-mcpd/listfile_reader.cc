@@ -12,7 +12,7 @@ int main(int argc, char *argv[])
     std::ifstream lstIn("./mcpd.list");
     size_t packetNumber = 0;
 
-    while (!lstIn.eof())
+    while (!lstIn.fail() && !lstIn.eof())
     {
         DataPacket packet = {};
 
