@@ -371,6 +371,22 @@ inline std::string to_string(const CommandPacket &packet)
     return ss.str();
 }
 
+inline std::array<u64, McpdParamCount> get_parameter_values(const DataPacket &packet)
+{
+    std::array<u64, McpdParamCount> result = {};
+
+    for (size_t i=0; i<McpdParamCount; ++i)
+    {
+        u64 pv = (  (static_cast<u64>(packet.param[i][0]) <<  0)
+                  | (static_cast<u64>(packet.param[i][1]) << 16)
+                  | (static_cast<u64>(packet.param[i][2]) << 32));
+
+        result[i] = pv;
+    }
+
+    return result;
+}
+
 template<typename Out>
 Out &format(Out &out, const DataPacket &packet)
 {
@@ -416,7 +432,7 @@ inline size_t get_event_count(const DataPacket &packet)
 
 inline u64 get_header_timestamp(const DataPacket &packet)
 {
-    u64 result = (  (static_cast<u64>(packet.time[0]) << 0)
+    u64 result = (  (static_cast<u64>(packet.time[0]) <<  0)
                   | (static_cast<u64>(packet.time[1]) << 16)
                   | (static_cast<u64>(packet.time[2]) << 32));
     return result;
