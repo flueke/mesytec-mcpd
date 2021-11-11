@@ -16,534 +16,99 @@
 #include <cstdio>
 #include <cstring>
 #include <limits>
-#include <sstream>
-#include <system_error>
-
-#ifndef __WIN32
-    #include <netdb.h>
-    #include <sys/stat.h>
-    #include <sys/socket.h>
-    #include <sys/types.h>
-    #include <unistd.h>
-
-    #ifdef __linux__
-        #include <sys/prctl.h>
-        #include <linux/netlink.h>
-        #include <linux/rtnetlink.h>
-        #include <linux/inet_diag.h>
-        #include <linux/sock_diag.h>
-    #endif
-
-    #include <arpa/inet.h>
-#else // __WIN32
-    #include <winsock2.h>
-    #include <ws2tcpip.h>
-    #include <stdio.h>
-    #include <fcntl.h>
-    #include <mmsystem.h>
-#endif
 
 #include <iostream>
 
 #include "mesytec-mcpd.h"
 
-// FIXME: the timeout case does currently not work in receive_one_packet. the
-// code reaches recv() and blocks
-
-
 namespace
 {
 using namespace mesytec::mcpd;
 
-static const unsigned DefaultWriteTimeout_ms = 5000;
-static const unsigned DefaultReadTimeout_ms  = 5000;
-
-
-// Does IPv4 host lookup for a UDP socket. On success the resulting struct
-// sockaddr_in is copied to dest.
-std::error_code lookup(const std::string &host, u16 port, sockaddr_in &dest)
-{
-    using namespace mesytec::mcpd;
-
-    if (host.empty())
-    {
-        // FIXME return MVLCErrorCode::EmptyHostname;
-        throw std::runtime_error("empty hostname");
-    }
-
-    dest = {};
-    struct addrinfo hints = {};
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_DGRAM;
-    hints.ai_protocol = IPPROTO_UDP;
-
-    struct addrinfo *result = nullptr, *rp = nullptr;
-
-    int rc = getaddrinfo(host.c_str(), std::to_string(port).c_str(),
-                         &hints, &result);
-
-    // TODO: check getaddrinfo specific error codes. make and use getaddrinfo error category
-    if (rc != 0)
-    {
-        //qDebug("%s: HostLookupError, host=%s, error=%s", __PRETTY_FUNCTION__, host.c_str(),
-        //       gai_strerror(rc));
-        // FIXME return make_error_code(MVLCErrorCode::HostLookupError);
-        throw std::runtime_error("host lookup error");
-    }
-
-    for (rp = result; rp != NULL; rp = rp->ai_next)
-    {
-        if (rp->ai_addrlen == sizeof(dest))
-        {
-            std::memcpy(&dest, rp->ai_addr, rp->ai_addrlen);
-            break;
-        }
-    }
-
-    freeaddrinfo(result);
-
-    if (!rp)
-    {
-        //qDebug("%s: HostLookupError, host=%s, no result found", __PRETTY_FUNCTION__, host.c_str());
-        // FIXME return make_error_code(MVLCErrorCode::HostLookupError);
-        throw std::runtime_error("host lookup error");
-    }
-
-    return {};
-}
-
-struct timeval ms_to_timeval(unsigned ms)
-{
-    unsigned seconds = ms / 1000;
-    ms -= seconds * 1000;
-
-    struct timeval tv;
-    tv.tv_sec  = seconds;
-    tv.tv_usec = ms * 1000;
-
-    return tv;
-}
-
-#ifndef __WIN32
-std::error_code set_socket_timeout(int optname, int sock, unsigned ms)
-{
-    struct timeval tv = ms_to_timeval(ms);
-
-    int res = setsockopt(sock, SOL_SOCKET, optname, &tv, sizeof(tv));
-
-    if (res != 0)
-        return std::error_code(errno, std::system_category());
-
-    return {};
-}
-#else // WIN32
-std::error_code set_socket_timeout(int optname, int sock, unsigned ms)
-{
-    DWORD optval = ms;
-    int res = setsockopt(sock, SOL_SOCKET, optname,
-                         reinterpret_cast<const char *>(&optval),
-                         sizeof(optval));
-
-    if (res != 0)
-        return std::error_code(errno, std::system_category());
-
-    return {};
-}
-#endif
-
-std::error_code set_socket_write_timeout(int sock, unsigned ms)
-{
-    return set_socket_timeout(SO_SNDTIMEO, sock, ms);
-}
-
-std::error_code set_socket_read_timeout(int sock, unsigned ms)
-{
-    return set_socket_timeout(SO_RCVTIMEO, sock, ms);
-}
-
-#ifndef __WIN32
-std::error_code close_socket(int sock)
-{
-    int res = ::close(sock);
-    if (res != 0)
-        return std::error_code(errno, std::system_category());
-    return {};
-}
-#else // WIN32
-std::error_code close_socket(int sock)
-{
-    int res = ::closesocket(sock);
-    if (res != 0)
-        return std::error_code(errno, std::system_category());
-    return {};
-}
-#endif
-
-inline std::string format_ipv4(u32 a)
-{
-    std::stringstream ss;
-
-    ss << ((a >> 24) & 0xff) << '.'
-       << ((a >> 16) & 0xff) << '.'
-       << ((a >>  8) & 0xff) << '.'
-       << ((a >>  0) & 0xff);
-
-    return ss.str();
-}
-
-// Standard MTU is 1500 bytes
-// IPv4 header is 20 bytes
-// UDP header is 8 bytes
-static const size_t MaxOutgoingPayloadSize = 1500 - 20 - 8;
-
-// Note: it is not necessary to split writes into multiple calls to send()
-// because outgoing MVLC command buffers have to be smaller than the maximum,
-// non-jumbo ethernet MTU.
-// The send() call should return EMSGSIZE if the payload is too large to be
-// atomically transmitted.
-#ifdef __WIN32
-inline std::error_code write_to_socket(
-    int socket, const u8 *buffer, size_t size, size_t &bytesTransferred)
-{
-    assert(size <= MaxOutgoingPayloadSize);
-
-    bytesTransferred = 0;
-
-    ssize_t res = ::send(socket, reinterpret_cast<const char *>(buffer), size, 0);
-
-    if (res == SOCKET_ERROR)
-    {
-        int err = WSAGetLastError();
-
-        if (err == WSAETIMEDOUT || err == WSAEWOULDBLOCK)
-            return make_error_code(MVLCErrorCode::SocketWriteTimeout);
-
-        // Maybe TODO: use WSAGetLastError here with a WSA specific error
-        // category like this: https://gist.github.com/bbolli/710010adb309d5063111889530237d6d
-        return make_error_code(MVLCErrorCode::SocketError);
-    }
-
-    bytesTransferred = res;
-    return {};
-}
-#else // !__WIN32
-inline std::error_code write_to_socket(
-    int socket, const u8 *buffer, size_t size, size_t &bytesTransferred)
-{
-    assert(size <= MaxOutgoingPayloadSize);
-
-    bytesTransferred = 0;
-
-    ssize_t res = ::send(socket, reinterpret_cast<const char *>(buffer), size, 0);
-
-    if (res < 0)
-    {
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
-        {
-            // FIXME return make_error_code(MVLCErrorCode::SocketWriteTimeout);
-            throw std::runtime_error("socket write timeout");
-        }
-
-        return std::error_code(errno, std::system_category());
-    }
-
-    bytesTransferred = res;
-    return {};
-}
-#endif // !__WIN32
-
-#ifdef __WIN32
-static inline std::error_code receive_one_packet(int sockfd, u8 *dest, size_t size,
-                                                 u16 &bytesTransferred, int timeout_ms)
-{
-    fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(sockfd, &fds);
-
-    struct timeval tv = ms_to_timeval(timeout_ms);
-
-    int sres = ::select(0, &fds, nullptr, nullptr, &tv);
-
-    if (sres == 0)
-    {
-        // FIXME return make_error_code(MVLCErrorCode::SocketReadTimeout);
-        throw std::runtime_error("socket read timeout");
-    }
-
-    if (sres == SOCKET_ERROR)
-    {
-        // FIXME return make_error_code(MVLCErrorCode::SocketError);
-        throw std::runtime_error("socket error");
-    }
-
-    ssize_t res = ::recv(sockfd, reinterpret_cast<char *>(dest), size, 0);
-
-    //logger->trace("::recv res={}", res);
-
-    if (res == SOCKET_ERROR)
-    {
-        int err = WSAGetLastError();
-
-        if (err == WSAETIMEDOUT || err == WSAEWOULDBLOCK)
-        {
-            // FIXME return make_error_code(MVLCErrorCode::SocketReadTimeout);
-            throw std::runtime_error("socket read timeout");
-        }
-
-        // FIXME return make_error_code(MVLCErrorCode::SocketError);
-        throw std::runtime_error("socket error");
-    }
-
-#if 0
-    if (res >= static_cast<ssize_t>(sizeof(u32)))
-    {
-        util::log_buffer(
-            std::cerr,
-            basic_string_view<const u32>(reinterpret_cast<const u32 *>(dest), res / sizeof(u32)),
-            "32-bit words in buffer from ::recv()");
-    }
-#endif
-
-    bytesTransferred = res;
-
-    return {};
-}
-#else
-static inline std::error_code receive_one_packet(int sockfd, u8 *dest, size_t size,
-                                                 size_t &bytesTransferred, int)
-{
-    bytesTransferred = 0u;
-
-    ssize_t res = ::recv(sockfd, reinterpret_cast<char *>(dest), size, 0);
-
-    if (res < 0)
-    {
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
-        {
-            // FIXME return make_error_code(MVLCErrorCode::SocketReadTimeout);
-            throw std::runtime_error("socket read timeout");
-        }
-
-         return std::error_code(errno, std::system_category());
-    }
-
-    bytesTransferred = res;
-    return {};
-}
-#endif
-
-const char *to_string(const CommandType &cmd)
-{
-    switch (cmd)
-    {
-        case CommandType::Reset: return "Reset";
-        case CommandType::StartDAQ: return "StartDAQ";
-        case CommandType::StopDAQ: return "StopDAQ";
-        case CommandType::ContinueDAQ: return "ContinueDAQ";
-        case CommandType::SetId: return "SetId";
-        case CommandType::SetProtoParams: return "SetProtoParams";
-        case CommandType::SetTiming: return "SetTiming";
-        case CommandType::SetClock: return "SetClock";
-        case CommandType::SetRunId: return "SetRunId";
-        case CommandType::SetCell: return "SetCell";
-        case CommandType::SetAuxTimer: return "SetAuxTimer";
-        case CommandType::SetParam: return "SetParam";
-        case CommandType::GetParams: return "GetParams";
-        case CommandType::SetGain: return "SetGain";
-        case CommandType::SetThreshold: return "SetThreshold";
-        case CommandType::SetPulser: return "SetPulser";
-        case CommandType::SetMpsdMode: return "SetMpsdMode";
-        case CommandType::SetDAC: return "SetDAC";
-        case CommandType::SendSerial: return "SendSerial";
-        case CommandType::ReadSerial: return "ReadSerial";
-        case CommandType::SetTTLOutputs: return "SetTTLOutputs";
-        case CommandType::GetBusCapabilities: return "GetBusCapabilities";
-        case CommandType::SetBusCapabilities: return "SetBusCapabilities";
-        case CommandType::GetMpsdParams: return "GetMpsdParams";
-        case CommandType::SetFastTxMode: return "SetFastTxMode";
-        case CommandType::GetVersion: return "GetVersion";
-    }
-
-    return "<unknown>";
-}
-
-const char *mcpd_cmd_to_string(u16 cmd)
-{
-    cmd &= ~CommandFailBit;
-    return to_string(static_cast<CommandType>(cmd));
-}
-
-u16 calculate_checksum(const CommandPacketHeader &cmd)
-{
-    u16 result = 0u;
-    const u16 *b = reinterpret_cast<const u16 *>(&cmd);
-
-	for (unsigned i = 0; i < cmd.bufferLength; i++)
-		result ^= b[i];
-
-    return result;
-}
-
-unsigned get_data_length(const CommandPacketHeader &packet)
-{
-    assert(packet.bufferLength >= packet.headerLength);
-    unsigned dataLen = packet.bufferLength - packet.headerLength;
-    return dataLen;
-}
-
-unsigned get_data_length(const DataPacketHeader &packet)
-{
-    assert(packet.bufferLength >= packet.headerLength);
-    unsigned dataLen = packet.bufferLength - packet.headerLength;
-    return dataLen;
-}
-
-template<typename Out>
-Out &format(Out &out, const CommandPacketHeader &packet)
-{
-    out << "CommandPacket:" << std::endl;
-    out << fmt::format("  bufferLength={}", packet.bufferLength) << std::endl;
-    out << fmt::format("  bufferType=0x{:04X}", packet.bufferType) << std::endl;
-    out << fmt::format("  headerLength={}", packet.headerLength) << std::endl;
-    out << fmt::format("  bufferNumber={}", packet.bufferNumber) << std::endl;
-    bool cmdFailed = (packet.cmd & CommandFailBit);
-    out << fmt::format("  cmd={}/0x{:04X}/{} {}",
-                       packet.cmd,
-                       packet.cmd,
-                       mcpd_cmd_to_string(packet.cmd),
-                       cmdFailed ? "(failed)" : ""
-                      )
-        << std::endl;
-    out << fmt::format("  deviceStatus=0x{:02X}", packet.deviceStatus) << std::endl;
-    out << fmt::format("  deviceId=0x{:02X}", packet.deviceId) << std::endl;
-    out << fmt::format("  time={}, {}, {}", packet.time[0], packet.time[1], packet.time[2]) << std::endl;
-    out << fmt::format("  headerChecksum=0x{:04X}", packet.headerChecksum) << std::endl;
-
-    u16 dataLen = get_data_length(packet);
-
-    out << fmt::format("  calculated data length={}", dataLen) << std::endl;
-
-    for (unsigned i=0; i<dataLen; ++i)
-        out << fmt::format("    data[{}] = 0x{:04X}", i, packet.data[i]) << std::endl;
-
-    return out;
-}
-
-std::string to_string(const CommandPacketHeader &packet)
-{
-    std::stringstream ss;
-    format(ss, packet);
-    return ss.str();
-}
-
-template<typename Out>
-Out &format(Out &out, const DataPacketHeader &packet)
-{
-    out << "DataPacket:" << std::endl;
-    out << fmt::format("  bufferLength={}", packet.bufferLength) << std::endl;
-    out << fmt::format("  bufferType=0x{:04X}", packet.bufferType) << std::endl;
-    out << fmt::format("  headerLength={}", packet.headerLength) << std::endl;
-    out << fmt::format("  bufferNumber={}", packet.bufferNumber) << std::endl;
-    out << fmt::format("  runId={}", packet.runId) << std::endl;
-    out << fmt::format("  deviceStatus=0x{:02X}", packet.deviceStatus) << std::endl;
-    out << fmt::format("  deviceId=0x{:02X}", packet.deviceId) << std::endl;
-    out << fmt::format("  time={}, {}, {}", packet.time[0], packet.time[1], packet.time[2]) << std::endl;
-
-    for (size_t i=0; i<McpdParamCount; ++i)
-    {
-        auto &param = packet.param[i];
-        out << fmt::format("  param[{}]: {} {} {}",
-                           i, param[0], param[1], param[2]) << std::endl;
-    }
-
-    u16 dataLen = get_data_length(packet);
-
-    out << fmt::format("  calculated data length={}", dataLen) << std::endl;
-
-    for (unsigned i=0; i<dataLen; ++i)
-        out << fmt::format("    data[{}] = 0x{:04X}", i, packet.data[i]) << std::endl;
-
-    return out;
-}
-
-std::string to_string(const DataPacketHeader &packet)
-{
-    std::stringstream ss;
-    format(ss, packet);
-    return ss.str();
-}
 
 } // end anon namespace
 
-struct McpdVersionInfo
-{
-    // major and minor version numbers for cpu and fpga
-    u16 cpu[2];
-    u8 fpga[2];
-};
-
 std::error_code command_transaction(
     int sock,
-    const CommandPacketHeader &request,
-    CommandPacketHeader &response)
+    const CommandPacket &request,
+    CommandPacket &response)
 {
+    const unsigned MaxAttempts = 3;
 
+    for (unsigned attempt=0; attempt<MaxAttempts; ++attempt)
     {
-        spdlog::trace("request: {}", to_string(request));
+        {
+            spdlog::trace("request (attempt={}/{}): {}",
+                          attempt+1, MaxAttempts, to_string(request));
 
-        size_t bytesTransferred = 0u;
+            size_t bytesWritten = 0u;
 
-        if (auto ec = write_to_socket(
+            auto ec = write_to_socket(
+                    sock,
+                    reinterpret_cast<const u8 *>(&request),
+                    sizeof(request),
+                    bytesWritten);
+
+            if (ec == std::errc::resource_unavailable_try_again)
+                continue;
+            else if (ec)
+                return ec;
+        }
+
+        {
+            size_t bytesRead = 0u;
+
+            auto ec = receive_one_packet(
                 sock,
-                reinterpret_cast<const u8 *>(&request),
-                sizeof(request),
-                bytesTransferred))
-        {
-            return ec;
+                reinterpret_cast<u8 *>(&response),
+                sizeof(response),
+                bytesRead,
+                DefaultReadTimeout_ms);
+
+            if (ec == std::errc::resource_unavailable_try_again)
+                continue;
+            else if (ec)
+                return ec;
+
+            spdlog::trace("response: {}", to_string(response));
+
+            if ((response.cmd & CommandNumberMask) != request.cmd)
+            {
+                spdlog::warn("request/response cmd mismatch: req={}, resp={}",
+                             request.cmd, response.cmd & CommandNumberMask);
+                continue;
+            }
+
+#if 0
+            if (response.cmd & CommandErrorMask)
+                throw std::runtime_error("cmd error set in response from mcpd!");
+
+            if (response.cmd != request.cmd)
+                throw std::runtime_error("cmd -> response mismatch!"); // FIXME: return custom ec
+#endif
         }
-    }
-
-    {
-        size_t bytesTransferred = 0u;
-
-        if (auto ec = receive_one_packet(
-            sock,
-            reinterpret_cast<u8 *>(&response),
-            sizeof(response),
-            bytesTransferred,
-            DefaultReadTimeout_ms))
-        {
-            return ec;
-        }
-
-        spdlog::trace("response: {}", to_string(response));
-
-        if (response.cmd & CommandFailBit)
-            throw std::runtime_error("cmd failbit set in response from mcpd!"); // FIXME: return custom ec
-
-        if (response.cmd != request.cmd)
-            throw std::runtime_error("cmd -> response mismatch!"); // FIXME: return custom ec
     }
 
     return {};
 }
 
 std::error_code prepare_command_packet(
-    CommandPacketHeader &dest,
+    CommandPacket &dest,
     const CommandType &cmd,
     u8 mcpdId,
     const u16 *data, u16 dataSize)
 {
-    if (dataSize + 1 > CommandPacketMaxDataWords)
+    if (dataSize + 1u > CommandPacketMaxDataWords)
         return std::make_error_code(std::errc::no_buffer_space);
 
     dest = {};
-    dest.bufferType = BUFTYPE;
+    dest.bufferType = CMDBUFTYPE;
     dest.headerLength = CMDHEADLEN;
     dest.cmd = static_cast<u8>(cmd);
     dest.deviceId = mcpdId;
 
     std::copy(data, data + dataSize, dest.data);
+    dest.data[dataSize] = BufferTerminator;
 
     dest.bufferLength = dest.headerLength + dataSize;
     dest.headerChecksum = calculate_checksum(dest);
@@ -552,7 +117,7 @@ std::error_code prepare_command_packet(
 }
 
 void prepare_command_packet(
-    CommandPacketHeader &dest,
+    CommandPacket &dest,
     const CommandType &cmd,
     u8 mcpdId,
     const std::vector<u16> &data = {})
@@ -560,14 +125,14 @@ void prepare_command_packet(
     prepare_command_packet(dest, cmd, mcpdId, data.data(), data.size());
 }
 
-CommandPacketHeader make_command_packet(const CommandType &cmd, u8 mcpdId, const u16 *data, u16 dataSize)
+CommandPacket make_command_packet(const CommandType &cmd, u8 mcpdId, const u16 *data, u16 dataSize)
 {
-    CommandPacketHeader result = {};
+    CommandPacket result = {};
     prepare_command_packet(result, cmd, mcpdId, data, dataSize);
     return result;
 }
 
-CommandPacketHeader make_command_packet(const CommandType &cmd, u8 mcpdId, const std::vector<u16> &data = {})
+CommandPacket make_command_packet(const CommandType &cmd, u8 mcpdId, const std::vector<u16> &data = {})
 {
     return make_command_packet(cmd, mcpdId, data.data(), data.size());
 }
@@ -575,7 +140,7 @@ CommandPacketHeader make_command_packet(const CommandType &cmd, u8 mcpdId, const
 std::error_code mcpd_get_version(int sock, u8 mcpdId, McpdVersionInfo &vi)
 {
     auto request = make_command_packet(CommandType::GetVersion, mcpdId);
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
 
     if (auto ec = command_transaction(sock, request, response))
         return ec;
@@ -594,7 +159,7 @@ std::error_code mcpd_get_version(int sock, u8 mcpdId, McpdVersionInfo &vi)
 std::error_code mcpd_set_id(int sock, u8 mcpdId, u8 newId)
 {
     auto request = make_command_packet(CommandType::SetId, mcpdId, { newId });
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
 
     if (auto ec = command_transaction(sock, request, response))
         return ec;
@@ -621,7 +186,7 @@ std::error_code mcpd_set_protocol_parameters(
 
     auto request = make_command_packet(CommandType::SetProtoParams, mcpdId, data);
 
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
 
     if (auto ec = command_transaction(sock, request, response))
         return ec;
@@ -629,7 +194,7 @@ std::error_code mcpd_set_protocol_parameters(
     return {};
 }
 
-// Note: assumes ipv4. Might be too naive.
+// Note: assumes ipv4.
 std::array<u8, 4> to_array(const struct sockaddr_in &addr)
 {
     u32 ipv4 = ntohl(addr.sin_addr.s_addr);
@@ -726,44 +291,44 @@ std::error_code mcpd_set_ip_address(
     return mcpd_set_protocol_parameters(
         sock, mcpdId,
         address, // mcpdAddress
-        "0.0.0.0", // cmdDestAddress
-        0, // cmdDestPort
-        "0.0.0.0", // dataDestAddress
-        0); // dataDestPort
+        "0.0.0.0", // cmdDestAddress (no change)
+        0, // cmdDestPort (no change)
+        "0.0.0.0", // dataDestAddress (no change)
+        0); // dataDestPort (no change)
 };
 
 std::error_code mcpd_set_run_id(int sock, u8 mcpdId, u16 runId)
 {
     auto request = make_command_packet(CommandType::SetRunId, mcpdId, { runId });
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
     return command_transaction(sock, request, response);
 }
 
 std::error_code mcpd_reset(int sock, u8 mcpdId)
 {
     auto request = make_command_packet(CommandType::Reset, mcpdId);
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
     return command_transaction(sock, request, response);
 }
 
 std::error_code mcpd_start_daq(int sock, u8 mcpdId)
 {
     auto request = make_command_packet(CommandType::StartDAQ, mcpdId);
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
     return command_transaction(sock, request, response);
 }
 
 std::error_code mcpd_stop_daq(int sock, u8 mcpdId)
 {
     auto request = make_command_packet(CommandType::StopDAQ, mcpdId);
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
     return command_transaction(sock, request, response);
 }
 
 std::error_code mcpd_continue_daq(int sock, u8 mcpdId)
 {
     auto request = make_command_packet(CommandType::ContinueDAQ, mcpdId);
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
     return command_transaction(sock, request, response);
 }
 
@@ -771,7 +336,7 @@ std::error_code mcpd_get_all_parameters(int sock, u8 mcpdId, McpdParams &dest)
 {
     auto request = make_command_packet(CommandType::GetParams, mcpdId, { });
 
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
 
     if (auto ec = command_transaction(sock, request, response))
         return ec;
@@ -800,7 +365,7 @@ std::error_code mcpd_get_bus_capabilities(int sock, u8 mcpdId, BusCapabilities &
 {
     auto request = make_command_packet(CommandType::GetBusCapabilities, mcpdId);
 
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
 
     if (auto ec = command_transaction(sock, request, response))
         return ec;
@@ -815,7 +380,7 @@ std::error_code mcpd_set_bus_capabilities(int sock, u8 mcpdId, u8 capBits, u8 &r
 {
     auto request = make_command_packet(CommandType::SetBusCapabilities, mcpdId, { capBits });
 
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
 
     if (auto ec = command_transaction(sock, request, response))
         return ec;
@@ -835,7 +400,7 @@ std::error_code mcpd_set_master_clock_value(int sock, u8 mcpdId, u64 clock)
     };
 
     auto request = make_command_packet(CommandType::SetClock, mcpdId, data.data(), data.size());
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
     return command_transaction(sock, request, response);
 }
 
@@ -853,7 +418,7 @@ std::error_code mcpd_setup_cell(
     };
 
     auto request = make_command_packet(CommandType::SetCell, mcpdId, data.data(), data.size());
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
     return command_transaction(sock, request, response);
 }
 
@@ -869,7 +434,7 @@ std::error_code mcpd_setup_auxtimer(
     };
 
     auto request = make_command_packet(CommandType::SetAuxTimer, mcpdId, data.data(), data.size());
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
     return command_transaction(sock, request, response);
 };
 
@@ -885,7 +450,7 @@ std::error_code mcpd_set_param_source(
     };
 
     auto request = make_command_packet(CommandType::SetParam, mcpdId, data.data(), data.size());
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
     return command_transaction(sock, request, response);
 }
 
@@ -900,7 +465,7 @@ std::error_code mcpd_set_dac_output_values(
     };
 
     auto request = make_command_packet(CommandType::SetDAC, mcpdId, data.data(), data.size());
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
     return command_transaction(sock, request, response);
 }
 
@@ -920,7 +485,7 @@ std::error_code mcpd_send_serial_string(
         data.emplace_back(static_cast<u16>(*it));
 
     auto request = make_command_packet(CommandType::SendSerial, mcpdId, data.data(), data.size());
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
     return command_transaction(sock, request, response);
 }
 
@@ -929,7 +494,7 @@ std::error_code mcpd_read_serial_string(
     std::string &dest)
 {
     auto request = make_command_packet(CommandType::ReadSerial, mcpdId);
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
 
     if (auto ec = command_transaction(sock, request, response))
         return ec;
@@ -963,7 +528,7 @@ std::error_code mpsd_set_gain(
     };
 
     auto request = make_command_packet(CommandType::SetGain, mcpdId, data.data(), data.size());
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
     return command_transaction(sock, request, response);
 }
 
@@ -978,7 +543,7 @@ std::error_code mpsd_set_threshold(
     };
 
     auto request = make_command_packet(CommandType::SetThreshold, mcpdId, data.data(), data.size());
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
     return command_transaction(sock, request, response);
 }
 
@@ -999,7 +564,7 @@ std::error_code mpsd_set_pulser(
     };
 
     auto request = make_command_packet(CommandType::SetPulser, mcpdId, data.data(), data.size());
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
     return command_transaction(sock, request, response);
 }
 
@@ -1015,7 +580,7 @@ std::error_code mpsd_set_mode(
     };
 
     auto request = make_command_packet(CommandType::SetMpsdMode, mcpdId, data.data(), data.size());
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
     return command_transaction(sock, request, response);
 }
 
@@ -1030,7 +595,7 @@ std::error_code mpsd_get_params(
     };
 
     auto request = make_command_packet(CommandType::GetMpsdParams, mcpdId, data.data(), data.size());
-    CommandPacketHeader response = {};
+    CommandPacket response = {};
 
     if (auto ec = command_transaction(sock, request, response))
         return ec;
@@ -1053,7 +618,7 @@ int main(int argc, char *argv[])
 
     struct sockaddr_in cmdAddr = {};
 
-    if (auto ec = lookup("192.168.168.42", DefaultMcpdPort, cmdAddr))
+    if (auto ec = lookup("192.168.43.42", DefaultMcpdPort, cmdAddr))
         throw ec;
 
     int cmdSock = socket(AF_INET, SOCK_DGRAM, 0);
@@ -1107,7 +672,7 @@ int main(int argc, char *argv[])
     //
     struct sockaddr_in dataAddr = {};
 
-    if (auto ec = lookup("192.168.168.42", DefaultMcpdPort+1, dataAddr))
+    if (auto ec = lookup("192.168.43.42", DefaultMcpdPort+1, dataAddr))
         throw ec;
 
     int dataSock = socket(AF_INET, SOCK_DGRAM, 0);
@@ -1161,13 +726,22 @@ int main(int argc, char *argv[])
     }
 
 
+    const u8 mcpdId =  0u;
     u16 localDataPort = ntohs(localDataAddr.sin_port);
 
     cout << fmt::format("localDataPort={}, 0x{:04x}", localDataPort, localDataPort) << endl << endl;
 
 #if 0
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    if (auto ec = mcpd_set_ip_address(
+        cmdSock,
+        mcpdId,
+        "192.168.43.42"))
+        throw ec;
 
+    return 0;
+#endif
+
+#if 0
     if (auto ec = mcpd_set_protocol_parameters(
         cmdSock,
         mcpdId,
@@ -1200,7 +774,6 @@ int main(int argc, char *argv[])
         throw ec;
     mcpdId = mcpdNewId;
 #endif
-    u8 mcpdId =  0u;
 #if 0
 
     if (auto ec = mcpd_stop_daq(cmdSock, mcpdId))
@@ -1209,7 +782,7 @@ int main(int argc, char *argv[])
 
 #if 1
 
-    for (u8 mpsdId=0; mpsdId<2; ++mpsdId)
+    for (u8 mpsdId=1; mpsdId<2; ++mpsdId)
     {
 
         // sets the gain for all channels
@@ -1258,7 +831,7 @@ int main(int argc, char *argv[])
 
     for (int i=0; i<PacketsToReceive; ++i)
     {
-        DataPacketHeader dataPacket = {};
+        DataPacket dataPacket = {};
 
         size_t bytesTransferred = 0u;
         if (auto ec = receive_one_packet(
