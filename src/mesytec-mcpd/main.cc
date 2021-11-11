@@ -28,6 +28,9 @@ using namespace mesytec::mcpd;
 
 } // end anon namespace
 
+// Note: error status of the response has to be checked by the caller. It
+// cannot be done inside command_transaction as some commands (SetGain) do
+// frequently set the error status bits altough they did succeed.
 std::error_code command_transaction(
     int sock,
     const CommandPacket &request,
@@ -79,13 +82,7 @@ std::error_code command_transaction(
                 continue;
             }
 
-#if 0
-            if (response.cmd & CommandErrorMask)
-                throw std::runtime_error("cmd error set in response from mcpd!");
-
-            if (response.cmd != request.cmd)
-                throw std::runtime_error("cmd -> response mismatch!"); // FIXME: return custom ec
-#endif
+            return {};
         }
     }
 
