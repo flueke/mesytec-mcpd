@@ -1,4 +1,5 @@
 #include "udp_sockets.h"
+#include <system_error>
 
 #ifndef __WIN32
     #include <netdb.h>
@@ -26,10 +27,129 @@
 #include <cassert>
 #include <cstring>
 
+namespace
+{
+
+class SocketErrorCategory: public std::error_category
+{
+    const char *name() const noexcept override
+    {
+        return "socket_error";
+    }
+
+    std::string message(int ev) const override
+    {
+        using EC = mesytec::mcpd::SocketErrorCode;
+
+        switch (static_cast<EC>(ev))
+        {
+            case EC::NoError:
+                return "NoError";
+            case EC::EmptyHostname:
+                return "EmptyHostname";
+            case EC::HostLookupError:
+                return "HostLookupError";
+            case EC::SocketWriteTimeout:
+                return "SocketWriteTimeout";
+            case EC::SocketReadTimeout:
+                return "SocketReadTimeout";
+            case EC::GenericSocketError:
+                return "GenericSocketError";
+        }
+
+        return "unknown socket error";
+    }
+
+    std::error_condition default_error_condition(int ev) const noexcept override
+    {
+        using EC = mesytec::mcpd::SocketErrorCode;
+        using ET = mesytec::mcpd::SocketErrorType;
+
+        switch (static_cast<EC>(ev))
+        {
+            case EC::NoError:
+                return ET::Success;
+
+            case EC::EmptyHostname:
+            case EC::HostLookupError:
+                return ET::LookupError;
+
+            case EC::SocketWriteTimeout:
+            case EC::SocketReadTimeout:
+                return ET::Timeout;
+
+            case EC::GenericSocketError:
+                return ET::ConnectionError;
+        }
+        assert(false);
+        return {};
+    }
+};
+
+const SocketErrorCategory theSocketErrorCategory{};
+
+class SocketErrorTypeCategory: public std::error_category
+{
+    const char *name() const noexcept override
+    {
+        return "socket error type";
+    }
+
+    std::string message(int ev) const override
+    {
+        using ET = mesytec::mcpd::SocketErrorType;
+
+        switch (static_cast<ET>(ev))
+        {
+            case ET::Success:
+                return "Success";
+            case ET::LookupError:
+                return "LookupError";
+            case ET::Timeout:
+                return "Timeout";
+            case ET::ConnectionError:
+                return "ConnectionError";
+        }
+
+        return "unknown error type";
+    }
+
+    // Equivalence between local conditions and any error code
+    bool equivalent(const std::error_code &ec, int condition) const noexcept override
+    {
+        using ET = mesytec::mcpd::SocketErrorType;
+
+        switch (static_cast<ET>(condition))
+        {
+            case ET::Timeout:
+                return ec == std::error_code(EAGAIN, std::system_category());
+
+            default:
+                break;
+        }
+
+        return false;
+    }
+};
+
+const SocketErrorTypeCategory theSocketErrorTypeCategory{};
+
+}
+
 namespace mesytec
 {
 namespace mcpd
 {
+
+std::error_code make_error_code(SocketErrorCode error)
+{
+    return { static_cast<int>(error), theSocketErrorCategory };
+}
+
+std::error_condition make_error_condition(SocketErrorType et)
+{
+    return { static_cast<int>(et), theSocketErrorTypeCategory };
+}
 
 namespace
 {
@@ -46,15 +166,91 @@ namespace
     }
 } // end anon namespace
 
+int create_udp_socket(const std::string &host, u16 port, std::error_code *ecp)
+{
+    std::error_code ec_;
+    std::error_code &ec = ecp ? *ecp : ec_;
+
+    struct sockaddr_in addr = {};
+
+    if ((ec = lookup(host, port, addr)))
+        return -1;
+
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (sock < 0)
+    {
+        ec = std::error_code(errno, std::system_category());
+        return -1;
+    }
+
+    // bind the socket
+    {
+        struct sockaddr_in localAddr = {};
+        localAddr.sin_family = AF_INET;
+        localAddr.sin_addr.s_addr = INADDR_ANY;
+
+        if (::bind(sock, reinterpret_cast<struct sockaddr *>(&localAddr),
+                   sizeof(localAddr)))
+        {
+            ec = std::error_code(errno, std::system_category());
+            close_socket(sock);
+            return -1;
+        }
+    }
+
+    // connect
+    if (::connect(sock, reinterpret_cast<struct sockaddr *>(&addr),
+                  sizeof(addr)))
+    {
+        ec = std::error_code(errno, std::system_category());
+        close_socket(sock);
+        return -1;
+    }
+
+    // set the socket timeouts
+    if ((ec = set_socket_read_timeout(sock, DefaultReadTimeout_ms)))
+    {
+        close_socket(sock);
+        return -1;
+    }
+
+    if ((ec = set_socket_write_timeout(sock, DefaultWriteTimeout_ms)))
+    {
+        close_socket(sock);
+        return -1;
+    }
+
+    return sock;
+}
+
+u16 get_local_socket_port(int sock, std::error_code *ecp)
+{
+    std::error_code ec_;
+    std::error_code &ec = ecp ? *ecp : ec_;
+
+    struct sockaddr_in localAddr = {};
+    socklen_t localAddrLen = sizeof(localAddr);
+
+    if (::getsockname(
+            sock, reinterpret_cast<struct sockaddr *>(&localAddr),
+            &localAddrLen) != 0)
+    {
+        ec = std::error_code(errno, std::system_category());
+        return 0u;
+    }
+
+    u16 localPort = ntohs(localAddr.sin_port);
+
+    return localPort;
+}
+
 std::error_code lookup(const std::string &host, u16 port, sockaddr_in &dest)
 {
     using namespace mesytec::mcpd;
 
     if (host.empty())
-    {
-        // FIXME return MVLCErrorCode::EmptyHostname;
-        throw std::runtime_error("empty hostname");
-    }
+        return SocketErrorCode::EmptyHostname;
 
     dest = {};
     struct addrinfo hints = {};
@@ -67,14 +263,8 @@ std::error_code lookup(const std::string &host, u16 port, sockaddr_in &dest)
     int rc = getaddrinfo(host.c_str(), std::to_string(port).c_str(),
                          &hints, &result);
 
-    // TODO: check getaddrinfo specific error codes. make and use getaddrinfo error category
     if (rc != 0)
-    {
-        //qDebug("%s: HostLookupError, host=%s, error=%s", __PRETTY_FUNCTION__, host.c_str(),
-        //       gai_strerror(rc));
-        // FIXME return make_error_code(MVLCErrorCode::HostLookupError);
-        throw std::runtime_error("host lookup error");
-    }
+        return SocketErrorCode::HostLookupError;
 
     for (rp = result; rp != NULL; rp = rp->ai_next)
     {
@@ -88,11 +278,7 @@ std::error_code lookup(const std::string &host, u16 port, sockaddr_in &dest)
     freeaddrinfo(result);
 
     if (!rp)
-    {
-        //qDebug("%s: HostLookupError, host=%s, no result found", __PRETTY_FUNCTION__, host.c_str());
-        // FIXME return make_error_code(MVLCErrorCode::HostLookupError);
-        throw std::runtime_error("host lookup error");
-    }
+        return SocketErrorCode::HostLookupError;
 
     return {};
 }
@@ -161,7 +347,7 @@ std::error_code close_socket(int sock)
 std::error_code write_to_socket(
     int socket, const u8 *buffer, size_t size, size_t &bytesTransferred)
 {
-    assert(size <= MaxOutgoingPayloadSize);
+    assert(size <= MaxPayloadSize);
 
     bytesTransferred = 0;
 
@@ -172,11 +358,11 @@ std::error_code write_to_socket(
         int err = WSAGetLastError();
 
         if (err == WSAETIMEDOUT || err == WSAEWOULDBLOCK)
-            return make_error_code(MVLCErrorCode::SocketWriteTimeout);
+            return SocketErrorCode::SocketWriteTimeout;
 
         // Maybe TODO: use WSAGetLastError here with a WSA specific error
         // category like this: https://gist.github.com/bbolli/710010adb309d5063111889530237d6d
-        return make_error_code(MVLCErrorCode::SocketError);
+        return SocketErrorCode::GenericSocketError;
     }
 
     bytesTransferred = res;
@@ -186,7 +372,7 @@ std::error_code write_to_socket(
 std::error_code write_to_socket(
     int socket, const u8 *buffer, size_t size, size_t &bytesTransferred)
 {
-    assert(size <= MaxOutgoingPayloadSize);
+    assert(size <= MaxPayloadSize);
 
     bytesTransferred = 0;
 
@@ -218,44 +404,22 @@ std::error_code receive_one_packet(int sockfd, u8 *dest, size_t size,
     int sres = ::select(0, &fds, nullptr, nullptr, &tv);
 
     if (sres == 0)
-    {
-        // FIXME return make_error_code(MVLCErrorCode::SocketReadTimeout);
-        throw std::runtime_error("socket read timeout");
-    }
+        return SocketErrorCode::SocketReadTimeout;
 
     if (sres == SOCKET_ERROR)
-    {
-        // FIXME return make_error_code(MVLCErrorCode::SocketError);
-        throw std::runtime_error("socket error");
-    }
+        return SocketErrorCode::GenericSocketError;
 
     ssize_t res = ::recv(sockfd, reinterpret_cast<char *>(dest), size, 0);
-
-    //logger->trace("::recv res={}", res);
 
     if (res == SOCKET_ERROR)
     {
         int err = WSAGetLastError();
 
         if (err == WSAETIMEDOUT || err == WSAEWOULDBLOCK)
-        {
-            // FIXME return make_error_code(MVLCErrorCode::SocketReadTimeout);
-            return std::error_code(EAGAIN, std::system_category()); // FIXME: test this under windows
-        }
+            return SocketErrorCode::Timeout;
 
-        // FIXME return make_error_code(MVLCErrorCode::SocketError);
-        throw std::runtime_error("socket error");
+        return SocketErrorCode::GenericSocketError;
     }
-
-#if 0
-    if (res >= static_cast<ssize_t>(sizeof(u32)))
-    {
-        util::log_buffer(
-            std::cerr,
-            basic_string_view<const u32>(reinterpret_cast<const u32 *>(dest), res / sizeof(u32)),
-            "32-bit words in buffer from ::recv()");
-    }
-#endif
 
     bytesTransferred = res;
 
