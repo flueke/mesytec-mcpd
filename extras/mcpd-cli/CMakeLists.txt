@@ -1,13 +1,13 @@
 add_executable(mcpd-cli mcpd-cli.cc)
 target_link_libraries(mcpd-cli
     PRIVATE mesytec-mcpd
-    PRIVATE BFG::Lyra
+    PRIVATE bfg::Lyra
     PRIVATE spdlog::spdlog)
 
 add_executable(mcpd-setup mcpd-setup.cc)
 target_link_libraries(mcpd-setup
     PRIVATE mesytec-mcpd
-    PRIVATE BFG::Lyra
+    PRIVATE bfg::Lyra
     PRIVATE spdlog::spdlog)
 
 install(TARGETS
