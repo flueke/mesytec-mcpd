@@ -13,7 +13,10 @@ namespace mcpd
 std::error_code send_command(int sock, const CommandPacket &request);
 std::error_code receive_response(int sock, CommandPacket &response);
 
-std::error_code command_transaction(int sock, const CommandPacket &request, CommandPacket &response);
+std::error_code command_transaction(
+    int sock,
+    const CommandPacket &request,
+    CommandPacket &response);
 
 std::error_code prepare_command_packet(
     CommandPacket &dest,
@@ -35,7 +38,8 @@ CommandPacket make_command_packet(
     const u16 *data, u16 dataSize);
 
 inline CommandPacket make_command_packet(
-    const CommandType &cmd, u8 mcpdId, const std::vector<u16> &data = {})
+    const CommandType &cmd, u8 mcpdId,
+    const std::vector<u16> &data = {})
 {
     return make_command_packet(cmd, mcpdId, data.data(), data.size());
 }
@@ -81,6 +85,10 @@ std::error_code mcpd_set_ip_address(int sock, u8 mcpdId, const std::string &addr
 
 // Only changes the data dest port, leaves other network settings unchanged.
 std::error_code mcpd_set_data_dest_port(int sock, u8 mcpdId, u16 dataDestPort);
+
+// Changes only the mcpd ip address and data destinattion port.
+std::error_code mcpd_set_ip_address_and_data_dest_port(
+    int sock, u8 mcpdId, const std::string &address, u16 dataDestPort);
 
 std::error_code mcpd_set_run_id(int sock, u8 mcpdId, u16 runId);
 

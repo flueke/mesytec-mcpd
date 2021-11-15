@@ -13,11 +13,13 @@ namespace mcpd
 std::error_code send_command(int sock, const CommandPacket &request)
 {
     size_t bytesWritten = 0u;
+    // TODO: test if this is correct
+    const size_t bytesToWrite = request.bufferLength * sizeof(u16);
 
     auto ec = write_to_socket(
         sock,
         reinterpret_cast<const u8 *>(&request),
-        sizeof(request),
+        bytesToWrite,
         bytesWritten);
 
     return ec;
@@ -128,7 +130,7 @@ std::error_code prepare_command_packet(
     std::copy(data, data + dataSize, dest.data);
     dest.data[dataSize] = BufferTerminator;
 
-    dest.bufferLength = dest.headerLength + dataSize;
+    dest.bufferLength = dest.headerLength + dataSize + 1;
     dest.headerChecksum = calculate_checksum(dest);
 
     return {};
@@ -309,7 +311,19 @@ std::error_code mcpd_set_data_dest_port(int sock, u8 mcpdId, u16 dataDestPort)
 {
     return mcpd_set_network_parameters(
         sock, mcpdId,
-        "0.0.0.0",
+        "0.0.0.0", // mcpdAddress: "no change"
+        "0.0.0.0", // cmdDestAddress (no change)
+        0, // cmdDestPort (no change)
+        "0.0.0.0", // dataDestAddress (no change)
+        dataDestPort);
+}
+
+std::error_code mcpd_set_ip_address_and_data_dest_port(
+    int sock, u8 mcpdId, const std::string &address, u16 dataDestPort)
+{
+    return mcpd_set_network_parameters(
+        sock, mcpdId,
+        address, // mcpdAddress
         "0.0.0.0", // cmdDestAddress (no change)
         0, // cmdDestPort (no change)
         "0.0.0.0", // dataDestAddress (no change)
@@ -528,7 +542,7 @@ std::error_code mcpd_set_dac_output_values(
     return {};
 }
 
-#if 0 // highly untested according to Gregor
+#if 0 // untested/not implemented according to Gregor
 std::error_code mcpd_send_serial_string(
     int sock, u8 mcpdId,
     const std::string &str)

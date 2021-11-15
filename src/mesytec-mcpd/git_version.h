@@ -1,9 +1,9 @@
-#ifndef __MESYTEC_MVLC_GIT_VERSION_H__
-#define __MESYTEC_MVLC_GIT_VERSION_H__
+#ifndef __MESYTEC_MCPD_GIT_VERSION_H__
+#define __MESYTEC_MCPD_GIT_VERSION_H__
 
 namespace mesytec
 {
-namespace mvlc
+namespace mcpd
 {
 
 extern const char GIT_SHA1[];
@@ -16,4 +16,4 @@ inline const char *library_version() { return GIT_VERSION; }
 } // end namespace mvlc
 } // end namespace mesytec
 
-#endif /* __MESYTEC_MVLC_GIT_VERSION_H__ */
+#endif /* __MESYTEC_MCPD_GIT_VERSION_H__ */

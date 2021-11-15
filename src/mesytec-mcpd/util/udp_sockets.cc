@@ -166,7 +166,7 @@ namespace
     }
 } // end anon namespace
 
-int create_udp_socket(const std::string &host, u16 port, std::error_code *ecp)
+int connect_udp_socket(const std::string &host, u16 port, std::error_code *ecp)
 {
     std::error_code ec_;
     std::error_code &ec = ecp ? *ecp : ec_;
@@ -206,6 +206,51 @@ int create_udp_socket(const std::string &host, u16 port, std::error_code *ecp)
         ec = std::error_code(errno, std::system_category());
         close_socket(sock);
         return -1;
+    }
+
+    // set the socket timeouts
+    if ((ec = set_socket_read_timeout(sock, DefaultReadTimeout_ms)))
+    {
+        close_socket(sock);
+        return -1;
+    }
+
+    if ((ec = set_socket_write_timeout(sock, DefaultWriteTimeout_ms)))
+    {
+        close_socket(sock);
+        return -1;
+    }
+
+    return sock;
+}
+
+int bind_udp_socket(u16 localPort, std::error_code *ecp)
+{
+    std::error_code ec_;
+    std::error_code &ec = ecp ? *ecp : ec_;
+
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (sock < 0)
+    {
+        ec = std::error_code(errno, std::system_category());
+        return -1;
+    }
+
+    // bind the socket
+    {
+        struct sockaddr_in localAddr = {};
+        localAddr.sin_family = AF_INET;
+        localAddr.sin_addr.s_addr = INADDR_ANY;
+        localAddr.sin_port = htons(localPort);
+
+        if (::bind(sock, reinterpret_cast<struct sockaddr *>(&localAddr),
+                   sizeof(localAddr)))
+        {
+            ec = std::error_code(errno, std::system_category());
+            close_socket(sock);
+            return -1;
+        }
     }
 
     // set the socket timeouts

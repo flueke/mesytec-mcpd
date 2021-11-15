@@ -137,7 +137,7 @@ inline const char *mcpd_cmd_to_string(u16 cmd)
     return to_string(static_cast<CommandType>(cmd & ~CommandErrorMask));
 }
 
-static const char * const DefaultMcpdIpAddress = "192.168.168.121";
+static const char * const McpdDefaultAddress = "192.168.168.121";
 static const u16 DefaultMcpdPort = 54321u;
 
 struct McpdVersionInfo

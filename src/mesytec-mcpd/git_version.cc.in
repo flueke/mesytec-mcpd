@@ -5,7 +5,7 @@
 
 namespace mesytec
 {
-namespace mvlc
+namespace mcpd
 {
 
 extern const char GIT_SHA1[]            = DEF_GIT_SHA1;

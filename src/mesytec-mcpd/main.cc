@@ -37,7 +37,7 @@ int main(int argc, char *argv[])
     static const char *mcpdIpAddress = "192.168.43.42";
     u8 mcpdId = 0u;
 
-    int cmdSock = create_udp_socket(mcpdIpAddress, DefaultMcpdPort, &ec);
+    int cmdSock = connect_udp_socket(mcpdIpAddress, DefaultMcpdPort, &ec);
 
     if (cmdSock < 0)
     {
@@ -45,7 +45,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    int dataSock = create_udp_socket(mcpdIpAddress, DefaultMcpdPort+1, &ec);
+    int dataSock = connect_udp_socket(mcpdIpAddress, DefaultMcpdPort+1, &ec);
 
     if (dataSock < 0)
     {
