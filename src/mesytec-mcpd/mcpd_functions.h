@@ -92,7 +92,7 @@ std::error_code mcpd_set_ip_address_and_data_dest_port(
 
 std::error_code mcpd_set_run_id(int sock, u8 mcpdId, u16 runId);
 
-std::error_code mcpd_reset(int sock, u8 mcpdId);
+std::error_code mcpd_reset_daq(int sock, u8 mcpdId);
 std::error_code mcpd_start_daq(int sock, u8 mcpdId);
 std::error_code mcpd_stop_daq(int sock, u8 mcpdId);
 std::error_code mcpd_continue_daq(int sock, u8 mcpdId);
@@ -101,6 +101,8 @@ std::error_code mcpd_get_all_parameters(int sock, u8 mcpdId, McpdParams &dest);
 
 std::error_code mcpd_get_bus_capabilities(int sock, u8 mcpdId, BusCapabilities &caps);
 std::error_code mcpd_set_bus_capabilities(int sock, u8 mcpdId, u8 capBits, u8 &resultBits);
+
+std::error_code mcpd_set_timing_options(int sock, u8 mcpdId, TimingRole role, BusTermination term);
 
 std::error_code mcpd_set_master_clock_value(int sock, u8 mcpdId, u64 clock);
 

@@ -246,7 +246,7 @@ std::error_code mcpd_set_network_parameters(
     struct sockaddr_in cmdDestAddr = {};
     struct sockaddr_in dataDestAddr = {};
 
-    if (auto ec = lookup(mcpdAddress, DefaultMcpdPort, mcpdAddr))
+    if (auto ec = lookup(mcpdAddress, McpdDefaultPort, mcpdAddr))
         return ec;
 
     if (auto ec = lookup(cmdDestAddress, cmdDestPort, cmdDestAddr))
@@ -341,7 +341,7 @@ std::error_code mcpd_set_run_id(int sock, u8 mcpdId, u16 runId)
     return {};
 }
 
-std::error_code mcpd_reset(int sock, u8 mcpdId)
+std::error_code mcpd_reset_daq(int sock, u8 mcpdId)
 {
     auto request = make_command_packet(CommandType::Reset, mcpdId);
     CommandPacket response = {};
@@ -439,6 +439,20 @@ std::error_code mcpd_set_bus_capabilities(int sock, u8 mcpdId, u8 capBits, u8 &r
         return ec;
 
     resultBits = response.data[0];
+
+    return {};
+}
+
+std::error_code mcpd_set_timing_options(int sock, u8 mcpdId, TimingRole role, BusTermination term)
+{
+    auto request = make_command_packet(
+        CommandType::SetTiming, mcpdId,
+        { static_cast<u16>(role), static_cast<u16>(term) });
+
+    CommandPacket response = {};
+
+    if (auto ec = command_transaction(sock, request, response))
+        return ec;
 
     return {};
 }

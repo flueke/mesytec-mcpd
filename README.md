@@ -14,7 +14,7 @@ Initial Setup
   The library requires to use a distinct data port so that a dedicated socket
   can be used for the DAQ readout.
 
-    mcpd setup [--current-address=192.168.168.121] [--current-id=0] <newaddress> [<newid>=0] [<dataport>=54322]
+    mcpd [--address] [--id=0] setup <newaddress> <newid> <dataport>=54322
 
 
 MCPD and MPSD Configuration
