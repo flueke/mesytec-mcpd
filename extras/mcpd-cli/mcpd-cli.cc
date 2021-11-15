@@ -226,6 +226,7 @@ struct ReadoutCommand: public BaseCommand
         spdlog::debug("{} {} {}", __PRETTY_FUNCTION__, dataPort_, listfilePath_);
 
         std::error_code ec;
+        // Creates an unconnected UDP socket listening on the dataPort.
         int dataSock = bind_udp_socket(dataPort_, &ec);
 
         if (ec)
@@ -238,7 +239,7 @@ struct ReadoutCommand: public BaseCommand
         std::ofstream listfile(listfilePath_);
         DataPacket dataPacket = {};
 
-        while (!g_interrupted)
+        while (!g_interrupted) // TODO: signal handling
         {
             size_t bytesTransferred = 0u;
 
