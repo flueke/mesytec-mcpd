@@ -13,7 +13,6 @@ namespace mcpd
 std::error_code send_command(int sock, const CommandPacket &request)
 {
     size_t bytesWritten = 0u;
-    // TODO: test if this is correct
     const size_t bytesToWrite = request.bufferLength * sizeof(u16);
 
     auto ec = write_to_socket(
@@ -51,7 +50,7 @@ std::error_code command_transaction_(
     CommandPacket &response,
     bool ignoreProtoError)
 {
-    const unsigned MaxAttempts = 3;
+    const unsigned MaxAttempts = 5;
 
     for (unsigned attempt=0; attempt<MaxAttempts; ++attempt)
     {
