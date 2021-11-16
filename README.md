@@ -22,21 +22,26 @@ MCPD and MPSD Configuration
     mcpd [--address] [--id] timing <master|slave> <term=on|off>
     mcpd [--address] [--id] runid <runid>
     mcpd [--address] [--id] cell <cellid> <triggervalue> [<comparevalue>]
-    mcpd [--address] [--id] timer <timerid <capturevalue>
+    mcpd [--address] [--id] timer <timerid> <capturevalue>
     mcpd [--address] [--id] param_source <paramid> <sourceid>
     mcpd [--address] [--id] get_parameters
     mcpd [--address] [--id] version
     mcpd [--address] [--id] dac_setup --dac0=<12bit> --dac1=<12bit>
+    mcpd [--address] [--id] scan_busses
 
-    mcpd [--address] [--id] mpsd set_gain <mpsd_id> <mpsd_channel> <gain>
-    mcpd [--address] [--id] mpsd set_threshold <mpsd_id> <threshold>
-    mcpd [--address] [--id] mpsd set_pulser <mpsd_id> <mpsd_channel> <pos> <amplitude> <on|off>
-    mcpd [--address] [--id] mpsd set_mode <mpsd_id> <mode>
-    mcpd [--address] [--id] mpsd get_parameters <mpsd_id>
+    mcpd [--address] [--id] mpsd_set_gain <mpsd_id> <mpsd_channel> <gain>
+    mcpd [--address] [--id] mpsd_set_threshold <mpsd_id> <threshold>
+    mcpd [--address] [--id] mpsd_set_pulser <mpsd_id> <mpsd_channel> <pos> <amplitude> <on|off>
+    mcpd [--address] [--id] mpsd_set_mode <mpsd_id> <mode>
+    mcpd [--address] [--id] mpsd_get_parameters <mpsd_id>
 
 
 DAQ control
 -----------
+
+These commands are used to start and stop the MCPD based DAQ.
+
+Note that these commands to not perform the actual data readout!
 
     mcpd [--address] [--id] daq start
     mcpd [--address] [--id] daq stop
@@ -52,4 +57,4 @@ Readout until canceled via ctrl-c. Output data rates to stdout. Use one socket
 to receive datagrams from any source address on the specified port. Write
 packets to the output listfile.
 
-    mcpd readout [--dataport=54322] <listfile.mcpdlst>
+    mcpd readout [--dataport=54322] [--duration=<seconds>] [--print-data] <listfile.mcpdlst>
