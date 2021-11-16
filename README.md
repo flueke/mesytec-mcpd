@@ -26,7 +26,7 @@ MCPD and MPSD Configuration
     mcpd [--address] [--id] param_source <paramid> <sourceid>
     mcpd [--address] [--id] get_parameters
     mcpd [--address] [--id] version
-    mcpd [--address] [--id] dac_setup --dac0=<12bit> --dac1=<12bit>
+    mcpd [--address] [--id] dac_setup <dac0> <dac1>
     mcpd [--address] [--id] scan_busses
 
     mcpd [--address] [--id] mpsd_set_gain <mpsd_id> <mpsd_channel> <gain>
@@ -57,4 +57,4 @@ Readout until canceled via ctrl-c. Output data rates to stdout. Use one socket
 to receive datagrams from any source address on the specified port. Write
 packets to the output listfile.
 
-    mcpd readout [--dataport=54322] [--duration=<seconds>] [--print-data] <listfile.mcpdlst>
+    mcpd readout [--dataport=54322] [--duration=<seconds>] [--print-data] --listfile=<listfile.mcpdlst>

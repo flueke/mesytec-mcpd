@@ -240,7 +240,7 @@ struct CellCommand: public BaseCommand
                 )
 
             .add_argument(
-                lyra::arg(compareReg_, "compare register value")
+                lyra::arg(compareReg_, "compareRegister")
                 .optional()
                 .help("0-20: trigger if bit n=1, 21: trigger on overflow, 22: trigger on rising edge of input")
                 )
@@ -256,6 +256,51 @@ struct CellCommand: public BaseCommand
                                   static_cast<CellName>(cellId_),
                                   static_cast<TriggerSource>(trigger_),
                                   compareReg_);
+
+        if (ec)
+        {
+            spdlog::error("cell: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            return 1;
+        }
+
+        return 0;
+    }
+};
+
+struct TimerCommand: public BaseCommand
+{
+    u16 timerId_;
+    u16 captureValue_;
+
+    TimerCommand(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "timer",
+                 [this] (const lyra::group &) { this->run_ = true; }
+                )
+            .help("Timer setup")
+
+            .add_argument(
+                lyra::arg(timerId_, "timerId")
+                .required()
+                .help("timerId in [0, 3]")
+                )
+
+            .add_argument(
+                lyra::arg(captureValue_, "captureValue")
+                .required()
+                .help("capture register value")
+                )
+            );
+    }
+
+    int runCommand(CliContext &ctx) override
+    {
+        spdlog::debug("{}, timerId={}, captureValue={}",
+                      __PRETTY_FUNCTION__, timerId_, captureValue_);
+
+        auto ec = mcpd_setup_auxtimer(ctx.cmdSock, ctx.mcpdId, timerId_, captureValue_);
 
         if (ec)
         {
@@ -695,9 +740,11 @@ struct ReadoutCommand: public BaseCommand
 {
     u16 dataPort_ = McpdDefaultPort + 1;
     std::string listfilePath_;
+    bool noListfile_ = false;
     size_t duration_s_ = 0u;
     size_t reportInterval_ms_ = 1000u;
-    bool printData_ = false;
+    bool printPacketSummary_ = false;
+    bool printEventData_ = false;
 
     ReadoutCommand(lyra::cli &cli)
     {
@@ -709,17 +756,31 @@ struct ReadoutCommand: public BaseCommand
             .help("DAQ readout to listfile")
 
             .add_argument(
-                lyra::opt(dataPort_, "dataPort")
-                ["--dataport"]
+                lyra::opt(listfilePath_, "listfilePath")
+                ["--listfile"]
                 .optional()
-                .help("mcpd data port (also the local listening port)")
+                .help("Path to the output listfile")
+                )
+
+            .add_argument(
+                lyra::opt([this] (const bool &b) { noListfile_ = b; })
+                ["--no-listfile"]
+                .optional()
+                .help("Do not write an output listfile.")
                 )
 
             .add_argument(
                 lyra::opt(duration_s_, "duration [s]")
                 ["--duration"]
                 .optional()
-                .help("DAQ run duration in seconds")
+                .help("DAQ run duration in seconds. Runs forever if not specified or 0.")
+                )
+
+            .add_argument(
+                lyra::opt(dataPort_, "dataPort")
+                ["--dataport"]
+                .optional()
+                .help("mcpd data port (also the local listening port)")
                 )
 
             .add_argument(
@@ -730,26 +791,26 @@ struct ReadoutCommand: public BaseCommand
                 )
 
             .add_argument(
-                lyra::arg(listfilePath_, "listfilePath")
-                .required()
-                .help("Path to the output listfile")
+                lyra::opt([this] (const bool &b) { printPacketSummary_ = b; })
+                ["--print-packet-summary"]
+                .optional()
+                .help("Print readout packet summaries")
                 )
 
             .add_argument(
-                lyra::opt([this] (const bool &b) { printData_ = b; })
-                ["--print-data"]
+                lyra::opt([this] (const bool &b) { printEventData_ = b; })
+                ["--print-event-data"]
                 .optional()
-                .help("Print readout data")
+                .help("Print readout event data")
                 )
-
             );
     }
 
     int runCommand(CliContext &ctx) override
     {
-        if (listfilePath_.empty())
+        if (listfilePath_.empty() && !noListfile_)
         {
-            spdlog::error("readout: no output listfile name specified");
+            spdlog::error("readout: no listfile name given (use --no-listfile to ignore)");
             return 1;
         }
 
@@ -782,8 +843,20 @@ struct ReadoutCommand: public BaseCommand
                          );
         };
 
+        std::ofstream listfile;
+
+        if (!noListfile_)
+        {
+            listfile.open(listfilePath_);
+            if (listfile.fail())
+            {
+                // TODO: proper error message here
+                return 1;
+            }
+        }
+
+
         Counters counters = {};
-        std::ofstream listfile(listfilePath_);
         DataPacket dataPacket = {};
 
         spdlog::info("readout: entering readout loop");
@@ -817,19 +890,22 @@ struct ReadoutCommand: public BaseCommand
 
             if (bytesTransferred)
             {
-                listfile.write(reinterpret_cast<const char *>(&dataPacket), sizeof(dataPacket));
-
-                if (listfile.bad() || listfile.fail())
+                if (!noListfile_)
                 {
-                    // FIXME: proper error message here
-                    spdlog::error("readout: error writing to listfile {}: {}",
-                                  listfilePath_, "FIXME");
-                    return 1;
+                    listfile.write(reinterpret_cast<const char *>(&dataPacket), sizeof(dataPacket));
+
+                    if (listfile.bad() || listfile.fail())
+                    {
+                        // FIXME: proper error message here
+                        spdlog::error("readout: error writing to listfile {}: {}",
+                                      listfilePath_, "FIXME");
+                        return 1;
+                    }
                 }
 
                 const auto eventCount = get_event_count(dataPacket);
 
-                if (printData_)
+                if (printPacketSummary_)
                 {
                     spdlog::info(
                         "packet#{}: bufferType=0x{:04x}, bufferNumber={}, runId={}, "
@@ -846,6 +922,15 @@ struct ReadoutCommand: public BaseCommand
                                  );
 
                     spdlog::info("  packet contains {} events", eventCount);
+                }
+
+                if (printEventData_)
+                {
+                    for(size_t ei=0; ei<eventCount; ++ei)
+                    {
+                        auto event = decode_event(dataPacket, ei);
+                        spdlog::info("{}", to_string(event));
+                    }
                 }
 
                 ++counters.packets;
@@ -926,6 +1011,7 @@ int main(int argc, char *argv[])
     commands.emplace_back(std::make_unique<TimingCommand>(cli));
     commands.emplace_back(std::make_unique<RunIdCommand>(cli));
     commands.emplace_back(std::make_unique<CellCommand>(cli));
+    commands.emplace_back(std::make_unique<TimerCommand>(cli));
     commands.emplace_back(std::make_unique<ParamSourceCommand>(cli));
     commands.emplace_back(std::make_unique<GetParametersCommand>(cli));
     commands.emplace_back(std::make_unique<VersionCommand>(cli));
@@ -1037,7 +1123,6 @@ int main(int argc, char *argv[])
 
     if (active != std::end(commands))
     {
-        //spdlog::info("mcpdAddress={}, mcpdId={}", ctx.mcpdAddress, ctx.mcpdId);
         return (*active)->runCommand(ctx);
     }
 
