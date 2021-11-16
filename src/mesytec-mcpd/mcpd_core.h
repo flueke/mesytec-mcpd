@@ -286,21 +286,40 @@ namespace event_constants
     static const std::size_t IdShift = 47u;
     static const std::size_t IdMask = (1u << IdBits) - 1;
 
-    static const std::size_t MpsdIdBits = 3u;
-    static const std::size_t MpsdIdShift = 44u;
-    static const std::size_t MpsdIdMask = (1u << MpsdIdBits) - 1;
+    namespace neutron
+    {
 
-    static const std::size_t ChannelBits = 5u;
-    static const std::size_t ChannelShift = 39u;
-    static const std::size_t ChannelMask = (1u << ChannelBits) - 1;
+        static const std::size_t MpsdIdBits = 3u;
+        static const std::size_t MpsdIdShift = 44u;
+        static const std::size_t MpsdIdMask = (1u << MpsdIdBits) - 1;
 
-    static const std::size_t AmplitudeBits = 10u;
-    static const std::size_t AmplitudeShift = 29u;
-    static const std::size_t AmplitudeMask = (1u << AmplitudeBits) - 1;
+        static const std::size_t ChannelBits = 5u;
+        static const std::size_t ChannelShift = 39u;
+        static const std::size_t ChannelMask = (1u << ChannelBits) - 1;
 
-    static const std::size_t PositionBits = 10u;
-    static const std::size_t PositionShift = 19u;
-    static const std::size_t PositionMask = (1u << PositionBits) - 1;
+        static const std::size_t AmplitudeBits = 10u;
+        static const std::size_t AmplitudeShift = 29u;
+        static const std::size_t AmplitudeMask = (1u << AmplitudeBits) - 1;
+
+        static const std::size_t PositionBits = 10u;
+        static const std::size_t PositionShift = 19u;
+        static const std::size_t PositionMask = (1u << PositionBits) - 1;
+    }
+
+    namespace trigger
+    {
+        static const std::size_t TriggerIdBits = 3u;
+        static const std::size_t TriggerIdShift = 44u;
+        static const std::size_t TriggerIdMask = (1u << TriggerIdBits) - 1;
+
+        static const std::size_t DataIdBits = 4u;
+        static const std::size_t DataIdShift = 40u;
+        static const std::size_t DataIdMask = (1u << DataIdBits) - 1;
+
+        static const std::size_t DataBits = 21u;
+        static const std::size_t DataShift = 19u;
+        static const std::size_t DataMask = (1u << DataBits) - 1;
+    }
 
     static const std::size_t TimestampBits = 19u;
     static const std::size_t TimestampShift = 0u;
@@ -470,12 +489,32 @@ inline u64 get_event(const DataPacket &packet, size_t eventNum)
 
 struct DecodedEvent
 {
+    struct Neutron
+    {
+        u8 mpsdId;
+        u8 channel;
+        u16 amplitude;
+        u16 position;
+    };
+
+    struct Trigger
+    {
+        u8 triggerId;
+        u8 dataId;
+        u32 value;
+        u64 timestamp;
+    };
+
     EventType type;
-    u8 mpsdId;
-    u8 channel;
-    u16 amplitude;
-    u16 position;
+
+    union
+    {
+        Neutron neutron;
+        Trigger trigger;
+    };
+
     u64 timestamp;
+
 };
 
 inline DecodedEvent decode_event(const DataPacket &packet, size_t eventNum)
@@ -487,12 +526,24 @@ inline DecodedEvent decode_event(const DataPacket &packet, size_t eventNum)
     DecodedEvent result = {};
 
     result.type = static_cast<EventType>((event >> ec::IdShift) & ec::IdMask);
-    result.mpsdId = (event >> ec::MpsdIdShift) & ec::MpsdIdMask;
-    result.channel = (event >> ec::ChannelShift) & ec::ChannelMask;
-    result.amplitude = (event >> ec::AmplitudeShift) & ec::AmplitudeMask;
-    result.position = (event >> ec::PositionShift) & ec::PositionMask;
-    result.timestamp = (event >> ec::TimestampShift) & ec::TimestampMask;
 
+    switch (result.type)
+    {
+        case EventType::Neutron:
+            result.neutron.mpsdId = (event >> ec::neutron::MpsdIdShift) & ec::neutron::MpsdIdMask;
+            result.neutron.channel = (event >> ec::neutron::ChannelShift) & ec::neutron::ChannelMask;
+            result.neutron.amplitude = (event >> ec::neutron::AmplitudeShift) & ec::neutron::AmplitudeMask;
+            result.neutron.position = (event >> ec::neutron::PositionShift) & ec::neutron::PositionMask;
+            break;
+
+        case EventType::Trigger:
+            result.trigger.triggerId = (event >> ec::trigger::TriggerIdShift) &  ec::trigger::TriggerIdMask;
+            result.trigger.dataId = (event >> ec::trigger::DataIdShift) &  ec::trigger::DataIdMask;
+            result.trigger.value = (event >> ec::trigger::DataShift) &  ec::trigger::DataMask;
+            break;
+    }
+
+    result.timestamp = (event >> ec::TimestampShift) & ec::TimestampMask;
     // Add the 48 bit header timestamp to the events 19 bit timestamp value.
     result.timestamp += get_header_timestamp(packet);
 
@@ -502,13 +553,27 @@ inline DecodedEvent decode_event(const DataPacket &packet, size_t eventNum)
 template<typename Out>
 Out &format(Out &out, const DecodedEvent &event)
 {
-    out << "Event:" << std::endl;
-    out << fmt::format("  type={}", to_string(event.type)) << std::endl;
-    out << fmt::format("  mpsdId={}", event.mpsdId) << std::endl;
-    out << fmt::format("  channel={}", event.channel) << std::endl;
-    out << fmt::format("  amplitude={}", event.amplitude) << std::endl;
-    out << fmt::format("  position={}", event.position) << std::endl;
-    out << fmt::format("  timestamp={}", event.timestamp) << std::endl;
+    out << "Event: ";
+
+    switch (event.type)
+    {
+        case EventType::Neutron:
+            out << fmt::format("type={}", to_string(event.type));
+            out << fmt::format(", mpsdId={}", event.neutron.mpsdId);
+            out << fmt::format(", channel={}", event.neutron.channel);
+            out << fmt::format(", amplitude={}", event.neutron.amplitude);
+            out << fmt::format(", position={}", event.neutron.position);
+            break;
+
+        case EventType::Trigger:
+            out << fmt::format("type={}", to_string(event.type));
+            out << fmt::format(", triggerId={}", event.trigger.triggerId);
+            out << fmt::format(", dataId={}", event.trigger.dataId);
+            out << fmt::format(", value={}", event.trigger.value);
+            break;
+    }
+
+    out << fmt::format(", timestamp={}", event.timestamp);
 
     return out;
 }
