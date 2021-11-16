@@ -154,7 +154,7 @@ struct McpdParams
     u16 ttlOut;
     u16 ttlIn;
     u16 eventCounters[3];
-    u16 params[McpdParamCount][3];
+    u16 params[McpdParamCount][McpdParamWords];
 };
 
 namespace bus_capabilities
@@ -179,8 +179,8 @@ enum class TimingRole
 
 enum class BusTermination
 {
-    On = 0,
-    Off = 1,
+    Off = 0,
+    On = 1,
 };
 
 enum class CellName: u16
@@ -337,6 +337,24 @@ inline u8 get_error_code(const CommandPacket &packet)
     return (packet.cmd & CommandErrorMask) >> CommandErrorShift;
 }
 
+inline u64 to_48bit_value(u16 v0, u16 v1, u16 v2)
+{
+    u64 result = (  (static_cast<u64>(v0) <<  0)
+                  | (static_cast<u64>(v1) << 16)
+                  | (static_cast<u64>(v2) << 32));
+    return result;
+}
+
+inline u64 to_48bit_value(const std::array<u16, 3> &v)
+{
+    return to_48bit_value(v[0], v[1], v[2]);
+}
+
+inline u64 to_48bit_value(const u16 v[3])
+{
+    return to_48bit_value(v[0], v[1], v[2]);
+}
+
 template<typename Out>
 Out &format(Out &out, const CommandPacket &packet)
 {
@@ -382,10 +400,7 @@ inline std::array<u64, McpdParamCount> get_parameter_values(const DataPacket &pa
 
     for (size_t i=0; i<McpdParamCount; ++i)
     {
-        u64 pv = (  (static_cast<u64>(packet.param[i][0]) <<  0)
-                  | (static_cast<u64>(packet.param[i][1]) << 16)
-                  | (static_cast<u64>(packet.param[i][2]) << 32));
-
+        u64 pv = to_48bit_value(packet.param[i]);
         result[i] = pv;
     }
 
@@ -437,10 +452,7 @@ inline size_t get_event_count(const DataPacket &packet)
 
 inline u64 get_header_timestamp(const DataPacket &packet)
 {
-    u64 result = (  (static_cast<u64>(packet.time[0]) <<  0)
-                  | (static_cast<u64>(packet.time[1]) << 16)
-                  | (static_cast<u64>(packet.time[2]) << 32));
-    return result;
+    return to_48bit_value(packet.time);
 }
 
 inline u64 get_event(const DataPacket &packet, size_t eventNum)
@@ -450,11 +462,10 @@ inline u64 get_event(const DataPacket &packet, size_t eventNum)
     if (idx + 2 >= get_data_length(packet))
         throw std::runtime_error("eventNum out of range");
 
-    u64 result = (  (static_cast<u64>(packet.data[idx + 0]) <<  0)
-                  | (static_cast<u64>(packet.data[idx + 1]) << 16)
-                  | (static_cast<u64>(packet.data[idx + 2]) << 32));
-
-    return result;
+    return to_48bit_value(
+        packet.data[idx + 0],
+        packet.data[idx + 1],
+        packet.data[idx + 2]);
 }
 
 struct DecodedEvent
