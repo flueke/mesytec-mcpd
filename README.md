@@ -1,11 +1,9 @@
-mesytec-mcpd  {#mainpage}
-=========================
+# mesytec-mcpd  {#mainpage}
 
 *User space driver library for the Mesytec PSD+ system.*
 
 
-Initial Setup
--------------
+## Initial Setup
 
 * MCPD default IP Address is 192.168.168.121
 * MCPD default ID is 0
@@ -17,18 +15,18 @@ Initial Setup
     mcpd [--address] [--id=0] setup <newaddress> <newid> <dataport>=54322
 
 
-MCPD and MPSD Configuration
----------------------------
-    mcpd [--address] [--id] timing <master|slave> <term=on|off>
-    mcpd [--address] [--id] runid <runid>
-    mcpd [--address] [--id] cell <cellid> <triggervalue> [<comparevalue>]
-    mcpd [--address] [--id] timer <timerid> <capturevalue>
-    mcpd [--address] [--id] param_source <paramid> <sourceid>
-    mcpd [--address] [--id] get_parameters
-    mcpd [--address] [--id] version
-    mcpd [--address] [--id] dac_setup <dac0> <dac1>
-    mcpd [--address] [--id] scan_busses
+## MCPD and MPSD Configuration
 
+   mcpd [--address] [--id] timing <master|slave> <term=on|off>
+   mcpd [--address] [--id] runid <runid>
+   mcpd [--address] [--id] cell <cellid> <triggervalue> [<comparevalue>]
+   mcpd [--address] [--id] timer <timerid> <capturevalue>
+   mcpd [--address] [--id] param_source <paramid> <sourceid>
+   mcpd [--address] [--id] get_parameters
+   mcpd [--address] [--id] version
+   mcpd [--address] [--id] dac_setup <dac0> <dac1>
+   mcpd [--address] [--id] scan_busses
+    
     mcpd [--address] [--id] mpsd_set_gain <mpsd_id> <mpsd_channel> <gain>
     mcpd [--address] [--id] mpsd_set_threshold <mpsd_id> <threshold>
     mcpd [--address] [--id] mpsd_set_pulser <mpsd_id> <mpsd_channel> <pos> <amplitude> <on|off>
