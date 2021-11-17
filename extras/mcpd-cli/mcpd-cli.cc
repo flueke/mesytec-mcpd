@@ -7,6 +7,10 @@
 #include <lyra/lyra.hpp>
 #include <spdlog/spdlog.h>
 
+#ifdef MESYTEC_MCPD_ENABLE_ROOT
+#include "mcpd_root_histos.h"
+#endif
+
 using namespace mesytec::mcpd;
 
 static std::atomic<bool> g_interrupted(false);
@@ -979,6 +983,11 @@ struct ReplayCommand: public BaseCommand
     bool printPacketSummary_ = false;
     bool printEventData_ = false;
 
+#ifdef MESYTEC_MCPD_ENABLE_ROOT
+    RootHistoContext rootHistoContext_ = {};
+    std::string rootHistoPath_;
+#endif
+
     ReplayCommand(lyra::cli &cli)
     {
         offline_ = true;
@@ -1017,6 +1026,16 @@ struct ReplayCommand: public BaseCommand
                 .optional()
                 .help("Print readout event data")
                 )
+
+#ifdef MESYTEC_MCPD_ENABLE_ROOT
+            .add_argument(
+                lyra::opt(rootHistoPath_, "rootfile")
+                ["--root-histo-file"]
+                .optional()
+                .help("ROOT histo output file path")
+                )
+#endif
+
             );
     }
 
@@ -1043,6 +1062,11 @@ struct ReplayCommand: public BaseCommand
                           listfilePath_, e.what());
             return 1;
         }
+
+#ifdef MESYTEC_MCPD_ENABLE_ROOT
+        if (!rootHistoPath_.empty())
+            rootHistoContext_ = create_histo_context(rootHistoPath_);
+#endif
 
         ReadoutCounters counters = {};
         DataPacket dataPacket = {};
@@ -1097,6 +1121,11 @@ struct ReplayCommand: public BaseCommand
                     spdlog::info("{}", to_string(event));
                 }
             }
+
+#ifdef MESYTEC_MCPD_ENABLE_ROOT
+            if (rootHistoContext_.histoOutFile)
+                root_histos_process_packet(rootHistoContext_, dataPacket);
+#endif
 
             ++counters.packets;
             counters.bytes += sizeof(dataPacket);
@@ -1210,6 +1239,9 @@ int main(int argc, char *argv[])
         std::cerr << cli << std::endl;
         return 0;
     }
+
+    unsigned mcpdId = 7; unsigned mpsdId = 7; unsigned channel = 31;
+    std::cout << fmt::format("{} {} {} -> {}", mcpdId, mpsdId, channel, linear_address(mcpdId, mpsdId, channel)) << std::endl;
 
     // Use mcpd ip address/host, mcpd id and the command port from the
     // environment if not specified on the command line.
