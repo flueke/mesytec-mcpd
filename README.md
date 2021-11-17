@@ -57,4 +57,9 @@ Readout until canceled via ctrl-c. Output data rates to stdout. Use one socket
 to receive datagrams from any source address on the specified port. Write
 packets to the output listfile.
 
-    mcpd readout [--dataport=54322] [--duration=<seconds>] [--print-data] --listfile=<listfile.mcpdlst>
+    mcpd readout [--dataport=54322] [--duration=<seconds>] --listfile=<listfile.mcpdlst> [--no-listfile] [--print-packet-summary] [--print-event-data]
+
+Replay
+------
+
+    mcpd replay --print-packet-summary --print-event-data --listfile=<listfile.mcpdlst>

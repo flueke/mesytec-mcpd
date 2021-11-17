@@ -11,3 +11,5 @@ set_target_properties(spdlog PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # Lyra command line parser
 add_subdirectory(Lyra)
+
+#add_subdirectory(gnuplot-iostream)

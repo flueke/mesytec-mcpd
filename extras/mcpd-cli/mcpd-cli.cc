@@ -42,15 +42,15 @@ struct CliContext
 struct BaseCommand
 {
     bool run_ = false;
-    bool showHelp_ = false;
+    bool offline_ = false;
     bool active() const { return run_; };
+    bool offline() const { return offline_; }
     virtual int runCommand(CliContext &ctx) = 0;
     virtual ~BaseCommand() {};
 };
 
 struct SetupCommand: public BaseCommand
 {
-    bool showHelp_ = false;
     std::string newAddress_;
     u16 newId_ = 0;
     u16 dataPort_ = McpdDefaultPort + 1u;
@@ -736,6 +736,23 @@ struct DaqCommand: public BaseCommand
     }
 };
 
+struct ReadoutCounters
+{
+    size_t packets = 0u;
+    size_t bytes = 0u;
+    size_t timeouts = 0u;
+    size_t events = 0u;
+};
+
+void report_counters(const ReadoutCounters &counters, const std::string &title = "readout")
+{
+    spdlog::info("{}: packets={}, bytes={}, timeouts={}, events={}",
+                 title, counters.packets, counters.bytes, counters.timeouts,
+                 counters.events
+                );
+}
+
+
 struct ReadoutCommand: public BaseCommand
 {
     u16 dataPort_ = McpdDefaultPort + 1;
@@ -827,36 +844,24 @@ struct ReadoutCommand: public BaseCommand
             return 1;
         }
 
-        struct Counters
-        {
-            size_t packets = 0u;
-            size_t bytes = 0u;
-            size_t timeouts = 0u;
-            size_t events = 0u;
-        };
-
-        auto report_counters = [] (const Counters &counters)
-        {
-            spdlog::info("readout: packets={}, bytes={}, timeouts={}, events={}",
-                         counters.packets, counters.bytes, counters.timeouts,
-                         counters.events
-                         );
-        };
-
         std::ofstream listfile;
+        listfile.exceptions(std::ios::failbit | std::ios::badbit);
 
         if (!noListfile_)
         {
-            listfile.open(listfilePath_);
-            if (listfile.fail())
+            try
             {
-                // TODO: proper error message here
+                listfile.open(listfilePath_, std::ios_base::out | std::ios::binary);
+            }
+            catch (const std::exception &e)
+            {
+                spdlog::error("readout: Error opening listfile '{}': {}",
+                              listfilePath_, e.what());
                 return 1;
             }
         }
 
-
-        Counters counters = {};
+        ReadoutCounters counters = {};
         DataPacket dataPacket = {};
 
         spdlog::info("readout: entering readout loop");
@@ -892,13 +897,14 @@ struct ReadoutCommand: public BaseCommand
             {
                 if (!noListfile_)
                 {
-                    listfile.write(reinterpret_cast<const char *>(&dataPacket), sizeof(dataPacket));
-
-                    if (listfile.bad() || listfile.fail())
+                    try
                     {
-                        // FIXME: proper error message here
-                        spdlog::error("readout: error writing to listfile {}: {}",
-                                      listfilePath_, "FIXME");
+                        listfile.write(reinterpret_cast<const char *>(&dataPacket), sizeof(dataPacket));
+                    }
+                    catch (const std::exception &e)
+                    {
+                        spdlog::error("readout: Error writing to listfile '{}': {}",
+                                      listfilePath_, e.what());
                         return 1;
                     }
                 }
@@ -969,6 +975,156 @@ struct ReadoutCommand: public BaseCommand
     }
 };
 
+struct ReplayCommand: public BaseCommand
+{
+    std::string listfilePath_;
+    size_t reportInterval_ms_ = 1000u;
+    bool printPacketSummary_ = false;
+    bool printEventData_ = false;
+
+    ReplayCommand(lyra::cli &cli)
+    {
+        offline_ = true;
+
+        cli.add_argument(
+            lyra::command(
+                "replay",
+                [this] (const lyra::group &) { this->run_ = true; }
+                )
+            .help("DAQ replay from listfile")
+
+            .add_argument(
+                lyra::opt(listfilePath_, "listfilePath")
+                ["--listfile"]
+                .required()
+                .help("Path to the input listfile")
+                )
+
+            .add_argument(
+                lyra::opt(reportInterval_ms_, "interval [ms]")
+                ["--report-interval"]
+                .optional()
+                .help("Time in ms between logging readout stats")
+                )
+
+            .add_argument(
+                lyra::opt([this] (const bool &b) { printPacketSummary_ = b; })
+                ["--print-packet-summary"]
+                .optional()
+                .help("Print readout packet summaries")
+                )
+
+            .add_argument(
+                lyra::opt([this] (const bool &b) { printEventData_ = b; })
+                ["--print-event-data"]
+                .optional()
+                .help("Print readout event data")
+                )
+            );
+    }
+
+    int runCommand(CliContext &ctx) override
+    {
+        if (listfilePath_.empty())
+        {
+            spdlog::error("replay: no input listfile specified");
+            return 1;
+        }
+
+        spdlog::debug("{} {}", __PRETTY_FUNCTION__, listfilePath_);
+
+        std::ifstream listfile;
+        listfile.exceptions(std::ios::badbit);
+
+        try
+        {
+            listfile.open(listfilePath_, std::ios::in | std::ios::binary);
+        }
+        catch (const std::exception &e)
+        {
+            spdlog::error("replay: Error opening listfile '{}': {}",
+                          listfilePath_, e.what());
+            return 1;
+        }
+
+        ReadoutCounters counters = {};
+        DataPacket dataPacket = {};
+
+        spdlog::info("Replaying from {}", listfilePath_);
+
+        auto tStart = std::chrono::steady_clock::now();
+        auto tReport = tStart;
+
+        while (!listfile.eof() && !g_interrupted)
+        {
+            try
+            {
+                listfile.read(reinterpret_cast<char *>(&dataPacket), sizeof(dataPacket));
+
+                if (listfile.eof())
+                    break;
+            }
+            catch (const std::exception &e)
+            {
+                spdlog::error("replay: Error reading from listfile '{}': {}",
+                              listfilePath_, e.what());
+                return 1;
+            }
+
+            const auto eventCount = get_event_count(dataPacket);
+
+            if (printPacketSummary_)
+            {
+                spdlog::info(
+                    "packet#{}: bufferType=0x{:04x}, bufferNumber={}, runId={}, "
+                    "devStatus={}, devId={}, timestamp={}",
+                    counters.packets, dataPacket.bufferType, dataPacket.bufferNumber,
+                    dataPacket.runId, dataPacket.deviceStatus, dataPacket.deviceId,
+                    get_header_timestamp(dataPacket));
+
+                spdlog::info("  parameters: {}, {}, {}, {}",
+                             to_48bit_value(dataPacket.param[0]),
+                             to_48bit_value(dataPacket.param[1]),
+                             to_48bit_value(dataPacket.param[2]),
+                             to_48bit_value(dataPacket.param[3])
+                            );
+
+                spdlog::info("  packet contains {} events", eventCount);
+            }
+
+            if (printEventData_)
+            {
+                for(size_t ei=0; ei<eventCount; ++ei)
+                {
+                    auto event = decode_event(dataPacket, ei);
+                    spdlog::info("{}", to_string(event));
+                }
+            }
+
+            ++counters.packets;
+            counters.bytes += sizeof(dataPacket);
+            counters.events += eventCount;
+
+            const auto now = std::chrono::steady_clock::now();
+
+            if (reportInterval_ms_ > 0)
+            {
+                auto elapsed = now - tReport;
+
+                if (elapsed >= std::chrono::milliseconds(reportInterval_ms_))
+                {
+                    report_counters(counters, "replay");
+                    tReport = now;
+                }
+            }
+        }
+
+        report_counters(counters, "replay");
+
+        return 0;
+    }
+};
+
 int main(int argc, char *argv[])
 {
     spdlog::set_level(spdlog::level::info);
@@ -1024,6 +1180,7 @@ int main(int argc, char *argv[])
 
     commands.emplace_back(std::make_unique<DaqCommand>(cli));
     commands.emplace_back(std::make_unique<ReadoutCommand>(cli));
+    commands.emplace_back(std::make_unique<ReplayCommand>(cli));
 
     auto parsed = cli.parse({argc, argv});
 
@@ -1087,45 +1244,50 @@ int main(int argc, char *argv[])
         ctx.mcpdPort = McpdDefaultPort;
 
 
-    // Connect to the mcpd
-
-    std::error_code ec;
-
-    ctx.cmdSock = connect_udp_socket(ctx.mcpdAddress, ctx.mcpdPort, &ec);
-
-    if (ec)
-    {
-        spdlog::error("Error connecting to mcpd@{}:{}: {}",
-                      ctx.mcpdAddress, ctx.mcpdPort, ec.message());
-        return 1;
-    }
-
-    {
-        McpdVersionInfo vi = {};
-        ec = mcpd_get_version(ctx.cmdSock, ctx.mcpdId, vi);
-
-        if (ec)
-        {
-            spdlog::error("Error reading mcpd version: {} ({}, {})",
-                          ec.message(), ec.value(), ec.category().name());
-            return 1;
-        }
-
-        spdlog::info("Connected to mcpd @ {}:{} mcpdId={} (cpu={}.{}, fpga={}.{})",
-                     ctx.mcpdAddress, ctx.mcpdPort, ctx.mcpdId,
-                     vi.cpu[0], vi.cpu[1], vi.fpga[0], vi.fpga[1]);
-    }
-
-    // Find the active command and run it.
-    auto active = std::find_if(
+    // Find the active command.
+    auto activeCommand = std::find_if(
         std::begin(commands), std::end(commands),
         [] (const auto &cmd) { return cmd->active(); });
 
-    if (active != std::end(commands))
+    if (activeCommand == std::end(commands))
     {
-        return (*active)->runCommand(ctx);
+        std::cerr << cli << std::endl;
+        spdlog::error("No command specified");
+        return 1;
     }
 
-    std::cerr << cli << std::endl;
-    return 1;
+    // Connect to the mcpd
+
+    std::error_code ec;
+    
+    if (!(*activeCommand)->offline())
+    {
+        ctx.cmdSock = connect_udp_socket(ctx.mcpdAddress, ctx.mcpdPort, &ec);
+
+        if (ec)
+        {
+            spdlog::error("Error connecting to mcpd@{}:{}: {}",
+                          ctx.mcpdAddress, ctx.mcpdPort, ec.message());
+            return 1;
+        }
+
+        {
+            McpdVersionInfo vi = {};
+            ec = mcpd_get_version(ctx.cmdSock, ctx.mcpdId, vi);
+
+            if (ec)
+            {
+                spdlog::error("Error reading mcpd version: {} ({}, {})",
+                              ec.message(), ec.value(), ec.category().name());
+                return 1;
+            }
+
+            spdlog::info("Connected to mcpd @ {}:{} mcpdId={} (cpu={}.{}, fpga={}.{})",
+                         ctx.mcpdAddress, ctx.mcpdPort, ctx.mcpdId,
+                         vi.cpu[0], vi.cpu[1], vi.fpga[0], vi.fpga[1]);
+        }
+    }
+
+
+    return (*activeCommand)->runCommand(ctx);
 }
