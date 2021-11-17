@@ -878,9 +878,6 @@ struct ReadoutCommand: public BaseCommand
                 reinterpret_cast<u8 *>(&dataPacket), sizeof(dataPacket),
                 bytesTransferred, DefaultReadTimeout_ms);
 
-            if (g_interrupted)
-                break;
-
             if (ec)
             {
                 if (ec != SocketErrorType::Timeout)
