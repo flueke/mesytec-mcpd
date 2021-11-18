@@ -555,6 +555,21 @@ std::error_code mcpd_set_dac_output_values(
     return {};
 }
 
+std::error_code mcpd_scan_busses(
+    int sock, u8 mcpdId, std::array<u16, McpdBusCount> &dest)
+{
+    auto request = make_command_packet(CommandType::ReadIds, mcpdId);
+    CommandPacket response = {};
+
+    if (auto ec = command_transaction(sock, request, response))
+        return ec;
+
+    for (size_t bus=0; bus<McpdBusCount; ++bus)
+        dest[bus] = response.data[bus];
+
+    return {};
+}
+
 #if 0 // untested/not implemented according to Gregor
 std::error_code mcpd_send_serial_string(
     int sock, u8 mcpdId,

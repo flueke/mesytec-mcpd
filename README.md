@@ -33,8 +33,10 @@
     mcpd [--address] [--id] mpsd_set_gain <mpsd_id> <mpsd_channel> <gain>
     mcpd [--address] [--id] mpsd_set_threshold <mpsd_id> <threshold>
     mcpd [--address] [--id] mpsd_set_pulser <mpsd_id> <mpsd_channel> <pos> <amplitude> <on|off>
-    mcpd [--address] [--id] mpsd_set_mode <mpsd_id> <mode>
     mcpd [--address] [--id] mpsd_get_parameters <mpsd_id>
+
+    Not implemented:
+    mcpd [--address] [--id] mpsd_set_mode <mpsd_id> <mode>
 
 
 ### DAQ control
@@ -54,11 +56,13 @@ Readout until canceled via ctrl-c. Output data rates to stdout. Use one socket
 to receive datagrams from any source address on the specified port. Write
 packets to the output listfile.
 
-    mcpd readout [--dataport=54322] [--duration=<seconds>] --listfile=<listfile.mcpdlst> [--no-listfile] [--print-packet-summary] [--print-event-data]
+    mcpd readout [--dataport=54322] [--duration=<seconds>] --listfile=<listfile.mcpdlst> [--no-listfile]
+        [--print-packet-summary] [--print-event-data] [--root-histo-file=<histos.root>]
 
 ### Replay
 
     mcpd replay --print-packet-summary --print-event-data --listfile=<listfile.mcpdlst>
+        [--root-histo-file=<histos.root>]
 
 ## mcpd commands
 
@@ -91,7 +95,7 @@ packets to the output listfile.
 | SetBusCapabilities | 23 |
 | GetMpsdParams     | 24 |
 | SetFastTxMode     | 25 |
-| ReadId            | 36 | // FIXME: not in docs, scans the busses for MPSD-8 modules 
+| ReadId            | 36 | // FIXME: not in docs, scans the busses for MPSD-8 modules
 | GetVersion        | 51 |
 
 

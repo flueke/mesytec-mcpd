@@ -6,6 +6,7 @@
 #include <mesytec-mcpd/mesytec-mcpd.h>
 #include <lyra/lyra.hpp>
 #include <spdlog/spdlog.h>
+#include <sys/stat.h>
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
 #include "mcpd_root_histos.h"
@@ -13,11 +14,23 @@
 
 using namespace mesytec::mcpd;
 
+namespace
+{
+
 static std::atomic<bool> g_interrupted(false);
 
 void signal_handler(int signum)
 {
     g_interrupted = true;
+}
+
+bool file_exists(const char *path)
+{
+    struct stat st = {};
+
+    return (::stat(path, &st) == 0);
+}
+
 }
 
 void setup_signal_handlers()
@@ -106,9 +119,9 @@ struct SetupCommand: public BaseCommand
             return 1;
         }
 
-        // Update context and change the ip address. Ignore the error code as
-        // we might not receive a response after changing the ip address.
-
+        // Update context with the new mcpdId and change the ip address. Ignore
+        // the error code as we might not receive a response after changing the
+        // ip address.
         ctx.mcpdId = newId_;
         mcpd_set_ip_address_and_data_dest_port(ctx.cmdSock, ctx.mcpdId, newAddress_, dataPort_);
 
@@ -472,9 +485,45 @@ struct DacSetupCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("version: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("dac_setup: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
+
+        return 0;
+    }
+};
+
+struct ScanBussesCommand: public BaseCommand
+{
+    ScanBussesCommand(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "scan_busses",
+                 [this] (const lyra::group &) { this->run_ = true; }
+                )
+            .help("Scan MCPD busses for connected MPSD modules")
+
+            );
+    }
+
+    int runCommand(CliContext &ctx) override
+    {
+        spdlog::debug("{}", __PRETTY_FUNCTION__);
+
+        std::array<u16, McpdBusCount> scanDest = {};
+        auto ec = mcpd_scan_busses(ctx.cmdSock, ctx.mcpdId, scanDest);
+
+        if (ec)
+        {
+            spdlog::error("scan_busses: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            return 1;
+        }
+
+        spdlog::info("scan_busses result:");
+
+        for (size_t bus=0; bus<scanDest.size(); ++bus)
+            spdlog::info("  [{}]: {}", bus, scanDest[bus]);
 
         return 0;
     }
@@ -767,6 +816,11 @@ struct ReadoutCommand: public BaseCommand
     bool printPacketSummary_ = false;
     bool printEventData_ = false;
 
+#ifdef MESYTEC_MCPD_ENABLE_ROOT
+    RootHistoContext rootHistoContext_ = {};
+    std::string rootHistoPath_;
+#endif
+
     ReadoutCommand(lyra::cli &cli)
     {
         cli.add_argument(
@@ -824,6 +878,15 @@ struct ReadoutCommand: public BaseCommand
                 .optional()
                 .help("Print readout event data")
                 )
+
+#ifdef MESYTEC_MCPD_ENABLE_ROOT
+            .add_argument(
+                lyra::opt(rootHistoPath_, "rootfile")
+                ["--root-histo-file"]
+                .optional()
+                .help("ROOT histo output file path")
+                )
+#endif
             );
     }
 
@@ -848,11 +911,23 @@ struct ReadoutCommand: public BaseCommand
             return 1;
         }
 
+        {
+            u16 localPort = get_local_socket_port(dataSock);
+            spdlog::info("readout: listening for data on port {}", localPort);
+        }
+
         std::ofstream listfile;
         listfile.exceptions(std::ios::failbit | std::ios::badbit);
 
         if (!noListfile_)
         {
+            if (file_exists(listfilePath_.c_str()))
+            {
+                spdlog::error("readout: Output listfile '{}' already exists",
+                              listfilePath_);
+                return 1;
+            }
+
             try
             {
                 listfile.open(listfilePath_, std::ios_base::out | std::ios::binary);
@@ -864,6 +939,22 @@ struct ReadoutCommand: public BaseCommand
                 return 1;
             }
         }
+
+#ifdef MESYTEC_MCPD_ENABLE_ROOT
+        if (!rootHistoPath_.empty())
+        {
+            try
+            {
+                rootHistoContext_ = create_histo_context(rootHistoPath_);
+                spdlog::info("Writing ROOT histograms to {}", rootHistoPath_);
+            }
+            catch (const std::runtime_error &e)
+            {
+                spdlog::error("{}", e.what());
+                return 1;
+            }
+        }
+#endif
 
         ReadoutCounters counters = {};
         DataPacket dataPacket = {};
@@ -884,6 +975,9 @@ struct ReadoutCommand: public BaseCommand
 
             if (ec)
             {
+                if (ec == std::errc::interrupted)
+                    break;
+
                 if (ec != SocketErrorType::Timeout)
                 {
                     spdlog::error("readout: error reading from network: {} ({}, {})",
@@ -939,6 +1033,11 @@ struct ReadoutCommand: public BaseCommand
                         spdlog::info("{}", to_string(event));
                     }
                 }
+
+#ifdef MESYTEC_MCPD_ENABLE_ROOT
+            if (rootHistoContext_.histoOutFile)
+                root_histos_process_packet(rootHistoContext_, dataPacket);
+#endif
 
                 ++counters.packets;
                 counters.bytes += bytesTransferred;
@@ -1065,7 +1164,18 @@ struct ReplayCommand: public BaseCommand
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
         if (!rootHistoPath_.empty())
-            rootHistoContext_ = create_histo_context(rootHistoPath_);
+        {
+            try
+            {
+                rootHistoContext_ = create_histo_context(rootHistoPath_);
+                spdlog::info("Writing ROOT histograms to {}", rootHistoPath_);
+            }
+            catch (const std::runtime_error &e)
+            {
+                spdlog::error("{}", e.what());
+                return 1;
+            }
+        }
 #endif
 
         ReadoutCounters counters = {};
@@ -1198,6 +1308,7 @@ int main(int argc, char *argv[])
     commands.emplace_back(std::make_unique<GetParametersCommand>(cli));
     commands.emplace_back(std::make_unique<VersionCommand>(cli));
     commands.emplace_back(std::make_unique<DacSetupCommand>(cli));
+    commands.emplace_back(std::make_unique<ScanBussesCommand>(cli));
 
     commands.emplace_back(std::make_unique<MpsdSetGainCommand>(cli));
     commands.emplace_back(std::make_unique<MpsdSetTresholdCommand>(cli));
@@ -1212,8 +1323,8 @@ int main(int argc, char *argv[])
 
     if (!parsed)
     {
-        spdlog::error("Error parsing command line: {}", parsed.errorMessage());
         std::cerr << std::endl << cli << std::endl;
+        spdlog::error("Error parsing command line: {}", parsed.errorMessage());
         return 1;
     }
 
@@ -1239,9 +1350,6 @@ int main(int argc, char *argv[])
         std::cerr << cli << std::endl;
         return 0;
     }
-
-    unsigned mcpdId = 7; unsigned mpsdId = 7; unsigned channel = 31;
-    std::cout << fmt::format("{} {} {} -> {}", mcpdId, mpsdId, channel, linear_address(mcpdId, mpsdId, channel)) << std::endl;
 
     // Use mcpd ip address/host, mcpd id and the command port from the
     // environment if not specified on the command line.
@@ -1288,7 +1396,7 @@ int main(int argc, char *argv[])
     // Connect to the mcpd
 
     std::error_code ec;
-    
+
     if (!(*activeCommand)->offline())
     {
         ctx.cmdSock = connect_udp_socket(ctx.mcpdAddress, ctx.mcpdPort, &ec);

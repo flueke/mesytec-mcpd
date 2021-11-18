@@ -16,6 +16,8 @@ static const u16 CommandNumberMask = 0x00FFu;
 static const u16 CommandErrorMask = 0xFF00u;
 static const u16 CommandErrorShift = 8u;
 
+static const std::size_t McpdBusCount = 8;
+
 static const std::size_t McpdParamCount = 4;
 static const std::size_t McpdParamWords = 3;
 
@@ -91,7 +93,7 @@ enum class CommandType: u16
     GetMpsdParams = 24,
     SetFastTxMode = 25,
 
-    ReadId = 36, // FIXME: not in docs, scans the busses for MPSD-8 modules
+    ReadIds = 36, // FIXME: not in docs, scans the busses for MPSD-8 modules
 
     GetVersion = 51,
 };
@@ -125,7 +127,7 @@ inline const char *to_string(const CommandType &cmd)
         case CommandType::SetBusCapabilities: return "SetBusCapabilities";
         case CommandType::GetMpsdParams: return "GetMpsdParams";
         case CommandType::SetFastTxMode: return "SetFastTxMode";
-        case CommandType::ReadId: return "ReadId";
+        case CommandType::ReadIds: return "ReadIds";
         case CommandType::GetVersion: return "GetVersion";
     }
 
@@ -584,18 +586,6 @@ inline std::string to_string(const DecodedEvent &event)
     format(ss, event);
     return ss.str();
 }
-
-#if 0
-class Mcpd
-{
-    public:
-    private:
-        int m_cmdSock = -1;
-        int m_dataSock = -1;
-        struct sockaddr_in m_cmdAddr = {};
-        struct sockaddr_in m_dataAddr = {};
-};
-#endif
 
 }
 }

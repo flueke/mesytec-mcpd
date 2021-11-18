@@ -126,9 +126,10 @@ std::error_code mcpd_set_dac_output_values(
     int sock, u8 mcpdId,
     u16 dac0Value, u16 dac1Value);
 
-std::error_code mcpd_send_serial_string(
-    int sock, u8 mcpdId,
-    const std::string &str);
+// Scans the 8 MCPD data busses. Places a non-zero value into the dest array if
+// a device is connected and responding on the corresponding bus.
+std::error_code mcpd_scan_busses(
+    int sock, u8 mcpdId, std::array<u16, McpdBusCount> &dest);
 
 //
 // MPSD specific
