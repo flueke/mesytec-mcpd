@@ -102,11 +102,11 @@ add_subdirectory(external)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
-#option(MCPD_BUILD_DOCS "Build documentation (if doxygen found)" ${MESYTEC_MCPD_MASTER_PROJECT})
+option(MCPD_BUILD_DOCS "Build documentation (if sphinx was found)" ${MESYTEC_MCPD_MASTER_PROJECT})
 
-#if (MCPD_BUILD_DOCS)
-#    add_subdirectory(doc)
-#endif (MCPD_BUILD_DOCS)
+if (MCPD_BUILD_DOCS)
+    add_subdirectory(doc)
+endif (MCPD_BUILD_DOCS)
 
 add_subdirectory(extras)
 add_subdirectory(src)
