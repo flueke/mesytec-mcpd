@@ -21,7 +21,7 @@ if (SPHINX_EXECUTABLE)
     set(SPHINX_HTML_DIR         "${CMAKE_CURRENT_BINARY_DIR}/html")
 
     set(SPHINX_LATEX_DIR        "${CMAKE_CURRENT_BINARY_DIR}/latex")
-    set(SPHINX_PDF_OUT          "${SPHINX_LATEX_DIR}/mesytec-mcpd.pdf")
+    set(SPHINX_PDF_OUT          "${SPHINX_LATEX_DIR}/mcpd.pdf")
 
     set(SPHINX_QTHELP_DIR       "${CMAKE_CURRENT_BINARY_DIR}/qthelp")
     set(SPHINX_QCH_OUT          "${SPHINX_QTHELP_DIR}/mesytec-mcpd.qch")

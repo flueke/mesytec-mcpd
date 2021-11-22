@@ -29,14 +29,18 @@ Build steps:::
 The above commands will build and install both the mesytec-mcpd library and the
 mcpd-cli command line tool. You can add
 ``-DCMAKE_INSTALL_PREFIX=$HOME/local/mesytec-mcpd`` to the cmake command line
-to change the installation path.
+to change the installation path. Then use::
+
+   export CMAKE_PREFIX_PATH=$HOME/local/mesytec-mcpd
+
+so that cmake will be able to locate the installed library.
 
 Initial MCPD-8 setup
 ==================================================
 
 Each MCPD in a setup needs a unique IP-address and ID. The default IP-address
-is ``192.168.168.121``, the default ID is 0. These defaults can be restored by
-pressing the reset button on the CPU board inside the MCPD NIM case.
+is ``192.168.168.121``, the default ID is ``0``. These defaults can be restored
+by pressing the reset button on the CPU board inside the MCPD NIM case.
 
 By default MCPD uses the same UDP port for both commands and data. The library
 requires use of a distinct data port so that a dedicated socket can be used for
@@ -69,10 +73,11 @@ Setup steps
 
 5. Repeat the above steps for any additional MCPD-8 modules you want to use
    (connect the modules one by one). Choose unique IP-addresses and IDs for
-   each module, e.g.:::
+   each module, e.g.:
 
-   mcpd-cli setup 10.11.12.101 1
-   mcpd-cli setup 10.11.12.102 2
+   ``mcpd-cli setup 10.11.12.101 1``
+
+   ``mcpd-cli setup 10.11.12.102 2``
 
 6. Change your network card back to your local network: ``10.11.12.1/255.255.255.0``.
 
@@ -168,18 +173,28 @@ Listfile replay
 
 To replay data from listfile use:::
 
-   mcpd-cli replay --listfile=mcpd-run1-histos.root
+   mcpd-cli replay --listfile=mcpd-run1.mcpdlst
 
 The replay command can also generate root histograms:::
 
-   mcpd-cli replay --listfile=mcpd-run1-histos.root --root-histo-file=mcpd-replay1-histos.root
+   mcpd-cli replay --listfile=mcpd-run1.mcpdlst --root-histo-file=mcpd-replay1-histos.root
 
 
 Using the C++ interface
 ==================================================
 
-CMake
------
+Quickstart
+----------
+
+A minimal CMake example project can be found under ``extras/cmake-example``.
+This can serve as the basis for custom code. The example should work as long as
+cmake is able to locate the installed mesytec-mcpd library. If using a
+non-standard installation path you have to tell CMake about it:::
+
+   export CMAKE_PREFIX_PATH=$HOME/local/mesytec-mcpd
+
+CMakeLists.txt
+^^^^^^^^^^^^^^
 ::
 
    cmake_minimum_required(VERSION 3.12)
@@ -187,5 +202,129 @@ CMake
 
    find_package(mesytec-mcpd REQUIRED)
 
-   add_executable(my-mpsd-tool my_mpsd_tool.cc)
-   target_link_libraries(my-mpsd-tool PRIVATE mesytec-mvlc::mesytec-mcpd)
+   add_executable(mcpd-example mcpd-example.cc)
+   target_link_libraries(mcpd-example PRIVATE mesytec-mcpd::mesytec-mcpd)
+
+mcpd-example.cc
+^^^^^^^^^^^^^^^
+
+The example program below connects to a MCPD and attempts to read out the CPU
+and FPGA version information.
+
+::
+
+   #include <iostream>
+   #include <mesytec-mcpd/mesytec-mcpd.h>
+
+   using namespace mesytec::mcpd;
+   using std::cout;
+   using std::cerr;
+   using std::endl;
+
+   int main(int argc, char *argv[])
+   {
+       std::error_code ec = {};
+
+       int mcpdCommandSocket = connect_udp_socket("192.168.168.121", McpdDefaultPort, &ec);
+
+       if (ec)
+       {
+           cerr << "Error connecting to mcpd: " << ec.message() << std::endl;
+           return 1;
+       }
+
+       unsigned mcpdId = 0u;
+
+       McpdVersionInfo vi = {};
+
+       ec = mcpd_get_version(mcpdCommandSocket, mcpdId, vi);
+
+       if (ec)
+       {
+           cerr << "Error reading MCPD version info: " << ec.message() << std::endl;
+           return 1;
+       }
+
+       cout << "MCPD version info: CPU=" << vi.cpu[0] << "." << vi.cpu[1]
+           << ", FPGA=" << vi.fpga[0] << "." << vi.fpga[1] << endl;
+
+       return 0;
+   }
+
+Library Design
+--------------
+
+The main header to include is ``mesytec-mcpd.h``. This pulls in the other
+required headers. All objects live in the ``mesytec::mcpd`` namespace.
+
+Constants and core data structures can be found in ``mcpd_core.h``:
+
+- ``CommandPacket`` is used for direct request/response communication.
+
+- ``DataPacket`` carries DAQ readout data. Use ``get_event_count()`` to get the
+  number of events contained in a DataPacket. Then call ``get_event()`` to
+  extract the specified ``DecodedEvent`` event from a data packet.
+
+Socket abstractions can be found in ``util/udp_sockets.h``. To create a command
+socket for the MCPD use ``connect_udp_socket()``. To create a listening socket
+for DAQ data call ``bind_udp_socket()``.
+
+MCPD and MPSD related functions are contained in ``mcpd_functions.h``. Most
+commands are implemented by a specific function, e.g ``mcpd_start_daq()``. These
+functions take a MCPD command socket as their first argument and an MCPD ID value as
+their second argument. Possible other arguments are used to fill the outgoing
+request ``CommandPacket``.
+
+Internally the command functions call ``command_transaction()`` which handles
+protocol errors and retries.
+
+Currently no dedicated readout functions are implemented. Instead create a
+socket listening on the data port and call ``receive_one_packet()``
+repeatedly:::
+
+   std::error_code ec = {};
+   DataPacket dataPacket = {};
+   size_t timeouts = 0;
+   // Socket bound to local port 54322 on all interfaces.
+   int dataSock = bind_udp_socket(54322, &ec);
+
+   if (ec) return 1;
+
+   while (true)
+   {
+      size_t bytesTransferred = 0u;
+
+      ec = receive_one_packet(
+          dataSock,
+          reinterpret_cast<u8 *>(&dataPacket), sizeof(dataPacket),
+          bytesTransferred, DefaultReadTimeout_ms);
+
+      if (ec)
+      {
+          if (ec == std::errc::interrupted)
+              break;
+
+          if (ec != SocketErrorType::Timeout)
+          {
+              spdlog::error("readout: error reading from network: {} ({}, {})",
+                            ec.message(), ec.value(), ec.category().name());
+              return 1;
+          }
+          else
+              ++timeouts;
+      }
+
+      if (bytesTransferred)
+      {
+         const auto eventCount = get_event_count(dataPacket);
+
+         // Decode and print each incoming event
+         for(size_t ei=0; ei<eventCount; ++ei)
+         {
+            auto event = decode_event(dataPacket, ei);
+            spdlog::info("{}", to_string(event));
+         }
+      }
+   }
+
+Also see the mcpd-cli source code under ``extras/mcpd-cli/mcpd-cli.cc``.

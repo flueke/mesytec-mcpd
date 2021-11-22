@@ -1390,7 +1390,6 @@ int main(int argc, char *argv[])
         ctx.mcpdPort = McpdDefaultPort;
 #endif
 
-
     // Find the active command.
     auto activeCommand = std::find_if(
         std::begin(commands), std::end(commands),
