@@ -317,15 +317,16 @@ std::error_code mcpd_set_data_dest_port(int sock, u8 mcpdId, u16 dataDestPort)
         dataDestPort);
 }
 
-std::error_code mcpd_set_ip_address_and_data_dest_port(
-    int sock, u8 mcpdId, const std::string &address, u16 dataDestPort)
+std::error_code mcpd_set_ip_address_and_data_dest(
+    int sock, u8 mcpdId, const std::string &address,
+    const std::string &dataDestAddress, u16 dataDestPort)
 {
     return mcpd_set_network_parameters(
         sock, mcpdId,
         address, // mcpdAddress
         "0.0.0.0", // cmdDestAddress (no change)
         0, // cmdDestPort (no change)
-        "0.0.0.0", // dataDestAddress (no change)
+        dataDestAddress, // data destination address
         dataDestPort);
 }
 

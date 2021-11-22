@@ -2,8 +2,11 @@
 
 *User space driver library for the Mesytec PSD+ system.*
 
-## mcpd-cli command line tool
+## Introduction
 
+## Installation
+
+## mcpd-cli command line tool
 
 ### Initial Setup
 
@@ -15,7 +18,7 @@
   The library requires to use a distinct data port so that a dedicated socket
   can be used for the DAQ readout. The default data port is 54322.
 
-    mcpd [--address] [--id=0] setup <newaddress> <newid> <dataport>=54322
+    mcpd [--address] [--id=0] setup <newaddress> <newid> <dataDestAddress> <dataport>=54322
 
 
 ### MCPD and MPSD Configuration
@@ -63,40 +66,3 @@ packets to the output listfile.
 
     mcpd replay --print-packet-summary --print-event-data --listfile=<listfile.mcpdlst>
         [--root-histo-file=<histos.root>]
-
-## mcpd commands
-
-
-| Command Name      | Command Id    | Notes     |
-| ---               | ---           | ---       |
-| [Reset](#cmd_reset)             | 0 |
-| StartDAQ          | 1 |
-| StopDAQ           | 2 |
-| ContinueDAQ       | 3 |
-| SetId             | 4 |
-| SetProtoParams    | 5 |
-| SetTiming         | 6 |
-| SetClock          | 7 |
-| SetRunId          | 8 |
-| SetCell           | 9 |
-| SetAuxTimer       | 10 |
-| SetParam          | 11 |
-| GetParams         | 12 |
-| SetGain           | 13 |
-| SetThreshold      | 14 |
-| SetPulser         | 15 |
-| SetMpsdMode       | 16 |
-| SetDAC            | 17 |
-| SendSerial        | 18 | // Note: not implemented in the firmware
-| ReadSerial        | 19 | // Note: not implemented in the firmware
-| ScanPeriphery     | 20 | // FIXME: not in docs!
-| SetTTLOutputs     | 21 |
-| GetBusCapabilities | 22 |
-| SetBusCapabilities | 23 |
-| GetMpsdParams     | 24 |
-| SetFastTxMode     | 25 |
-| ReadId            | 36 | // FIXME: not in docs, scans the busses for MPSD-8 modules
-| GetVersion        | 51 |
-
-
-### cmd_reset

@@ -569,7 +569,8 @@ The PSD system offers three different kinds of data:
 
 * Neutron event data, generated in a MPSD-8 or MSTD-16 module:
 
-  Position and / or Energy information, together with a detector address and a 	precise event timestamp.
+  Position and / or Energy information, together with a detector address and a
+  precise event timestamp.
 
 * Counter / TTL event data, generated in MCPD-8:
 
@@ -652,7 +653,8 @@ Chopper Signals
 
 Chopper signals need precise timing, so it's a good application for a self triggering TTL input:
 
-    * Connect the TTL signal from copper electronics to one of the four Monitor/Chopper inputs or to one of the backpanel TTL inputs.
+    * Connect the TTL signal from copper electronics to one of the four
+      Monitor/Chopper inputs or to one of the backpanel TTL inputs.
     * Configure the according counter cell using cmd #9 with:
 
         - cell#: 0-3 for frontpanel, 4,5 for backpanel
@@ -707,7 +709,8 @@ Using one of the auxiliary timers as trigger source, monitor counter values can
 be transmitted with a constant frequency: timebase for the 16 bit timers are 10
 us, the maximum interval is therefore 655,36 ms.
 
-    * Configure one of the four auxiliary timers with the appropriate trigger interval, using command #10:
+    * Configure one of the four auxiliary timers with the appropriate trigger
+      interval, using command #10:
         - timer# = 0...3
         - capture register 0... 65.536 (e.g. 10.000 for 100 ms intervals)
 
@@ -760,7 +763,8 @@ to digitize such signals and fill the according values into the data stream.
 Just like described above for monitor counters, also the ADC readout can be
 triggered by auxiliary timers:
 
-    * Configure one of the four auxiliary timers with the appropriate trigger interval, using command #10:
+    * Configure one of the four auxiliary timers with the appropriate trigger
+      interval, using command #10:
         - timer# = 0...3
         - capture register 0... 65.536 (e.g. 10.000 for 100 ms intervals)
 
@@ -841,8 +845,10 @@ transmission:
 
 e.g. the monitor counter:
 
-    - use cmd # 9 to set up the appropriate counter cell to trigger an event on every rising edge of the input
-    - use cmd # 11 to define the same counter as source for one of the parameter fields
+    - use cmd # 9 to set up the appropriate counter cell to trigger an event on
+      every rising edge of the input
+    - use cmd # 11 to define the same counter as source for one of the
+      parameter fields
 
 Thus the monitor counter value will be transmitted as an event on each rising
 edge (to be used in offline data processing if necessary) AND it will be

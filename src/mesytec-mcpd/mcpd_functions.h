@@ -86,9 +86,10 @@ std::error_code mcpd_set_ip_address(int sock, u8 mcpdId, const std::string &addr
 // Only changes the data dest port, leaves other network settings unchanged.
 std::error_code mcpd_set_data_dest_port(int sock, u8 mcpdId, u16 dataDestPort);
 
-// Changes only the mcpd ip address and data destinattion port.
-std::error_code mcpd_set_ip_address_and_data_dest_port(
-    int sock, u8 mcpdId, const std::string &address, u16 dataDestPort);
+// Changes only the mcpd ip address and data destination address and port.
+std::error_code mcpd_set_ip_address_and_data_dest(
+    int sock, u8 mcpdId, const std::string &address,
+    const std::string &dataDestAddress, u16 dataDestPort);
 
 std::error_code mcpd_set_run_id(int sock, u8 mcpdId, u16 runId);
 

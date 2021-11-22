@@ -51,7 +51,7 @@ void setup_signal_handlers()
 struct CliContext
 {
     std::string mcpdAddress;
-    u16 mcpdPort = 0;
+    u16 mcpdPort = McpdDefaultPort;
     int mcpdId = -1;
     int cmdSock = -1;
 };
@@ -70,6 +70,7 @@ struct SetupCommand: public BaseCommand
 {
     std::string newAddress_;
     u16 newId_ = 0;
+    std::string dataDestAddress_ = "0.0.0.0";
     u16 dataPort_ = McpdDefaultPort + 1u;
 
 
@@ -97,6 +98,12 @@ struct SetupCommand: public BaseCommand
                 )
 
             .add_argument(
+                lyra::arg(dataDestAddress_, "dataDestAddress")
+                .optional()
+                .help("new mcpd data destination ip-address/hostname")
+                )
+
+            .add_argument(
                 lyra::arg(dataPort_, "dataPort")
                 .optional()
                 .help("mcpd data destination port")
@@ -109,7 +116,8 @@ struct SetupCommand: public BaseCommand
         if (newAddress_.empty())
             return 1;
 
-        spdlog::debug("{} {} {} {}", __PRETTY_FUNCTION__, newAddress_, newId_, dataPort_);
+        spdlog::debug("{} {} {} {} {}",
+                      __PRETTY_FUNCTION__, newAddress_, newId_, dataDestAddress_, dataPort_);
 
         auto ec = mcpd_set_id(ctx.cmdSock, ctx.mcpdId, newId_);
 
@@ -123,7 +131,7 @@ struct SetupCommand: public BaseCommand
         // the error code as we might not receive a response after changing the
         // ip address.
         ctx.mcpdId = newId_;
-        mcpd_set_ip_address_and_data_dest_port(ctx.cmdSock, ctx.mcpdId, newAddress_, dataPort_);
+        mcpd_set_ip_address_and_data_dest(ctx.cmdSock, ctx.mcpdId, newAddress_, dataDestAddress_, dataPort_);
 
         return 0;
     }
@@ -1371,6 +1379,7 @@ int main(int argc, char *argv[])
     if (ctx.mcpdId < 0)
         ctx.mcpdId = 0;
 
+#if 0 // disabled for now as this currently can not be changed using the 'setup' command
     if (ctx.mcpdPort == 0)
     {
         if (char *envPort = std::getenv("MCPD_PORT"))
@@ -1379,6 +1388,7 @@ int main(int argc, char *argv[])
 
     if (ctx.mcpdPort == 0)
         ctx.mcpdPort = McpdDefaultPort;
+#endif
 
 
     // Find the active command.
@@ -1399,6 +1409,9 @@ int main(int argc, char *argv[])
 
     if (!(*activeCommand)->offline())
     {
+        spdlog::info("Connecting to mcpd @ {}:{}, mcpdId={} ...",
+                     ctx.mcpdAddress, ctx.mcpdPort, ctx.mcpdId);
+
         ctx.cmdSock = connect_udp_socket(ctx.mcpdAddress, ctx.mcpdPort, &ec);
 
         if (ec)

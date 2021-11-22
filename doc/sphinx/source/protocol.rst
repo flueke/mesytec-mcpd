@@ -1,7 +1,6 @@
 PSD+ network protocol
 #########################################################
 
-
 Command Packets
 ==================================================
 
@@ -120,61 +119,61 @@ Commands
   +---------------------+------------+------------------------------------------------------------+
   | Command Name        | Command Id | Notes                                                      |
   +=====================+============+============================================================+
-  | Reset               | 0          |                                                            |
+  | Reset               | 0          | Stop DAQ, reset counters/timers. Master only.              |
   +---------------------+------------+------------------------------------------------------------+
-  | StartDAQ            | 1          |                                                            |
+  | StartDAQ            | 1          | Start DAQ. Master only.                                    |
   +---------------------+------------+------------------------------------------------------------+
-  | StopDAQ             | 2          |                                                            |
+  | StopDAQ             | 2          | Stop DAQ and counters/timers. Master only.                 |
   +---------------------+------------+------------------------------------------------------------+
-  | ContinueDAQ         | 3          |                                                            |
+  | ContinueDAQ         | 3          | Restart DAQ. Master only.                                  |
   +---------------------+------------+------------------------------------------------------------+
-  | SetId               | 4          |                                                            |
+  | SetId               | 4          | Set a unique mcpd id.                                      |
   +---------------------+------------+------------------------------------------------------------+
-  | SetProtoParams      | 5          |                                                            |
+  | SetProtoParams      | 5          | Set network parameters.                                    |
   +---------------------+------------+------------------------------------------------------------+
-  | SetTiming           | 6          |                                                            |
+  | SetTiming           | 6          | Set bus timing role and termination.                       |
   +---------------------+------------+------------------------------------------------------------+
-  | SetClock            | 7          |                                                            |
+  | SetClock            | 7          | Set master clock value.                                    |
   +---------------------+------------+------------------------------------------------------------+
-  | SetRunId            | 8          |                                                            |
+  | SetRunId            | 8          | Set the next DAQ run id.                                   |
   +---------------------+------------+------------------------------------------------------------+
-  | SetCell             | 9          |                                                            |
+  | SetCell             | 9          | Counter/ADC cell setup.                                    |
   +---------------------+------------+------------------------------------------------------------+
-  | SetAuxTimer         | 10         |                                                            |
+  | SetAuxTimer         | 10         | Aux timer setup.                                           |
   +---------------------+------------+------------------------------------------------------------+
-  | SetParam            | 11         |                                                            |
+  | SetParam            | 11         | Data parameter setup.                                      |
   +---------------------+------------+------------------------------------------------------------+
-  | GetParams           | 12         |                                                            |
+  | GetParams           | 12         | Read current parameter values.                             |
   +---------------------+------------+------------------------------------------------------------+
-  | SetGain             | 13         |                                                            |
+  | SetGain             | 13         | Set per channel MPSD gain.                                 |
   +---------------------+------------+------------------------------------------------------------+
-  | SetThreshold        | 14         |                                                            |
+  | SetThreshold        | 14         | Set per MPSD threshold.                                    |
   +---------------------+------------+------------------------------------------------------------+
-  | SetPulser           | 15         |                                                            |
+  | SetPulser           | 15         | Set per channel MPSD pulser.                               |
   +---------------------+------------+------------------------------------------------------------+
-  | SetMpsdMode         | 16         |                                                            |
+  | SetMpsdMode         | 16         | Untested: set either position or amplitude mode.           |
   +---------------------+------------+------------------------------------------------------------+
-  | SetDAC              | 17         |                                                            |
+  | SetDAC              | 17         | Set output DAC values.                                     |
   +---------------------+------------+------------------------------------------------------------+
   | SendSerial          | 18         | // Note: not implemented in the firmware                   |
   +---------------------+------------+------------------------------------------------------------+
   | ReadSerial          | 19         | // Note: not implemented in the firmware                   |
   +---------------------+------------+------------------------------------------------------------+
-  | ScanPeriphery       | 20         | // FIXME: not in docs!                                     |
+  | ScanPeriphery       | 20         | // undocumented                                            |
   +---------------------+------------+------------------------------------------------------------+
-  | SetTTLOutputs       | 21         |                                                            |
+  | SetTTLOutputs       | 21         | // undocumented                                            |
   +---------------------+------------+------------------------------------------------------------+
-  | GetBusCapabilities  | 22         |                                                            |
+  | GetBusCapabilities  | 22         | // untested: MCPD-8 eventbus format                        |
   +---------------------+------------+------------------------------------------------------------+
-  | SetBusCapabilities  | 23         |                                                            |
+  | SetBusCapabilities  | 23         | // untested: MCPD-8 eventbus format                        |
   +---------------------+------------+------------------------------------------------------------+
-  | GetMpsdParams       | 24         |                                                            |
+  | GetMpsdParams       | 24         | Reads MPSD eventbus and firmware information.              |
   +---------------------+------------+------------------------------------------------------------+
-  | SetFastTxMode       | 25         |                                                            |
+  | SetFastTxMode       | 25         | // undocumented                                            |
   +---------------------+------------+------------------------------------------------------------+
-  | ReadId              | 36         | // FIXME: not in docs, scans the busses for MPSD-8 modules |
+  | ReadId              | 36         | Undocumented: scans the busses for MPSD-8 modules.         |
   +---------------------+------------+------------------------------------------------------------+
-  | GetVersion          | 51         |                                                            |
+  | GetVersion          | 51         | Read MCPD CPU and FPGA firmware revision.                  |
   +---------------------+------------+------------------------------------------------------------+
 
 
@@ -195,8 +194,10 @@ StartDAQ
 Start DAQ starts the data acquisition system.
 All timers (master timer + auxiliary timers) start / continue running.
 Neutron and trigger events will be filled into data buffers.
-Start signal is propagated over the sync line. Thus it is not necessary to send a start signal to each individual MCPD-8.
-MCPD-8 not set as master will refuse command.
+
+Start signal is propagated over the sync line. Thus it is not necessary to send
+a start signal to each individual MCPD-8.  MCPD-8 not set as master will refuse
+command.
 
 
 
@@ -205,8 +206,10 @@ StopDAQ
 
 Stop DAQ stops the data acquisition system.
 All timers (master timer + auxiliary timers) stop running.
-Stop signal is propagated over the sync line. Thus it is not necessary to send a stop signal to each individual MCPD-8.
-MCPD-8 not set as master will refuse command.
+
+Stop signal is propagated over the sync line. Thus it is not necessary to send
+a stop signal to each individual MCPD-8.  MCPD-8 not set as master will refuse
+command.
 
 
 ContinueDAQ
@@ -214,8 +217,10 @@ ContinueDAQ
 
 Continue DAQ restarts the data acquisition system.
 All timers (master timer + auxiliary timers) will continue running.
-Stop signal is propagated over the sync line. Thus it is not necessary to send a stop signal to each individual MCPD-8.
-MCPD-8 not set as master will refuse command.
+
+Stop signal is propagated over the sync line. Thus it is not necessary to send
+a stop signal to each individual MCPD-8.  MCPD-8 not set as master will refuse
+command.
 
 
 SetId
@@ -292,7 +297,9 @@ Allows changing the MCPD network protocol settings.
   MCPD ip address will not be modified if MCPD ip 0 (Word 10) is set to zero.
 
 * Data sink ip:
-  Also the destination ip address for data packages can be set individually. (If no address is set: the address of the cmd pc is used automatically).
+
+  Also the destination ip address for data packages can be set individually.
+  (If no address is set: the address of the cmd pc is used automatically).
 
   Address will not be modified if Data sink ip 0 (Word 14) is set to zero.
 
@@ -301,6 +308,7 @@ Allows changing the MCPD network protocol settings.
   to set the address to the sending pc without knowing its address explicitly.
 
 * Cmd pc ip:
+
   This allows to set a defined address for the pc that will send the cmds. No
   other pc will then be able to take control over the system unless the new
   address is published by the current cmd pc.
@@ -686,6 +694,28 @@ Response:
   | 12   | Current eventbus fast tx format setting |
   +------+-----------------------------------------+
   | 13   | Firmware revision                       |
+  +------+-----------------------------------------+
+
+ReadId
+--------------------------------------------------
+
+Scans the data busses for connected MPSD modules.
+
+Response:
+
+.. table:: ReadId response
+  :name: ReadId-response
+
+  +------+-----------------------------------------+
+  | Word | Contents                                |
+  +======+=========================================+
+  | 10   | MPSD bus1                               |
+  +------+-----------------------------------------+
+  | 11   | MPSD bus2                               |
+  +------+-----------------------------------------+
+  | ...  | ...                                     |
+  +------+-----------------------------------------+
+  | ...  | MPSD bus8                               |
   +------+-----------------------------------------+
 
 GetVersion
