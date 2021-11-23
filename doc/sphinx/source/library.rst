@@ -1,5 +1,5 @@
 
-.. index:: mesytec-mcpd library
+.. .. index:: mesytec-mcpd library
 
 mesytec-mcpd library
 ##################################################

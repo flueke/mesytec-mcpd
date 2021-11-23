@@ -1,4 +1,4 @@
-.. index:: Overview
+.. .. index:: Overview
 
 PSD+ System Overview
 ##################################################

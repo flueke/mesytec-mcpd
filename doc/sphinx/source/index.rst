@@ -13,11 +13,11 @@ mesytec-mcpd - Driver library for the mesytec PSD+ system
    protocol
    library
 
-.. only:: html
+.. .. only:: html
 
-  Indices and tables
-  ==================
+.. Indices and tables
+.. ==================
 
-  * :ref:`genindex`
-  * :ref:`search`
+.. * :ref:`search`
+.. * :ref:`genindex`
 .. * :ref:`modindex`
