@@ -44,6 +44,13 @@ inline CommandPacket make_command_packet(
     return make_command_packet(cmd, mcpdId, data.data(), data.size());
 }
 
+inline CommandPacket make_command_packet(
+    u16 cmdId, u8 mcpdId,
+    const std::vector<u16> &data = {})
+{
+    return make_command_packet(static_cast<CommandType>(cmdId), mcpdId, data.data(), data.size());
+}
+
 std::error_code mcpd_get_version(int sock, u8 mcpdId, McpdVersionInfo &vi);
 std::error_code mcpd_set_id(int sock, u8 mcpdId, u8 newId);
 

@@ -1269,6 +1269,85 @@ struct ReplayCommand: public BaseCommand
     }
 };
 
+struct CustomCommand: public BaseCommand
+{
+    u16 commandId_;
+    std::vector<std::string> commandData_;
+
+    CustomCommand(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "custom",
+                [this] (const lyra::group &) { this->run_ = true; }
+                )
+            .help("Send a custom command to the MCPD")
+
+            .add_argument(
+                lyra::arg(commandId_, "commandId")
+                .required()
+                .help("The command id to send to the MCPD (CommandPacket::id)")
+                )
+
+            .add_argument(
+                lyra::arg(commandData_, "commandData")
+                .cardinality(0, CommandPacketMaxDataWords)
+                .help("Custom uint16_t data to send with the command (CommandPacket::data)")
+                )
+
+            );
+    }
+
+    int runCommand(CliContext &ctx)
+    {
+        spdlog::debug("{}: cmdId={}, cmdData=[{}]",
+                      __PRETTY_FUNCTION__, commandId_, fmt::join(commandData_, ", "));
+
+        std::vector<u16> data;
+
+        for (const auto &dataStr: commandData_)
+        {
+            try
+            {
+                auto parsedValue = std::stoul(dataStr);
+
+                if (parsedValue > std::numeric_limits<u16>::max())
+                {
+                    throw std::out_of_range(fmt::format(
+                            "data value '{}' is out of the uint16_t range", dataStr));
+                }
+
+                data.push_back(parsedValue);
+            }
+            catch (const std::exception &e)
+            {
+                spdlog::error("Error parsing data value '{}': {}",
+                              dataStr, e.what());
+                return 1;
+            }
+        }
+
+        assert(data.size() <= CommandPacketMaxDataWords);
+
+        auto request = make_command_packet(commandId_, ctx.mcpdId, data);
+        CommandPacket response = {};
+
+        spdlog::info("Sending custom command packet: {}", to_string(request));
+
+        auto ec = command_transaction(ctx.cmdSock, request, response);
+
+        if (ec)
+        {
+            spdlog::error("custom: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            return 1;
+        }
+
+        spdlog::info("Received response: {}", to_string(response));
+
+        return 0;
+    }
+};
+
 int main(int argc, char *argv[])
 {
     spdlog::set_level(spdlog::level::info);
@@ -1326,6 +1405,8 @@ int main(int argc, char *argv[])
     commands.emplace_back(std::make_unique<DaqCommand>(cli));
     commands.emplace_back(std::make_unique<ReadoutCommand>(cli));
     commands.emplace_back(std::make_unique<ReplayCommand>(cli));
+
+    commands.emplace_back(std::make_unique<CustomCommand>(cli));
 
     auto parsed = cli.parse({argc, argv});
 
