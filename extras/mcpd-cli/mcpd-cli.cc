@@ -1358,6 +1358,7 @@ int main(int argc, char *argv[])
     CliContext ctx = {};
     bool logDebug = false;
     bool logTrace = false;
+    bool showVersion = false;
 
     auto cli = (
         lyra::help(showHelp)
@@ -1380,6 +1381,10 @@ int main(int argc, char *argv[])
 
         | lyra::opt([&] (bool b) { logTrace = b; })
         ["--trace"]("set log level to trace")
+        .optional()
+
+        | lyra::opt([&] (bool b) { showVersion = b; })
+        ["--version"]("show mcpd-cli version info")
         .optional()
 
         );
@@ -1422,6 +1427,13 @@ int main(int argc, char *argv[])
 
     if (logTrace)
         spdlog::set_level(spdlog::level::trace);
+
+    if (showVersion)
+    {
+        std::cout << fmt::format("mcpd-cli {}\nCopyright (c) 2021 mesytec GmbH & Co. KG\nLicense: Boost Software License - Version 1.0 - August 17th, 2003",
+                                 library_version()) << std::endl;
+        return 0;
+    }
 
     // hack around the lyra subgroup parsing issue with --help
     for (int arg=1; arg<argc; ++arg)
