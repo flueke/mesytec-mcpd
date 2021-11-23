@@ -711,10 +711,12 @@ us, the maximum interval is therefore 655,36 ms.
 
     * Configure one of the four auxiliary timers with the appropriate trigger
       interval, using command #10:
+
         - timer# = 0...3
         - capture register 0... 65.536 (e.g. 10.000 for 100 ms intervals)
 
     * Configure the counter cell using command #9:
+
         - cell# = 0..3 for frontpanel inputs, 4,5 for backpanel inputs
         - trigger source = 1...4 for aux timer 0...3
         - compare register:  will not be used
@@ -765,6 +767,7 @@ triggered by auxiliary timers:
 
     * Configure one of the four auxiliary timers with the appropriate trigger
       interval, using command #10:
+
         - timer# = 0...3
         - capture register 0... 65.536 (e.g. 10.000 for 100 ms intervals)
 
