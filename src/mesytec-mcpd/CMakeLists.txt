@@ -79,11 +79,3 @@ if (MCPD_BUILD_TESTS)
         add_test(NAME ${exe_name} COMMAND $<TARGET_FILE:${exe_name}>)
     endfunction(add_gtest)
 endif(MCPD_BUILD_TESTS)
-
-add_executable(main main.cc)
-target_link_libraries(main
-    PUBLIC mesytec-mcpd)
-
-add_executable(listfile_reader listfile_reader.cc)
-target_link_libraries(listfile_reader
-    PUBLIC mesytec-mcpd)
