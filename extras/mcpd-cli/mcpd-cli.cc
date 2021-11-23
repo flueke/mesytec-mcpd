@@ -1379,17 +1379,6 @@ int main(int argc, char *argv[])
     if (ctx.mcpdId < 0)
         ctx.mcpdId = 0;
 
-#if 0 // disabled for now as this currently can not be changed using the 'setup' command
-    if (ctx.mcpdPort == 0)
-    {
-        if (char *envPort = std::getenv("MCPD_PORT"))
-            ctx.mcpdPort = std::atoi(envPort);
-    }
-
-    if (ctx.mcpdPort == 0)
-        ctx.mcpdPort = McpdDefaultPort;
-#endif
-
     // Find the active command.
     auto activeCommand = std::find_if(
         std::begin(commands), std::end(commands),
