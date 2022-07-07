@@ -1023,7 +1023,7 @@ struct ReadoutCommand: public BaseCommand
                         dataPacket.runId, dataPacket.deviceStatus, dataPacket.deviceId,
                         get_header_timestamp(dataPacket));
 
-                    spdlog::info("  parameters: {}, {}, {}, {}",
+                    spdlog::info("  parameters: 0x{:012x}, {}, {}, {}",
                                  to_48bit_value(dataPacket.param[0]),
                                  to_48bit_value(dataPacket.param[1]),
                                  to_48bit_value(dataPacket.param[2]),
