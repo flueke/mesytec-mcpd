@@ -2,7 +2,7 @@
 #define __MESYTEC_MCPD_CORE_H__
 
 #include <cassert>
-#include <fmt/format.h>
+#include <spdlog/spdlog.h>
 
 #include "util/int_types.h"
 #include "util/udp_sockets.h"
