@@ -1,0 +1,13 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource>
+    <file>icons/mesytec/folder-open.png</file>
+    <file>icons/mesytec/document-new.png</file>
+    <file>icons/mesytec/document-save.png</file>
+    <file>icons/mesytec/document-save-as.png</file>
+    <file>icons/mesytec/media-playback-start.png</file>
+    <file>icons/mesytec/view-refresh.png</file>
+    <file>icons/mesytec/user-trash.png</file>
+</qresource>
+</RCC>
+<!-- vim:ft=xml
+     -->
