@@ -1,6 +1,7 @@
 #ifndef __MESYTEC_MCPD_CORE_H__
 #define __MESYTEC_MCPD_CORE_H__
 
+#include <array>
 #include <cassert>
 #include <spdlog/spdlog.h>
 
