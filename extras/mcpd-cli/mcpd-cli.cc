@@ -35,6 +35,7 @@ bool file_exists(const char *path)
 
 void setup_signal_handlers()
 {
+#ifndef __WIN32
     /* Set up the structure to specify the new action. */
     struct sigaction new_action;
     new_action.sa_handler = signal_handler;
@@ -46,6 +47,7 @@ void setup_signal_handlers()
         if (sigaction(signum, &new_action, NULL) != 0)
             throw std::system_error(errno, std::generic_category(), "setup_signal_handlers");
     }
+#endif
 }
 
 struct CliContext
