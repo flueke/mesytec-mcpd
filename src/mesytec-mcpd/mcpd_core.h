@@ -377,7 +377,7 @@ inline u64 to_48bit_value(const u16 v[3])
 }
 
 template<typename Out>
-Out &format(Out &out, const CommandPacket &packet)
+Out &format(Out &out, const CommandPacket &packet, bool logData = true)
 {
     out << "CommandPacket:" << std::endl;
     out << fmt::format("  bufferLength={}", packet.bufferLength) << std::endl;
@@ -402,8 +402,9 @@ Out &format(Out &out, const CommandPacket &packet)
 
     out << fmt::format("  calculated data length={}", dataLen) << std::endl;
 
-    for (unsigned i=0; i<dataLen; ++i)
-        out << fmt::format("    data[{}] = 0x{:04X}", i, packet.data[i]) << std::endl;
+    if (logData)
+        for (unsigned i=0; i<dataLen; ++i)
+            out << fmt::format("    data[{}] = 0x{:04X}", i, packet.data[i]) << std::endl;
 
     return out;
 }

@@ -29,6 +29,9 @@ static const size_t LogViewMaximumBlockCount = 10 * 1000u;
 std::unique_ptr<QPlainTextEdit> make_logview(
     size_t maxBlockCount = LogViewMaximumBlockCount);
 
+// Appends log messages to the textedit passed at construction time.
+// Can be used as the destination for spdlog::sinks::qt_sink_mt, e.g.:
+// auto mySink = std::make_shared<spdlog::sinks::qt_sink_mt>(myWrapper, "logMessage");
 class LogViewWrapper: public QObject
 {
     Q_OBJECT
@@ -42,7 +45,6 @@ class LogViewWrapper: public QObject
         }
 
     public slots:
-
         void logMessage(const QString &msg)
         {
             if (logView_)

@@ -66,9 +66,15 @@ class McpdSocketHandler: public QObject
 {
     Q_OBJECT
     signals:
+        void cmdTransactionComplete(
+            const std::vector<u16> &request,
+            const std::vector<u16> &response);
+
         void cmdPacketReceived(const std::vector<u16> &data);
         void cmdError(const std::error_code &ec);
+
         void dataPacketReceived(const std::vector<u16> &data);
+        void dataError(const std::error_code &ec);
 
     public:
         static const int PacketReceiveTimeout_ms = 100;
@@ -81,41 +87,8 @@ class McpdSocketHandler: public QObject
     public slots:
         void setSockets(int cmdSock, int dataSock)
         {
-            qDebug() << __PRETTY_FUNCTION__ << cmdSock << dataSock;
             cmdSock_ = cmdSock;
             dataSock_ = dataSock;
-        }
-
-        void pollCmd()
-        {
-            qDebug() << __PRETTY_FUNCTION__;
-            std::vector<u16> dest;
-            auto ec = receivePacket(cmdSock_, dest);
-
-            if (!ec)
-            {
-                emit cmdPacketReceived(dest);
-            }
-            else
-            {
-                emit cmdError(ec);
-            }
-        }
-
-        void pollData()
-        {
-            qDebug() << __PRETTY_FUNCTION__;
-            std::vector<u16> dest;
-            auto ec = receivePacket(dataSock_, dest);
-
-            if (!ec)
-            {
-                emit cmdPacketReceived(dest);
-            }
-            else
-            {
-                emit cmdError(ec);
-            }
         }
 
         void cmdTransaction(const std::vector<u16> &data)
@@ -131,20 +104,42 @@ class McpdSocketHandler: public QObject
             if (ec)
             {
                 emit cmdError(ec);
-                return;
-            }
-
-            std::vector<u16> dest;
-            ec = receivePacket(cmdSock_, dest);
-
-            if (!ec)
-            {
-                emit cmdPacketReceived(dest);
             }
             else
             {
-                emit cmdError(ec);
+                std::vector<u16> dest;
+                ec = receivePacket(cmdSock_, dest);
+
+                if (!ec)
+                {
+                    //emit cmdPacketReceived(dest);
+                    emit cmdTransactionComplete(data, dest);
+                }
+                else
+                    emit cmdError(ec);
             }
+        }
+
+        void pollCmd()
+        {
+            std::vector<u16> dest;
+            auto ec = receivePacket(cmdSock_, dest);
+
+            if (!ec)
+                emit cmdPacketReceived(dest);
+            else
+                emit cmdError(ec);
+        }
+
+        void pollData()
+        {
+            std::vector<u16> dest;
+            auto ec = receivePacket(dataSock_, dest);
+
+            if (!ec)
+                emit dataPacketReceived(dest);
+            else
+                emit dataError(ec);
         }
 
     private:
@@ -162,7 +157,6 @@ class McpdSocketHandler: public QObject
             dest.resize(bytesTransferred);
             return ec;
         }
-
 
         int cmdSock_ = -1;
         int dataSock_ = -1;

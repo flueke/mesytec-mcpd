@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFileDialog>
@@ -19,6 +20,7 @@
 #include <spdlog/sinks/qt_sinks.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <future>
+#include <system_error>
 
 #include "util/qt_logview.h"
 #include "util/qt_str.h"
@@ -47,6 +49,35 @@ void log_buffer(const std::shared_ptr<spdlog::logger> &logger,
 
     for (const auto &value: buffer)
         logger->log(level, valueFormat, value);
+
+    logger->log(level, "end buffer '{}' (size={})", header, buffer.size());
+}
+
+template<typename View, int Columns = 8>
+void log_mcpd_buffer(const std::shared_ptr<spdlog::logger> &logger,
+                     const spdlog::level::level_enum &level,
+                     const View &buffer, const std::string &header,
+                     const char *valueFormat = "0x{:004X}")
+{
+    if (!logger->should_log(level))
+        return;
+
+    logger->log(level, "begin buffer '{}' (size={})", header, buffer.size());
+
+    int col = 0;
+    auto it = std::begin(buffer);
+
+    while (it != std::end(buffer))
+    {
+        std::string line = "  ";
+
+        for (int col=0; col<Columns && it != std::end(buffer); ++col, ++it)
+        {
+            line += fmt::format(valueFormat, *it) + ", ";
+        }
+
+        logger->log(level, line);
+    }
 
     logger->log(level, "end buffer '{}' (size={})", header, buffer.size());
 }
@@ -81,12 +112,15 @@ struct LogViewAndControls
 {
     QPlainTextEdit *logview;
     QCheckBox *cb_poll;
+    QCheckBox *cb_logRawPackets;
+    QCheckBox *cb_decodePackets;
 };
 
 struct Context
 {
     ConnectionInfo conInfo; // current connection info
     McpdSockets sockets; // sockets setup using conInfo
+    std::atomic<bool> socketsBusy;
 
     QString scriptsDir;
     Ui::MainWindow *mainUi;
@@ -171,74 +205,6 @@ std::vector<u16> parse_packet_text(const QString &packetText)
     return result;
 }
 
-static const int PacketReceiveTimeout_ms = 50;
-
-void packet_transaction(Context &context, const QString &packetText)
-{
-    if (auto ec = update_connection(context))
-    {
-        spdlog::error("Error connecting mcpd sockets: {}", ec.message());
-        return;
-    }
-
-#if 1
-    try
-    {
-        auto data = parse_packet_text(packetText);
-        size_t bytesTransferred = 0;
-
-        if (auto ec = write_to_socket(
-                context.sockets.cmdSock,
-                reinterpret_cast<const u8 *>(data.data()),
-                data.size() / sizeof(data[0]),
-                bytesTransferred))
-        {
-            spdlog::error("Error sending cmd packet: {}", ec.message());
-            throw ec;
-        }
-
-        std::vector<u16> dest(1500 / sizeof(u16));
-        bytesTransferred = 0;
-
-        if (auto ec = receive_one_packet(
-                context.sockets.cmdSock,
-                reinterpret_cast<u8 *>(dest.data()), dest.size() * sizeof(u16),
-                bytesTransferred,
-                PacketReceiveTimeout_ms))
-        {
-            spdlog::error("Error reading from cmd socket: {}", ec.message());
-            throw ec;
-        }
-
-        dest.resize(bytesTransferred);
-
-        log_buffer(spdlog::default_logger(), spdlog::level::info, dest, "cmd response");
-    }
-    catch (const std::runtime_error &e)
-    {
-        spdlog::error("{}", e.what());
-    }
-    catch (const std::error_code &ec)
-    {
-    }
-#else
-    try
-    {
-        auto data = parse_packet_text(packetText);
-        context.sockets.sendCmdPacket(data);
-    }
-    catch (const std::runtime_error &e)
-    {
-        spdlog::error("{}", e.what());
-    }
-    catch (const std::error_code &ec)
-    {
-    }
-
-
-#endif
-}
-
 bool gui_write_string_to_file(const QString &text, const QString &savePath)
 {
     QFile file(savePath);
@@ -318,6 +284,7 @@ int main(int argc, char *argv[])
     QLocale::setDefault(QLocale::c());
 
     Context context{};
+    context.socketsBusy = false;
 
     QThread socketThread;
     McpdSocketHandler socketHandler;
@@ -355,8 +322,16 @@ int main(int argc, char *argv[])
     {
         context.lvcCmd.logview = make_logview().release();
         context.lvcCmd.cb_poll = new QCheckBox("Poll cmd socket");
+        context.lvcCmd.cb_logRawPackets = new QCheckBox("Log raw packet data");
+        context.lvcCmd.cb_decodePackets = new QCheckBox("Decode packets");
+
+        context.lvcCmd.cb_logRawPackets->setChecked(true);
+        context.lvcCmd.cb_decodePackets->setChecked(true);
+
         auto l_cmd = make_vbox();
         l_cmd->addWidget(context.lvcCmd.cb_poll);
+        l_cmd->addWidget(context.lvcCmd.cb_logRawPackets);
+        l_cmd->addWidget(context.lvcCmd.cb_decodePackets);
         l_cmd->addWidget(context.lvcCmd.logview);
         l_cmd->setStretch(0, 1);
         mainUi->gb_cmd->setLayout(l_cmd);
@@ -382,19 +357,41 @@ int main(int argc, char *argv[])
                      });
 
     // logging setup
+    spdlog::set_level(spdlog::level::info);
+
     auto cmdLogViewWrapper = std::make_unique<LogViewWrapper>(context.lvcCmd.logview);
     auto dataLogViewWrapper = std::make_unique<LogViewWrapper>(context.lvcData.logview);
 
-    auto consolesink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-    auto qtsink = std::make_shared<spdlog::sinks::qt_sink_mt>(cmdLogViewWrapper.get(), "logMessage");
+    auto consoleSink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    auto cmdQtSink = std::make_shared<spdlog::sinks::qt_sink_mt>(cmdLogViewWrapper.get(), "logMessage");
+    auto dataQtSink = std::make_shared<spdlog::sinks::qt_sink_mt>(dataLogViewWrapper.get(), "logMessage");
+
+#if 0
     auto dupfilter = std::make_shared<spdlog::sinks::dup_filter_sink_mt>(std::chrono::seconds(2));
     dupfilter->add_sink(consolesink);
     dupfilter->add_sink(qtsink);
+#endif
 
-    auto logger = std::make_shared<spdlog::logger>("", spdlog::sinks_init_list({ consolesink, qtsink }));
-    logger->set_level(spdlog::level::info);
-    spdlog::set_default_logger(logger);
-    spdlog::set_pattern("%H:%M:%S.%e %^%l%$: %v");
+    // Create and set the default logger. Output goes to console and the cmd log view
+    {
+        auto logger = std::make_shared<spdlog::logger>("", spdlog::sinks_init_list({ consoleSink, cmdQtSink }));
+        spdlog::set_pattern("%H:%M:%S.%e %^%l%$: %v");
+        spdlog::set_default_logger(logger);
+    }
+
+    // Setup a logger for the cmd logview
+    {
+        auto logger = std::make_shared<spdlog::logger>("cmd", spdlog::sinks_init_list({ cmdQtSink }));
+        logger->set_pattern("%H:%M:%S.%e %^%l%$: %v");
+        spdlog::register_logger(logger);
+    }
+
+    // Setup a logger for the data logview
+    {
+        auto logger = std::make_shared<spdlog::logger>("data", spdlog::sinks_init_list({ dataQtSink }));
+        logger->set_pattern("%H:%M:%S.%e %^%l%$: %v");
+        spdlog::register_logger(logger);
+    }
 
     mainWin.show();
     mainWin.restoreGeometry(settings.value("MainWindowGeometry").toByteArray());
@@ -464,14 +461,14 @@ int main(int argc, char *argv[])
 
         auto timer = new QTimer(editor);
 
-        auto cmd_transaction = [&context, editor, contextP, socketHandlerP] ()
+        auto manual_cmd_transaction = [editor, contextP, socketHandlerP] ()
         {
             try
             {
                 auto text = editor->getText();
                 auto data = parse_packet_text(text);
 
-                if (auto ec = update_connection(context))
+                if (auto ec = update_connection(*contextP))
                 {
                     spdlog::error("Error connecting mcpd sockets: {}", ec.message());
                     return;
@@ -480,11 +477,18 @@ int main(int argc, char *argv[])
                 QMetaObject::invokeMethod(
                     socketHandlerP, [contextP, socketHandlerP, data] ()
                     {
-                        qDebug() << "invokeMethod (cmd transaction)!";
                         socketHandlerP->setSockets(
                             contextP->sockets.cmdSock,
                             contextP->sockets.dataSock);
+
+                        bool expected = false;
+
+                        if (!contextP->socketsBusy.compare_exchange_strong(expected, true))
+                            return;
+
                         socketHandlerP->cmdTransaction(data);
+
+                        contextP->socketsBusy = false;
                     });
             }
             catch (const std::runtime_error &e)
@@ -493,9 +497,17 @@ int main(int argc, char *argv[])
             }
         };
 
+        auto periodic_cmd_transaction = [=] ()
+        {
+            if (!contextP->socketsBusy)
+            {
+                manual_cmd_transaction();
+            }
+        };
 
-        QObject::connect(editor, &PacketEditor::sendPacket, &mainWin, cmd_transaction);
-        QObject::connect(timer, &QTimer::timeout, &mainWin, cmd_transaction);
+
+        QObject::connect(editor, &PacketEditor::sendPacket, &mainWin, manual_cmd_transaction);
+        QObject::connect(timer, &QTimer::timeout, &mainWin, periodic_cmd_transaction);
 
         QObject::connect(
             editor, &PacketEditor::sendRepeatChanged,
@@ -563,37 +575,124 @@ int main(int argc, char *argv[])
                              bool pollCmd = context.lvcCmd.cb_poll->isChecked();
                              bool pollData = context.lvcData.cb_poll->isChecked();
 
-                             QMetaObject::invokeMethod(
-                                 &socketHandler, [contextP, socketHandlerP, pollCmd, pollData] ()
-                                 {
-                                     qDebug() << "invokeMethod (poll sockets)!";
-                                     socketHandlerP->setSockets(
-                                         contextP->sockets.cmdSock,
-                                         contextP->sockets.dataSock);
-                                     if (pollCmd)
-                                         socketHandlerP->pollCmd();
-                                     if (pollData)
-                                         socketHandlerP->pollData();
-                                 }, Qt::QueuedConnection);
+                             if (pollCmd && !contextP->socketsBusy)
+                             {
+                                 QMetaObject::invokeMethod(
+                                     &socketHandler, [contextP, socketHandlerP, pollCmd] ()
+                                     {
+                                         socketHandlerP->setSockets(
+                                             contextP->sockets.cmdSock,
+                                             contextP->sockets.dataSock);
+
+                                         bool expected = false;
+
+                                         if (pollCmd && contextP->socketsBusy.compare_exchange_strong(expected, true))
+                                         {
+                                             socketHandlerP->pollCmd();
+                                             contextP->socketsBusy = false;
+                                         }
+                                     }, Qt::QueuedConnection);
+                             }
+
+                             if (pollData && !contextP->socketsBusy)
+                             {
+                                 QMetaObject::invokeMethod(
+                                     &socketHandler, [contextP, socketHandlerP, pollData] ()
+                                     {
+                                         socketHandlerP->setSockets(
+                                             contextP->sockets.cmdSock,
+                                             contextP->sockets.dataSock);
+
+                                         bool expected = false;
+
+                                         if (pollData && contextP->socketsBusy.compare_exchange_strong(expected, true))
+                                         {
+                                             socketHandlerP->pollData();
+                                             contextP->socketsBusy = false;
+                                         }
+                                     }, Qt::QueuedConnection);
+                             }
+                         }
+                     });
+
+    QObject::connect(&socketHandler, &McpdSocketHandler::cmdTransactionComplete,
+                     &mainWin, [&] (const std::vector<u16> &request,
+                                    const std::vector<u16> &response)
+                     {
+                         auto logger = spdlog::get("cmd");
+                         logger->info(">>> cmd transaction complete");
+
+                         // request
+                         if (context.lvcCmd.cb_logRawPackets->isChecked())
+                         {
+                             log_mcpd_buffer(logger, spdlog::level::info, request,
+                                             fmt::format("request (size={})", request.size()));
+                         }
+
+                         if (context.lvcCmd.cb_decodePackets->isChecked())
+                         {
+                             CommandPacket requestPacket = {};
+                             std::memcpy(reinterpret_cast<u8 *>(&requestPacket),
+                                         request.data(),
+                                         std::min(sizeof(requestPacket), request.size()));
+                             std::stringstream ss;
+                             format(ss, requestPacket, false);
+                             logger->info("decoded request packet:\n{}\n", ss.str());
+                         }
+
+                         // response
+                         if (context.lvcCmd.cb_logRawPackets->isChecked())
+                         {
+                             log_mcpd_buffer(logger, spdlog::level::info, response,
+                                             fmt::format("response (size={})", response.size()));
+                         }
+
+                         if (context.lvcCmd.cb_decodePackets->isChecked())
+                         {
+                             CommandPacket responsePacket = {};
+                             std::memcpy(reinterpret_cast<u8 *>(&responsePacket),
+                                         response.data(),
+                                         std::min(sizeof(responsePacket), response.size()));
+                             std::stringstream ss;
+                             format(ss, responsePacket, false);
+                             logger->info("decoded response packet:\n{}\n", ss.str());
                          }
                      });
 
     QObject::connect(&socketHandler, &McpdSocketHandler::cmdPacketReceived,
                      &mainWin, [&] (const std::vector<u16> &data)
                      {
-                         spdlog::info("cmd packet received, size={}", data.size());
+                         auto logger = spdlog::get("cmd");
+                         logger->info("cmd packet received, size={}", data.size());
+                         log_mcpd_buffer(logger, spdlog::level::info, data, "cmd packet");
                      });
 
     QObject::connect(&socketHandler, &McpdSocketHandler::cmdError,
                      &mainWin, [&] (const std::error_code &ec)
                      {
-                         spdlog::error("cmd transaction error: {}", ec.message());
+                         if (ec == std::errc::resource_unavailable_try_again)
+                             return;
+
+                         auto logger = spdlog::get("cmd");
+                         logger->error(ec.message());
                      });
 
     QObject::connect(&socketHandler, &McpdSocketHandler::dataPacketReceived,
                      &mainWin, [&] (const std::vector<u16> &data)
                      {
-                         spdlog::info("data packet received, size={}", data.size());
+                         auto logger = spdlog::get("data");
+                         logger->info("data packet received, size={}", data.size());
+                         log_mcpd_buffer(logger, spdlog::level::info, data, "data packet");
+                     });
+
+    QObject::connect(&socketHandler, &McpdSocketHandler::dataError,
+                     &mainWin, [&] (const std::error_code &ec)
+                     {
+                         if (ec == std::errc::resource_unavailable_try_again)
+                             return;
+
+                         auto logger = spdlog::get("data");
+                         logger->error(ec.message());
                      });
 
     socketThread.start();
