@@ -25,7 +25,17 @@ if (Qt5Widgets_FOUND)
         util/qt_util.cc
     )
 
-    target_link_libraries(mcpd-udp-dev-gui Qt5::Widgets Qt5::Gui mesytec-mcpd)
+    target_link_libraries(mcpd-udp-dev-gui
+        PRIVATE Qt5::Widgets
+        PRIVATE Qt5::Gui
+        PRIVATE mesytec-mcpd)
+
+    # For some reason linking against spdlog::spdlog in the
+    # target_link_libraries() call above leads to "multiple definition" errors
+    # for spdlog functions under windows. The workaround is to just add the
+    # spdlog include directory to the include paths. This does not happen in
+    # the mvme or mesytec-mvlc projects. Also the mcpd-cli links just fine.
+    target_include_directories(mcpd-udp-dev-gui PRIVATE ${CMAKE_SOURCE_DIR}/external/spdlog/include)
 
     # install
     install(TARGETS mcpd-udp-dev-gui

@@ -15,7 +15,7 @@ target_include_directories(mesytec-mcpd
     )
 
 target_link_libraries(mesytec-mcpd
-    PUBLIC spdlog::spdlog
+    PRIVATE spdlog::spdlog
     PUBLIC Threads::Threads
     )
 
