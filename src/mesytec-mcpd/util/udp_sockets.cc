@@ -461,7 +461,7 @@ std::error_code receive_one_packet(int sockfd, u8 *dest, size_t size,
         int err = WSAGetLastError();
 
         if (err == WSAETIMEDOUT || err == WSAEWOULDBLOCK)
-            return SocketErrorCode::Timeout;
+            return SocketErrorCode::SocketReadTimeout;
 
         return SocketErrorCode::GenericSocketError;
     }
