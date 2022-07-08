@@ -40,7 +40,7 @@ PacketEditor::PacketEditor(QWidget *parent)
     spin_interval->setSuffix(" ms");
     spin_interval->setMinimum(10);
     spin_interval->setMaximum(1000 * 1000);
-    spin_interval->setValue(1000);
+    spin_interval->setValue(500);
     auto f = new QFrame;
     auto fl = new QHBoxLayout(f);
     fl->setContentsMargins(0, 0, 0, 0);

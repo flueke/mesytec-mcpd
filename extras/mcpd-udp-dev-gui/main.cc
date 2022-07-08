@@ -9,11 +9,16 @@
 #include <QMessageBox>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QString>
+#include <Qt>
+#include <QTextStream>
 #include <QTimer>
 #include <QUrl>
+#include <QThread>
 #include <spdlog/sinks/dup_filter_sink.h>
 #include <spdlog/sinks/qt_sinks.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <future>
 
 #include "util/qt_logview.h"
 #include "util/qt_str.h"
@@ -82,6 +87,7 @@ struct Context
 {
     ConnectionInfo conInfo; // current connection info
     McpdSockets sockets; // sockets setup using conInfo
+
     QString scriptsDir;
     Ui::MainWindow *mainUi;
     LogViewAndControls lvcCmd = {};
@@ -146,7 +152,7 @@ std::vector<u16> parse_packet_text(const QString &packetText)
 {
     std::vector<u16> result;
 
-    for (auto line: packetText.split('\n', Qt::SkipEmptyParts))
+    for (auto line: packetText.split('\n', QString::SkipEmptyParts))
     {
         line = line.trimmed();
 
@@ -165,7 +171,7 @@ std::vector<u16> parse_packet_text(const QString &packetText)
     return result;
 }
 
-static const int PacketReceiveTimeout_ms = 250;
+static const int PacketReceiveTimeout_ms = 50;
 
 void packet_transaction(Context &context, const QString &packetText)
 {
@@ -175,6 +181,7 @@ void packet_transaction(Context &context, const QString &packetText)
         return;
     }
 
+#if 1
     try
     {
         auto data = parse_packet_text(packetText);
@@ -214,6 +221,22 @@ void packet_transaction(Context &context, const QString &packetText)
     catch (const std::error_code &ec)
     {
     }
+#else
+    try
+    {
+        auto data = parse_packet_text(packetText);
+        context.sockets.sendCmdPacket(data);
+    }
+    catch (const std::runtime_error &e)
+    {
+        spdlog::error("{}", e.what());
+    }
+    catch (const std::error_code &ec)
+    {
+    }
+
+
+#endif
 }
 
 bool gui_write_string_to_file(const QString &text, const QString &savePath)
@@ -282,6 +305,9 @@ void editor_save_packet(PacketEditor *editor)
 
 int main(int argc, char *argv[])
 {
+    qRegisterMetaType<std::vector<u16>>("std::vector<u16>");
+    qRegisterMetaType<std::error_code>("std::error_code");
+
     Q_INIT_RESOURCE(resources);
 
     QApplication app(argc, argv);
@@ -292,6 +318,13 @@ int main(int argc, char *argv[])
     QLocale::setDefault(QLocale::c());
 
     Context context{};
+
+    QThread socketThread;
+    McpdSocketHandler socketHandler;
+    socketHandler.moveToThread(&socketThread);
+
+    auto contextP = &context;
+    auto socketHandlerP = &socketHandler;
 
     QSettings settings;
 
@@ -419,7 +452,7 @@ int main(int argc, char *argv[])
     //
     // Packet text editor creation and interactions
     //
-    auto create_new_editor = [&geoSaver, &mainWin, &context] ()
+    auto create_new_editor = [&geoSaver, &mainWin, &context, contextP, socketHandlerP] ()
     {
         auto editor = new PacketEditor;
         editor->setAttribute(Qt::WA_DeleteOnClose, true);
@@ -431,13 +464,38 @@ int main(int argc, char *argv[])
 
         auto timer = new QTimer(editor);
 
-        QObject::connect(
-            editor, &PacketEditor::sendPacket,
-            &mainWin, [&context, editor] () { packet_transaction(context, editor->getText()); });
+        auto cmd_transaction = [&context, editor, contextP, socketHandlerP] ()
+        {
+            try
+            {
+                auto text = editor->getText();
+                auto data = parse_packet_text(text);
 
-        QObject::connect(
-            timer, &QTimer::timeout,
-            &mainWin, [&context, editor] () { packet_transaction(context, editor->getText()); });
+                if (auto ec = update_connection(context))
+                {
+                    spdlog::error("Error connecting mcpd sockets: {}", ec.message());
+                    return;
+                }
+
+                QMetaObject::invokeMethod(
+                    socketHandlerP, [contextP, socketHandlerP, data] ()
+                    {
+                        qDebug() << "invokeMethod (cmd transaction)!";
+                        socketHandlerP->setSockets(
+                            contextP->sockets.cmdSock,
+                            contextP->sockets.dataSock);
+                        socketHandlerP->cmdTransaction(data);
+                    });
+            }
+            catch (const std::runtime_error &e)
+            {
+                spdlog::error("{}", e.what());
+            }
+        };
+
+
+        QObject::connect(editor, &PacketEditor::sendPacket, &mainWin, cmd_transaction);
+        QObject::connect(timer, &QTimer::timeout, &mainWin, cmd_transaction);
 
         QObject::connect(
             editor, &PacketEditor::sendRepeatChanged,
@@ -501,63 +559,44 @@ int main(int argc, char *argv[])
                                  spdlog::error("Error connecting mcpd sockets: {}", ec.message());
                                  return;
                              }
-                         }
 
-                         if (context.lvcCmd.cb_poll->isChecked())
-                         {
-                             std::vector<u16> dest(1500 / sizeof(u16));
-                             size_t bytesTransferred = 0;
+                             bool pollCmd = context.lvcCmd.cb_poll->isChecked();
+                             bool pollData = context.lvcData.cb_poll->isChecked();
 
-                             if (auto ec = receive_one_packet(
-                                     context.sockets.cmdSock,
-                                     reinterpret_cast<u8 *>(dest.data()), dest.size() * sizeof(u16),
-                                     bytesTransferred,
-                                     PacketReceiveTimeout_ms))
-                             {
-                                 spdlog::error("Error polling cmd socket: {}", ec.message());
-                             }
-                             else
-                             {
-                                 dest.resize(bytesTransferred);
-                                 log_buffer(spdlog::default_logger(), spdlog::level::info, dest, "polled cmd packet");
-                             }
-                         }
-
-                         if (context.lvcData.cb_poll->isChecked())
-                         {
-                             std::vector<u16> dest(1500 / sizeof(u16));
-                             size_t bytesTransferred = 0;
-
-                             if (auto ec = receive_one_packet(
-                                     context.sockets.dataSock,
-                                     reinterpret_cast<u8 *>(dest.data()), dest.size() * sizeof(u16),
-                                     bytesTransferred,
-                                     PacketReceiveTimeout_ms))
-                             {
-                                 spdlog::error("Error polling data socket: {}", ec.message());
-                                 return;
-                             }
-                             else
-                             {
-                                 dest.resize(bytesTransferred);
-                                 log_buffer(spdlog::default_logger(), spdlog::level::info, dest, "polled data packet");
-                             }
+                             QMetaObject::invokeMethod(
+                                 &socketHandler, [contextP, socketHandlerP, pollCmd, pollData] ()
+                                 {
+                                     qDebug() << "invokeMethod (poll sockets)!";
+                                     socketHandlerP->setSockets(
+                                         contextP->sockets.cmdSock,
+                                         contextP->sockets.dataSock);
+                                     if (pollCmd)
+                                         socketHandlerP->pollCmd();
+                                     if (pollData)
+                                         socketHandlerP->pollData();
+                                 }, Qt::QueuedConnection);
                          }
                      });
 
-    //QObject::connect(context.lvcCmd.cb_poll, &QAbstractButton::toggled,
-    //                 &mainWin, [&] () {
-    //                 });
+    QObject::connect(&socketHandler, &McpdSocketHandler::cmdPacketReceived,
+                     &mainWin, [&] (const std::vector<u16> &data)
+                     {
+                         spdlog::info("cmd packet received, size={}", data.size());
+                     });
 
-    //QObject::connect(context.lvcData.cb_poll, &QAbstractButton::toggled,
-    //                 &mainWin, [&] () {
-    //                 });
+    QObject::connect(&socketHandler, &McpdSocketHandler::cmdError,
+                     &mainWin, [&] (const std::error_code &ec)
+                     {
+                         spdlog::error("cmd transaction error: {}", ec.message());
+                     });
 
+    QObject::connect(&socketHandler, &McpdSocketHandler::dataPacketReceived,
+                     &mainWin, [&] (const std::vector<u16> &data)
+                     {
+                         spdlog::info("data packet received, size={}", data.size());
+                     });
 
-    //QObject::connect(mainUi->action_winMain, &QAction::triggered, &mainWin, [&] () {
-    //    mainWin.show();
-    //    mainWin.raise();
-    //});
+    socketThread.start();
 
     on_files_dir_changed(context.scriptsDir);
 
@@ -567,5 +606,10 @@ int main(int argc, char *argv[])
     filesDirUpdateTimer.setInterval(1000);
     filesDirUpdateTimer.start();
 
-    return app.exec();
+    auto ret = app.exec();
+
+    socketThread.exit();
+    socketThread.wait();
+
+    return ret;
 }

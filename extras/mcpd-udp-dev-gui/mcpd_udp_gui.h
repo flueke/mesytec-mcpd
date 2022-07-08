@@ -6,8 +6,11 @@
 #include <QSyntaxHighlighter>
 #include <QToolBar>
 #include <QWidget>
+#include <QDebug>
 
+#include <mesytec-mcpd/mesytec-mcpd.h>
 #include "code_editor.h"
+#include "util/int_types.h"
 
 class PacketEditor: public QWidget
 {
@@ -57,6 +60,112 @@ class PacketEditor: public QWidget
         QString m_filepath;
 
         void updateWindowTitle();
+};
+
+class McpdSocketHandler: public QObject
+{
+    Q_OBJECT
+    signals:
+        void cmdPacketReceived(const std::vector<u16> &data);
+        void cmdError(const std::error_code &ec);
+        void dataPacketReceived(const std::vector<u16> &data);
+
+    public:
+        static const int PacketReceiveTimeout_ms = 100;
+
+        explicit McpdSocketHandler(QObject *parent = nullptr)
+            : QObject(parent)
+        {}
+
+
+    public slots:
+        void setSockets(int cmdSock, int dataSock)
+        {
+            qDebug() << __PRETTY_FUNCTION__ << cmdSock << dataSock;
+            cmdSock_ = cmdSock;
+            dataSock_ = dataSock;
+        }
+
+        void pollCmd()
+        {
+            qDebug() << __PRETTY_FUNCTION__;
+            std::vector<u16> dest;
+            auto ec = receivePacket(cmdSock_, dest);
+
+            if (!ec)
+            {
+                emit cmdPacketReceived(dest);
+            }
+            else
+            {
+                emit cmdError(ec);
+            }
+        }
+
+        void pollData()
+        {
+            qDebug() << __PRETTY_FUNCTION__;
+            std::vector<u16> dest;
+            auto ec = receivePacket(dataSock_, dest);
+
+            if (!ec)
+            {
+                emit cmdPacketReceived(dest);
+            }
+            else
+            {
+                emit cmdError(ec);
+            }
+        }
+
+        void cmdTransaction(const std::vector<u16> &data)
+        {
+            size_t bytesTransferred = 0;
+
+            auto ec = mesytec::mcpd::write_to_socket(
+                cmdSock_,
+                reinterpret_cast<const u8 *>(data.data()),
+                data.size() / sizeof(data[0]),
+                bytesTransferred);
+
+            if (ec)
+            {
+                emit cmdError(ec);
+                return;
+            }
+
+            std::vector<u16> dest;
+            ec = receivePacket(cmdSock_, dest);
+
+            if (!ec)
+            {
+                emit cmdPacketReceived(dest);
+            }
+            else
+            {
+                emit cmdError(ec);
+            }
+        }
+
+    private:
+        std::error_code receivePacket(int sock, std::vector<u16> &dest)
+        {
+            dest.resize(1500);
+            size_t bytesTransferred = 0;
+
+            auto ec = mesytec::mcpd::receive_one_packet(
+                sock,
+                reinterpret_cast<u8 *>(dest.data()), dest.size() * sizeof(u16),
+                bytesTransferred,
+                PacketReceiveTimeout_ms);
+
+            dest.resize(bytesTransferred);
+            return ec;
+        }
+
+
+        int cmdSock_ = -1;
+        int dataSock_ = -1;
 };
 
 #endif /* __MESYTEC_MCPD_UDP_GUI_H__ */
