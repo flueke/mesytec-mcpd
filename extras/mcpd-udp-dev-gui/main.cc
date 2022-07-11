@@ -25,6 +25,7 @@
 #include "util/qt_logview.h"
 #include "util/qt_str.h"
 #include "util/qt_util.h"
+#include "util/mesytec_spdlog_util.h"
 #include "ui_mainwindow.h"
 #include "mcpd_udp_gui.h"
 
@@ -38,7 +39,8 @@ R"(0x1234
 template<typename View>
 void log_buffer(const std::shared_ptr<spdlog::logger> &logger,
                 const spdlog::level::level_enum &level,
-                const View &buffer, const std::string &header,
+                const View &buffer,
+                const std::string &header,
                 const char *valueFormat = "  0x{:004X}"
                 )
 {
@@ -71,7 +73,7 @@ void log_mcpd_buffer(const std::shared_ptr<spdlog::logger> &logger,
     {
         std::string line = "  ";
 
-        for (int col=0; col<Columns && it != std::end(buffer); ++col, ++it)
+        for (int col=0; (col<Columns || Columns == 0) && it != std::end(buffer); ++col, ++it)
         {
             line += fmt::format(valueFormat, *it) + ", ";
         }
@@ -182,8 +184,132 @@ std::error_code update_connection(Context &context)
     return {};
 }
 
+// Strips the part of the input line that's inside a multiline comment.
+// If the whole line is inside the return value will be empty.
+QString handle_multiline_comment(QString line, bool &in_multiline_comment)
+{
+    QString result;
+    result.reserve(line.size());
+
+    s32 i = 0;
+
+    while (i < line.size())
+    {
+        auto mid_ref = line.midRef(i, 2);
+
+        if (in_multiline_comment)
+        {
+            if (mid_ref == "*/")
+            {
+                in_multiline_comment = false;
+                i += 2;
+            }
+            else
+            {
+                ++i;
+            }
+        }
+        else
+        {
+            if (mid_ref == "/*")
+            {
+                in_multiline_comment = true;
+                i += 2;
+            }
+            else
+            {
+                result.append(line.at(i));
+                ++i;
+            }
+        }
+    }
+
+    return result;
+}
+
+struct PreparsedLine
+{
+    QStringList parts;
+    QString trimmed;
+    u32 lineNumber;
+};
+
+// Get rid of comment parts and empty lines and split each of the remaining
+// lines into space separated parts while keeping track of the correct input
+// line numbers.
+QVector<PreparsedLine> pre_parse(QTextStream &input)
+{
+    static const QRegularExpression reWordSplit("\\s+");
+
+    QVector<PreparsedLine> result;
+    u32 lineNumber = 0;
+    bool in_multiline_comment = false;
+
+    while (true)
+    {
+        auto line = input.readLine();
+        ++lineNumber;
+
+        if (line.isNull())
+            break;
+
+        line = handle_multiline_comment(line, in_multiline_comment);
+
+        int startOfComment = line.indexOf('#');
+
+        if (startOfComment >= 0)
+            line.resize(startOfComment);
+
+        line = line.trimmed();
+
+        if (line.isEmpty())
+            continue;
+
+        auto parts = line.split(reWordSplit, QString::SkipEmptyParts);
+
+        if (parts.isEmpty())
+            continue;
+
+        parts[0] = parts[0].toLower();
+
+        result.push_back({ parts, line, lineNumber });
+    }
+
+    return result;
+}
+
+std::vector<u16> parse_packet_text(QTextStream &input)
+{
+    std::vector<u16> result;
+    QVector<PreparsedLine> splitLines = pre_parse(input);
+
+    int lineIndex = 0;
+
+    while (lineIndex < splitLines.size())
+    {
+        auto &sl = splitLines.at(lineIndex);
+
+        assert(!sl.parts.isEmpty());
+
+        bool ok = true;
+        u16 word = sl.parts[0].toUShort(&ok, 0);
+
+        if (!ok)
+            throw std::runtime_error(fmt::format("Error parsing 16 bit number from '{}' (line {})",
+                                                 sl.trimmed.toStdString(), sl.lineNumber));
+
+        result.emplace_back(word);
+        ++lineIndex;
+    }
+
+    return result;
+}
+
 std::vector<u16> parse_packet_text(const QString &packetText)
 {
+    QTextStream stream(const_cast<QString *>(&packetText), QIODevice::ReadOnly);
+    return parse_packet_text(stream);
+#if 0
     std::vector<u16> result;
 
     for (auto line: packetText.split('\n', QString::SkipEmptyParts))
@@ -203,7 +329,9 @@ std::vector<u16> parse_packet_text(const QString &packetText)
     }
 
     return result;
+#endif
 }
+
 
 bool gui_write_string_to_file(const QString &text, const QString &savePath)
 {
@@ -363,8 +491,8 @@ int main(int argc, char *argv[])
     auto dataLogViewWrapper = std::make_unique<LogViewWrapper>(context.lvcData.logview);
 
     auto consoleSink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-    auto cmdQtSink = std::make_shared<spdlog::sinks::qt_sink_mt>(cmdLogViewWrapper.get(), "logMessage");
-    auto dataQtSink = std::make_shared<spdlog::sinks::qt_sink_mt>(dataLogViewWrapper.get(), "logMessage");
+    auto cmdQtSink = std::make_shared<mesytec::spdlog_util::QtSink_mt>(cmdLogViewWrapper.get(), "logMessage");
+    auto dataQtSink = std::make_shared<mesytec::spdlog_util::QtSink_mt>(dataLogViewWrapper.get(), "logMessage");
 
 #if 0
     auto dupfilter = std::make_shared<spdlog::sinks::dup_filter_sink_mt>(std::chrono::seconds(2));
@@ -620,7 +748,7 @@ int main(int argc, char *argv[])
                                     const std::vector<u16> &response)
                      {
                          auto logger = spdlog::get("cmd");
-                         logger->info(">>> cmd transaction complete");
+                         logger->info(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> begin cmd transaction");
 
                          // request
                          if (context.lvcCmd.cb_logRawPackets->isChecked())
@@ -641,6 +769,12 @@ int main(int argc, char *argv[])
                          }
 
                          // response
+
+                         if (context.lvcCmd.cb_logRawPackets->isChecked()
+                             || context.lvcCmd.cb_decodePackets->isChecked())
+                             logger->info("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< cmd response");
+
+
                          if (context.lvcCmd.cb_logRawPackets->isChecked())
                          {
                              log_mcpd_buffer(logger, spdlog::level::info, response,
@@ -657,6 +791,8 @@ int main(int argc, char *argv[])
                              format(ss, responsePacket, false);
                              logger->info("decoded response packet:\n{}\n", ss.str());
                          }
+
+                         logger->info("======================================== end cmd transaction");
                      });
 
     QObject::connect(&socketHandler, &McpdSocketHandler::cmdPacketReceived,
