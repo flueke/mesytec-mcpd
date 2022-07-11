@@ -62,6 +62,14 @@ class PacketEditor: public QWidget
         void updateWindowTitle();
 };
 
+class SyntaxHighlighter: public QSyntaxHighlighter
+{
+    using QSyntaxHighlighter::QSyntaxHighlighter;
+
+    protected:
+        virtual void highlightBlock(const QString &text) override;
+};
+
 class McpdSocketHandler: public QObject
 {
     Q_OBJECT
