@@ -22,7 +22,10 @@
 #define __MVME_UTIL_QT_LOGVIEW_H__
 
 #include <memory>
+#include <QDebug>
 #include <QPlainTextEdit>
+#include <spdlog/common.h>
+#include "qt_str.h"
 
 static const size_t LogViewMaximumBlockCount = 10 * 1000u;
 
@@ -49,6 +52,31 @@ class LogViewWrapper: public QObject
         {
             if (logView_)
                 logView_->appendPlainText(msg);
+        }
+
+        // Alternative version taking the level value as the first argument.
+        void logMessage(const spdlog::level::level_enum &level, const QString &msg)
+        {
+            auto ilevel = static_cast<int>(level);
+
+            if (ilevel < spdlog::level::warn)
+            {
+                auto escaped = msg.toHtmlEscaped();
+                auto html = QSL("<font color=\"black\"><pre>%1</pre></font>").arg(escaped);
+                logView_->appendHtml(html);
+            }
+            else if (ilevel == spdlog::level::warn)
+            {
+                auto escaped = msg.toHtmlEscaped();
+                auto html = QSL("<font color=\"orange\"><pre>%1</pre></font>").arg(escaped);
+                logView_->appendHtml(html);
+            }
+            else
+            {
+                auto escaped = msg.toHtmlEscaped();
+                auto html = QSL("<font color=\"red\"><pre>%1</pre></font>").arg(escaped);
+                logView_->appendHtml(html);
+            }
         }
 
     private:
