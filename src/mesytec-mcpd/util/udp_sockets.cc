@@ -1,5 +1,6 @@
 #include "udp_sockets.h"
 #include <system_error>
+#include <spdlog/spdlog.h>
 
 #ifndef __WIN32
     #include <netdb.h>
@@ -164,10 +165,31 @@ namespace
 
         return tv;
     }
+
+    static bool socketSystemInitialized = false;
+
+    void init_socket_system()
+    {
+        if (!socketSystemInitialized)
+        {
+#ifdef __WIN32
+            WORD wVersionRequested;
+            WSADATA wsaData;
+            wVersionRequested = MAKEWORD(2, 1);
+            int res = WSAStartup(wVersionRequested, &wsaData);
+            if (res != 0)
+                spdlog::error("init_socket_system(): WSAStartup failed: {}", gai_strerror(res));
+#endif
+            socketSystemInitialized = true;
+        }
+    }
+
 } // end anon namespace
 
 int connect_udp_socket(const std::string &host, u16 port, std::error_code *ecp)
 {
+    init_socket_system();
+
     std::error_code ec_;
     std::error_code &ec = ecp ? *ecp : ec_;
 
@@ -226,6 +248,8 @@ int connect_udp_socket(const std::string &host, u16 port, std::error_code *ecp)
 
 int bind_udp_socket(u16 localPort, std::error_code *ecp)
 {
+    init_socket_system();
+
     std::error_code ec_;
     std::error_code &ec = ecp ? *ecp : ec_;
 
@@ -271,6 +295,8 @@ int bind_udp_socket(u16 localPort, std::error_code *ecp)
 
 u16 get_local_socket_port(int sock, std::error_code *ecp)
 {
+    init_socket_system();
+
     std::error_code ec_;
     std::error_code &ec = ecp ? *ecp : ec_;
 
@@ -297,6 +323,8 @@ std::error_code lookup(const std::string &host, u16 port, sockaddr_in &dest)
     if (host.empty())
         return SocketErrorCode::EmptyHostname;
 
+    init_socket_system();
+
     dest = {};
     struct addrinfo hints = {};
     hints.ai_family = AF_INET;
@@ -309,7 +337,12 @@ std::error_code lookup(const std::string &host, u16 port, sockaddr_in &dest)
                          &hints, &result);
 
     if (rc != 0)
+    {
+        #ifdef __WIN32
+        spdlog::error("getaddrinfo(): host={}, error={}", host, gai_strerror(rc));
+        #endif
         return SocketErrorCode::HostLookupError;
+    }
 
     for (rp = result; rp != NULL; rp = rp->ai_next)
     {
@@ -343,6 +376,8 @@ std::error_code set_socket_timeout(int optname, int sock, unsigned ms)
 #else // WIN32
 std::error_code set_socket_timeout(int optname, int sock, unsigned ms)
 {
+    init_socket_system();
+
     DWORD optval = ms;
     int res = setsockopt(sock, SOL_SOCKET, optname,
                          reinterpret_cast<const char *>(&optval),
@@ -394,6 +429,8 @@ std::error_code write_to_socket(
 {
     assert(size <= MaxPayloadSize);
 
+    init_socket_system();
+
     bytesTransferred = 0;
 
     ssize_t res = ::send(socket, reinterpret_cast<const char *>(buffer), size, 0);
@@ -440,6 +477,8 @@ std::error_code write_to_socket(
 std::error_code receive_one_packet(int sockfd, u8 *dest, size_t size,
                                    size_t &bytesTransferred, int timeout_ms)
 {
+    init_socket_system();
+
     fd_set fds;
     FD_ZERO(&fds);
     FD_SET(sockfd, &fds);
