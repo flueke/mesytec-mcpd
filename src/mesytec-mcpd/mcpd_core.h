@@ -340,17 +340,10 @@ inline u16 calculate_checksum(const CommandPacket &cmd)
     return result;
 }
 
-inline unsigned get_data_length(const CommandPacket &packet)
+template<typename PacketType>
+inline int get_data_length(const PacketType &packet)
 {
-    assert(packet.bufferLength >= packet.headerLength);
-    unsigned dataLen = packet.bufferLength - packet.headerLength;
-    return dataLen;
-}
-
-inline unsigned get_data_length(const DataPacket &packet)
-{
-    assert(packet.bufferLength >= packet.headerLength);
-    unsigned dataLen = packet.bufferLength - packet.headerLength;
+    int dataLen = static_cast<int>(packet.bufferLength) - packet.headerLength;
     return dataLen;
 }
 
@@ -450,11 +443,11 @@ Out &format(Out &out, const DataPacket &packet)
                            i, param[0], param[1], param[2]) << std::endl;
     }
 
-    u16 dataLen = get_data_length(packet);
+    auto dataLen = get_data_length(packet);
 
     out << fmt::format("  calculated data length={}", dataLen) << std::endl;
 
-    for (unsigned i=0; i<dataLen; ++i)
+    for (int i=0; i<dataLen; ++i)
         out << fmt::format("    data[{}] = 0x{:04X}", i, packet.data[i]) << std::endl;
 
     return out;
@@ -480,7 +473,7 @@ inline u64 get_header_timestamp(const DataPacket &packet)
 
 inline u64 get_event(const DataPacket &packet, size_t eventNum)
 {
-    const size_t idx = eventNum * 3;
+    const int idx = eventNum * 3;
 
     if (idx + 2 >= get_data_length(packet))
         throw std::runtime_error("eventNum out of range");
