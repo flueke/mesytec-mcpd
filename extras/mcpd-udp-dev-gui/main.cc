@@ -32,8 +32,22 @@
 using namespace mesytec::mcpd;
 
 static const auto DefaultEditorContents =
-R"(0x1234
-0xffff
+R"(
+# header
+20			# buffer length in 16 bit words
+0x0			# buffer type
+20			# header length
+1234		# buffer number
+0x1			# cmd id
+0x0			# mcpd id | status
+0x0			# header timestamp lo
+0x0			# header timestamp mid
+0x0			# header timestamp hi
+0x0			# checksum
+
+# data (need to adjust buffer length manually!)
+# 0xaaaa
+# 0xbbbb
 )";
 
 template<typename View>
@@ -596,6 +610,11 @@ int main(int argc, char *argv[])
                 auto text = editor->getText();
                 auto data = parse_packet_text(text);
 
+                auto requestPacket = command_packet_from_data(data);
+
+                requestPacket.headerChecksum = 0;
+                requestPacket.headerChecksum = calculate_checksum(requestPacket);
+
                 if (auto ec = update_connection(*contextP))
                 {
                     spdlog::error("Error connecting mcpd sockets: {}", ec.message());
@@ -603,7 +622,7 @@ int main(int argc, char *argv[])
                 }
 
                 QMetaObject::invokeMethod(
-                    socketHandlerP, [contextP, socketHandlerP, data] ()
+                    socketHandlerP, [contextP, socketHandlerP, data, requestPacket] ()
                     {
                         socketHandlerP->setSockets(
                             contextP->sockets.cmdSock,
@@ -614,7 +633,8 @@ int main(int argc, char *argv[])
                         if (!contextP->socketsBusy.compare_exchange_strong(expected, true))
                             return;
 
-                        socketHandlerP->cmdTransaction(data);
+                        //socketHandlerP->cmdTransaction(data);
+                        socketHandlerP->cmdTransaction(requestPacket);
 
                         contextP->socketsBusy = false;
                     });
@@ -759,10 +779,11 @@ int main(int argc, char *argv[])
 
                          if (context.lvcCmd.cb_decodePackets->isChecked())
                          {
-                             CommandPacket requestPacket = {};
-                             std::memcpy(reinterpret_cast<u8 *>(&requestPacket),
-                                         request.data(),
-                                         std::min(sizeof(requestPacket), request.size()));
+                             //CommandPacket requestPacket = {};
+                             //std::memcpy(reinterpret_cast<u8 *>(&requestPacket),
+                             //            request.data(),
+                             //            std::min(sizeof(requestPacket), request.size()));
+                             auto requestPacket = command_packet_from_data(request);
                              std::stringstream ss;
                              format(ss, requestPacket, false);
                              logger->info("decoded request packet:\n{}\n", ss.str());
@@ -783,10 +804,11 @@ int main(int argc, char *argv[])
 
                          if (context.lvcCmd.cb_decodePackets->isChecked())
                          {
-                             CommandPacket responsePacket = {};
-                             std::memcpy(reinterpret_cast<u8 *>(&responsePacket),
-                                         response.data(),
-                                         std::min(sizeof(responsePacket), response.size()));
+                             //CommandPacket responsePacket = {};
+                             //std::memcpy(reinterpret_cast<u8 *>(&responsePacket),
+                             //            response.data(),
+                             //            std::min(sizeof(responsePacket), response.size()));
+                             auto responsePacket = command_packet_from_data(response);
                              std::stringstream ss;
                              format(ss, responsePacket, false);
                              logger->info("decoded response packet:\n{}\n", ss.str());

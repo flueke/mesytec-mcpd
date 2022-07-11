@@ -51,6 +51,28 @@ inline CommandPacket make_command_packet(
     return make_command_packet(static_cast<CommandType>(cmdId), mcpdId, data.data(), data.size());
 }
 
+template<typename View>
+CommandPacket command_packet_from_data(const View &view)
+{
+    CommandPacket ret = {};
+    std::memcpy(reinterpret_cast<u8 *>(&ret),
+                view.data(),
+                std::min(sizeof(ret), view.size() * sizeof(view[0])));
+    return ret;
+}
+
+template<typename Packet>
+std::vector<u16> packet_to_data(const Packet &packet)
+{
+    std::vector<u16> ret;
+    ret.resize(packet.bufferLength);
+    size_t bytesToCopy = std::min(packet.bufferLength * sizeof(u16), sizeof(Packet));
+    std::memcpy(reinterpret_cast<u8 *>(ret.data()),
+                reinterpret_cast<const u8 *>(&packet),
+                bytesToCopy);
+    return ret;
+}
+
 std::error_code mcpd_get_version(int sock, u8 mcpdId, McpdVersionInfo &vi);
 std::error_code mcpd_set_id(int sock, u8 mcpdId, u8 newId);
 

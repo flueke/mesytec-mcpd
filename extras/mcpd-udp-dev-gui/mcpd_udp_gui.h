@@ -128,6 +128,12 @@ class McpdSocketHandler: public QObject
             }
         }
 
+        void cmdTransaction(const mesytec::mcpd::CommandPacket &packet)
+        {
+            auto data = packet_to_data(packet);
+            cmdTransaction(data);
+        }
+
         void pollCmd()
         {
             std::vector<u16> dest;
