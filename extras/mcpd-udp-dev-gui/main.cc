@@ -34,20 +34,18 @@ using namespace mesytec::mcpd;
 static const auto DefaultEditorContents =
 R"(
 # header
-20			# buffer length in 16 bit words
+11			# buffer length in 16 bit words
 0x0			# buffer type
-20			# header length
+10			# header length
 1234		# buffer number
-0x1			# cmd id
+0			# cmd id
 0x0			# mcpd id | status
 0x0			# header timestamp lo
 0x0			# header timestamp mid
 0x0			# header timestamp hi
 0x0			# checksum
-
-# data (need to adjust buffer length manually!)
-# 0xaaaa
-# 0xbbbb
+# data
+0xffff
 )";
 
 template<typename View>
