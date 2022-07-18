@@ -48,6 +48,10 @@ R"(
 0xffff
 )";
 
+static const char *DefaultCommandHost = "mdll-0012";
+static const int DefaultCommandPort = 32768;
+static const int DefaultDataPort = 32769;
+
 template<typename View>
 void log_buffer(const std::shared_ptr<spdlog::logger> &logger,
                 const spdlog::level::level_enum &level,
@@ -454,9 +458,9 @@ int main(int argc, char *argv[])
     context.mainUi = mainUi.get();
 
     // gui: connection info
-    mainUi->le_cmdHost->setText(settings.value("CommandHost", "192.168.168.121").toString());
-    mainUi->spin_cmdPort->setValue(settings.value("CommandPort", 54321).toInt());
-    mainUi->spin_dataPort->setValue(settings.value("DataPort", 54322).toInt());
+    mainUi->le_cmdHost->setText(settings.value("CommandHost", DefaultCommandHost).toString());
+    mainUi->spin_cmdPort->setValue(settings.value("CommandPort", DefaultCommandPort).toInt());
+    mainUi->spin_dataPort->setValue(settings.value("DataPort", DefaultDataPort).toInt());
 
     // gui: log views and poll checkboxes for cmd and data ports
     {
