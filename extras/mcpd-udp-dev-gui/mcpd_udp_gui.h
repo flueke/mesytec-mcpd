@@ -110,7 +110,7 @@ class McpdSocketHandler: public QObject
             auto ec = mesytec::mcpd::write_to_socket(
                 cmdSock_,
                 reinterpret_cast<const u8 *>(data.data()),
-                data.size() / sizeof(data[0]),
+                data.size() * sizeof(data[0]),
                 bytesTransferred);
 
             if (ec)
