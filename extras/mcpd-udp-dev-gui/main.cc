@@ -610,9 +610,7 @@ int main(int argc, char *argv[])
             try
             {
                 auto text = editor->getText();
-                auto data = parse_packet_text(text);
-
-                auto requestPacket = command_packet_from_data(data);
+                auto requestData = parse_packet_text(text);
 
                 if (auto ec = update_connection(*contextP))
                 {
@@ -621,7 +619,7 @@ int main(int argc, char *argv[])
                 }
 
                 QMetaObject::invokeMethod(
-                    socketHandlerP, [contextP, socketHandlerP, data, requestPacket] ()
+                    socketHandlerP, [contextP, socketHandlerP, requestData] ()
                     {
                         socketHandlerP->setSockets(
                             contextP->sockets.cmdSock,
@@ -632,8 +630,7 @@ int main(int argc, char *argv[])
                         if (!contextP->socketsBusy.compare_exchange_strong(expected, true))
                             return;
 
-                        //socketHandlerP->cmdTransaction(data);
-                        socketHandlerP->cmdTransaction(requestPacket);
+                        socketHandlerP->cmdTransaction(requestData);
 
                         contextP->socketsBusy = false;
                     });
@@ -778,10 +775,6 @@ int main(int argc, char *argv[])
 
                          if (context.lvcCmd.cb_decodePackets->isChecked())
                          {
-                             //CommandPacket requestPacket = {};
-                             //std::memcpy(reinterpret_cast<u8 *>(&requestPacket),
-                             //            request.data(),
-                             //            std::min(sizeof(requestPacket), request.size()));
                              auto requestPacket = command_packet_from_data(request);
                              std::stringstream ss;
                              format(ss, requestPacket, false);
@@ -803,10 +796,6 @@ int main(int argc, char *argv[])
 
                          if (context.lvcCmd.cb_decodePackets->isChecked())
                          {
-                             //CommandPacket responsePacket = {};
-                             //std::memcpy(reinterpret_cast<u8 *>(&responsePacket),
-                             //            response.data(),
-                             //            std::min(sizeof(responsePacket), response.size()));
                              auto responsePacket = command_packet_from_data(response);
                              std::stringstream ss;
                              format(ss, responsePacket, false);
@@ -814,6 +803,11 @@ int main(int argc, char *argv[])
                          }
 
                          logger->info("======================================== end cmd transaction");
+                     });
+
+    QObject::connect(&socketHandler, &McpdSocketHandler::cmdPacketSent,
+                     &mainWin, [&] (const std::vector<u16> &request)
+                     {
                      });
 
     QObject::connect(&socketHandler, &McpdSocketHandler::cmdPacketReceived,
@@ -827,8 +821,9 @@ int main(int argc, char *argv[])
     QObject::connect(&socketHandler, &McpdSocketHandler::cmdError,
                      &mainWin, [&] (const std::error_code &ec)
                      {
-                         if (ec == std::errc::resource_unavailable_try_again)
-                             return;
+                         // Ignore socket read timeouts under linux
+                         //if (ec == std::errc::resource_unavailable_try_again)
+                         //    return;
 
                          auto logger = spdlog::get("cmd");
                          logger->error(ec.message());

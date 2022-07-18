@@ -78,6 +78,7 @@ class McpdSocketHandler: public QObject
             const std::vector<u16> &request,
             const std::vector<u16> &response);
 
+        void cmdPacketSent(const std::vector<u16> &data);
         void cmdPacketReceived(const std::vector<u16> &data);
         void cmdError(const std::error_code &ec);
 
@@ -115,6 +116,8 @@ class McpdSocketHandler: public QObject
             }
             else
             {
+                emit cmdPacketSent(data);
+
                 std::vector<u16> dest;
                 ec = receivePacket(cmdSock_, dest);
 
@@ -159,7 +162,7 @@ class McpdSocketHandler: public QObject
     private:
         std::error_code receivePacket(int sock, std::vector<u16> &dest)
         {
-            dest.resize(1500);
+            dest.resize(1500/sizeof(dest[0]));
             size_t bytesTransferred = 0;
 
             auto ec = mesytec::mcpd::receive_one_packet(
