@@ -451,7 +451,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    QMainWindow mainWin;
+    MainWindow mainWin;
     mainWin.setWindowTitle("mesytec usb gui");
     auto mainUi = std::make_unique<Ui::MainWindow>();
     mainUi->setupUi(&mainWin);
@@ -494,9 +494,6 @@ int main(int argc, char *argv[])
     // quit
     QObject::connect(mainUi->action_Quit, &QAction::triggered, [&] ()
                      {
-                        settings.setValue("MainWindowGeometry", mainWin.saveGeometry());
-                        settings.setValue("MainWindowState", mainWin.saveState());
-                        app.closeAllWindows();
                         app.quit();
                      });
 
@@ -545,6 +542,9 @@ int main(int argc, char *argv[])
     auto splitterWidth = mainUi->splitter->width();
     int partSize = splitterWidth / 3.0;
     mainUi->splitter->setSizes({ partSize, partSize, partSize });
+
+    // restore saved splitter state
+    mainUi->splitter->restoreState(settings.value("MainWindowSplitter").toByteArray());
 
     WidgetGeometrySaver geoSaver;
 
@@ -865,6 +865,9 @@ int main(int argc, char *argv[])
     settings.setValue("CommandHost", mainUi->le_cmdHost->text());
     settings.setValue("CommandPort", mainUi->spin_cmdPort->value());
     settings.setValue("DataPort", mainUi->spin_dataPort->value());
+    settings.setValue("MainWindowGeometry", mainWin.saveGeometry());
+    settings.setValue("MainWindowState", mainWin.saveState());
+    settings.setValue("MainWindowSplitter", mainUi->splitter->saveState());
 
     return ret;
 }
