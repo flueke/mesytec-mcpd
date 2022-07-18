@@ -1,12 +1,15 @@
 #ifndef __MESYTEC_MCPD_UDP_GUI_H__
 #define __MESYTEC_MCPD_UDP_GUI_H__
 
+#include <QDebug>
+#include <QApplication>
 #include <QLabel>
+#include <QMainWindow>
 #include <QStatusBar>
 #include <QSyntaxHighlighter>
 #include <QToolBar>
 #include <QWidget>
-#include <QDebug>
+#include <QWindow>
 
 #include <mesytec-mcpd/mesytec-mcpd.h>
 #include "code_editor.h"
@@ -177,6 +180,41 @@ class McpdSocketHandler: public QObject
 
         int cmdSock_ = -1;
         int dataSock_ = -1;
+};
+
+class MainWindow: public QMainWindow
+{
+    Q_OBJECT
+
+    public:
+        using QMainWindow::QMainWindow;
+
+        void closeEvent(QCloseEvent *event) override
+        {
+            bool allWindowsClosed = true;
+
+            for (auto window: QGuiApplication::topLevelWindows())
+            {
+                if (window != this->windowHandle())
+                {
+                    if (!window->close())
+                    {
+                        qDebug() << __PRETTY_FUNCTION__ << "window" << window << "refused to close";
+                        window->raise();
+                        allWindowsClosed = false;
+                        break;
+                    }
+                }
+            }
+
+            if (!allWindowsClosed)
+            {
+                event->ignore();
+                return;
+            }
+
+            QMainWindow::closeEvent(event);
+        }
 };
 
 #endif /* __MESYTEC_MCPD_UDP_GUI_H__ */
