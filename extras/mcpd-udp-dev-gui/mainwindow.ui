@@ -45,7 +45,7 @@
          <item>
           <widget class="QLineEdit" name="le_cmdHost">
            <property name="text">
-            <string>192.168.168.121</string>
+            <string>mdll-0012</string>
            </property>
           </widget>
          </item>
