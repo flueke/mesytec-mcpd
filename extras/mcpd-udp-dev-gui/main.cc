@@ -862,5 +862,9 @@ int main(int argc, char *argv[])
     socketThread.exit();
     socketThread.wait();
 
+    settings.setValue("CommandHost", mainUi->le_cmdHost->text());
+    settings.setValue("CommandPort", mainUi->spin_cmdPort->value());
+    settings.setValue("DataPort", mainUi->spin_dataPort->value());
+
     return ret;
 }
