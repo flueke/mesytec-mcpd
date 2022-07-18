@@ -614,9 +614,6 @@ int main(int argc, char *argv[])
 
                 auto requestPacket = command_packet_from_data(data);
 
-                requestPacket.headerChecksum = 0;
-                requestPacket.headerChecksum = calculate_checksum(requestPacket);
-
                 if (auto ec = update_connection(*contextP))
                 {
                     spdlog::error("Error connecting mcpd sockets: {}", ec.message());
