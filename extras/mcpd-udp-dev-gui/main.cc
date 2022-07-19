@@ -777,7 +777,7 @@ int main(int argc, char *argv[])
                          {
                              auto requestPacket = command_packet_from_data(request);
                              std::stringstream ss;
-                             format(ss, requestPacket, false);
+                             format(ss, requestPacket, true);
                              logger->info("decoded request packet:\n{}\n", ss.str());
                          }
 
@@ -798,8 +798,19 @@ int main(int argc, char *argv[])
                          {
                              auto responsePacket = command_packet_from_data(response);
                              std::stringstream ss;
-                             format(ss, responsePacket, false);
+                             format(ss, responsePacket, true);
                              logger->info("decoded response packet:\n{}\n", ss.str());
+
+                             size_t responseBytes = response.size() * sizeof(response[0]);
+                             size_t actualDataWords = responseBytes / sizeof(u16) - CommandPacketHeaderWords;
+                             size_t headerDataLen = get_data_length(responsePacket);
+
+                             if (headerDataLen != actualDataWords)
+                             {
+                                 logger->warn("calculated data words from MCPD packet header = {}, actual data words from UDP packet = {}",
+                                              headerDataLen, actualDataWords);
+                             }
+
                          }
 
                          logger->info("======================================== end cmd transaction");
