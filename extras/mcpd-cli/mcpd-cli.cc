@@ -1504,6 +1504,7 @@ int main(int argc, char *argv[])
             return 1;
         }
 
+#if 0 // FIXME: temporarily disabled until the MCPD+MDLL can handle the GetVersion command
         {
             McpdVersionInfo vi = {};
             ec = mcpd_get_version(ctx.cmdSock, ctx.mcpdId, vi);
@@ -1519,6 +1520,7 @@ int main(int argc, char *argv[])
                          ctx.mcpdAddress, ctx.mcpdPort, ctx.mcpdId,
                          vi.cpu[0], vi.cpu[1], vi.fpga[0], vi.fpga[1]);
         }
+#endif
     }
 
 
