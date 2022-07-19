@@ -122,7 +122,7 @@ std::error_code prepare_command_packet(
 
     dest = {};
     dest.bufferType = CommandPacketBufferType;
-    dest.headerLength = CommandPacketHeaderLen;
+    dest.headerLength = CommandPacketHeaderWords;
     dest.cmd = static_cast<u8>(cmd);
     dest.deviceId = mcpdId;
 
