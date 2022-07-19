@@ -174,7 +174,7 @@ class McpdSocketHandler: public QObject
                 bytesTransferred,
                 PacketReceiveTimeout_ms);
 
-            dest.resize(bytesTransferred);
+            dest.resize(bytesTransferred/sizeof(u16));
             return ec;
         }
 
