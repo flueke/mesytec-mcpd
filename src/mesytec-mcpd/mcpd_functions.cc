@@ -151,7 +151,10 @@ std::error_code mcpd_get_version(int sock, u8 mcpdId, McpdVersionInfo &vi)
         return ec;
 
     if (get_data_length(response) != 3)
+    {
+        spdlog::error("GetVersion response too short, expected 3 data words, got {}", get_data_length(response));
         return make_error_code(std::errc::protocol_error);
+    }
 
     vi.cpu[0] = response.data[0];
     vi.cpu[1] = response.data[1];
