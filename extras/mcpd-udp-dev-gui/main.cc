@@ -82,10 +82,7 @@ void log_mcpd_buffer(const std::shared_ptr<spdlog::logger> &logger,
 
     logger->log(level, "begin buffer '{}' (size={})", header, buffer.size());
 
-    int col = 0;
-    auto it = std::begin(buffer);
-
-    while (it != std::end(buffer))
+    for (auto it = std::begin(buffer); it != std::end(buffer); )
     {
         std::string line = "  ";
 
