@@ -1350,6 +1350,320 @@ struct CustomCommand: public BaseCommand
     }
 };
 
+struct MdllSetThresholds: public BaseCommand
+{
+    u16 thresholdX_;
+    u16 thresholdY_;
+    u16 thresholdAnode_;
+
+    MdllSetThresholds(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "mdll_set_thresholds",
+                [this] (const lyra::group &) { this->run_ = true; }
+                )
+            .help("Set MDLL thresholds")
+
+            .add_argument(
+                lyra::arg(thresholdX_, "thresholdX")
+                .required()
+                )
+
+            .add_argument(
+                lyra::arg(thresholdY_, "thresholdY")
+                .required()
+                )
+
+            .add_argument(
+                lyra::arg(thresholdAnode_, "thresholdAnode")
+                .required()
+                )
+            );
+    }
+
+    int runCommand(CliContext &ctx)
+    {
+        spdlog::debug("{}: thresholdX={}, thresholdY={}, thresholdAnode={} ",
+                      __PRETTY_FUNCTION__, thresholdX_, thresholdY_, thresholdAnode_);
+
+        auto ec = mdll_set_thresholds(
+            ctx.cmdSock, thresholdX_, thresholdY_, thresholdAnode_);
+
+        if (ec)
+        {
+            spdlog::error("mdll_set_thresholds: {} ({}, {})",
+                          ec.message(), ec.value(), ec.category().name());
+            return 1;
+        }
+
+        return 0;
+    }
+};
+
+struct MdllSetSpectrum: public BaseCommand
+{
+    u16 shiftX_;
+    u16 shiftY_;
+    u16 scaleX_;
+    u16 scaleY_;
+
+    MdllSetSpectrum(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "mdll_set_spectrum",
+                [this] (const lyra::group &) { this->run_ = true; }
+                )
+            .help("Set MDLL spectrum")
+
+            .add_argument(
+                lyra::arg(shiftX_, "shiftX")
+                .required()
+                )
+
+            .add_argument(
+                lyra::arg(shiftY_, "shiftY")
+                .required()
+                )
+
+            .add_argument(
+                lyra::arg(scaleX_, "scaleX")
+                .required()
+                )
+
+            .add_argument(
+                lyra::arg(scaleY_, "scaleY")
+                .required()
+                )
+            );
+    }
+
+    int runCommand(CliContext &ctx)
+    {
+        spdlog::debug("{}: shiftX={}, shiftY={}, scaleX={}, scaleY={} ",
+                      __PRETTY_FUNCTION__, shiftX_, shiftY_, scaleX_, scaleY_);
+
+        auto ec = mdll_set_spectrum(
+            ctx.cmdSock, shiftX_, shiftY_, scaleX_, scaleY_);
+
+        if (ec)
+        {
+            spdlog::error("mdll_set_spectrum: {} ({}, {})",
+                          ec.message(), ec.value(), ec.category().name());
+            return 1;
+        }
+
+        return 0;
+    }
+};
+
+struct MdllSetPulser: public BaseCommand
+{
+    bool enable_;
+    u16 amplitude_;
+    u16 position_;
+
+    MdllSetPulser(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "mdll_set_pulser",
+                [this] (const lyra::group &) { this->run_ = true; }
+                )
+            .help("Set MDLL pulser")
+
+            .add_argument(
+                lyra::arg(enable_, "enable")
+                .required()
+                )
+
+            .add_argument(
+                lyra::arg(amplitude_, "amplitude")
+                .required()
+                .help("amplitude: 0-3")
+                )
+
+            .add_argument(
+                lyra::arg(position_, "position")
+                .required()
+                .help("0: lower-left, 1: middle, 2: upper-right")
+                )
+
+            );
+    }
+
+    int runCommand(CliContext &ctx)
+    {
+        spdlog::debug("{}: enable={}, amplitude={}, position={} ",
+                      __PRETTY_FUNCTION__, enable_, amplitude_, position_);
+
+        auto ec = mdll_set_pulser(
+            ctx.cmdSock, enable_, amplitude_,
+            static_cast<MdllChannelPosition>(position_));
+
+        if (ec)
+        {
+            spdlog::error("mdll_set_pulser: {} ({}, {})",
+                          ec.message(), ec.value(), ec.category().name());
+            return 1;
+        }
+
+        return 0;
+    }
+};
+
+
+struct MdllSetTxDataSet: public BaseCommand
+{
+    u16 ds_;
+
+    MdllSetTxDataSet(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "mdll_set_tx_data_set",
+                [this] (const lyra::group &) { this->run_ = true; }
+                )
+            .help("Set MDLL TX data set")
+
+            .add_argument(
+                lyra::arg(ds_, "dataset")
+                .required()
+                .help("0: Default, 1: Timings")
+                )
+            );
+    }
+
+    int runCommand(CliContext &ctx)
+    {
+        spdlog::debug("{}: ds={} ", __PRETTY_FUNCTION__, ds_);
+
+        auto ec = mdll_set_tx_data_set(
+            ctx.cmdSock, static_cast<MdllTxDataSet>(ds_));
+
+        if (ec)
+        {
+            spdlog::error("mdll_set_tx_data_set: {} ({}, {})",
+                          ec.message(), ec.value(), ec.category().name());
+            return 1;
+        }
+
+        return 0;
+    }
+};
+
+struct MdllSetTimingWindow: public BaseCommand
+{
+    unsigned tSumLimitXLow_;
+    unsigned tSumLimitXHigh_;
+    unsigned tSumLimitYLow_;
+    unsigned tSumLimitYHigh_;
+
+    MdllSetTimingWindow(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "mdll_set_timing_window",
+                [this] (const lyra::group &) { this->run_ = true; }
+                )
+            .help("Set MDLL timing window")
+
+            .add_argument(
+                lyra::arg(tSumLimitXLow_, "X low")
+                .required()
+                )
+
+            .add_argument(
+                lyra::arg(tSumLimitXHigh_, "X high")
+                .required()
+                )
+
+            .add_argument(
+                lyra::arg(tSumLimitYLow_, "Y low")
+                .required()
+                )
+
+            .add_argument(
+                lyra::arg(tSumLimitYHigh_, "Y high")
+                .required()
+                )
+            );
+    }
+
+    int runCommand(CliContext &ctx)
+    {
+        spdlog::debug("{}: xLow={}, xHigh={}, yLow={}, yHigh={} ",
+                      __PRETTY_FUNCTION__,
+                      tSumLimitXLow_, tSumLimitXHigh_,
+                      tSumLimitYLow_, tSumLimitYHigh_);
+
+        auto ec = mdll_set_timing_window(
+            ctx.cmdSock,
+            tSumLimitXLow_,
+            tSumLimitXHigh_,
+            tSumLimitYLow_,
+            tSumLimitYHigh_);
+
+        if (ec)
+        {
+            spdlog::error("mdll_set_timing_window: {} ({}, {})",
+                          ec.message(), ec.value(), ec.category().name());
+            return 1;
+        }
+
+        return 0;
+    }
+};
+
+struct MdllSetEnergyWindow: public BaseCommand
+{
+    u16 lowerThreshold_;
+    u16 upperThreshold_;
+
+    MdllSetEnergyWindow(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "mdll_set_energy_window",
+                [this] (const lyra::group &) { this->run_ = true; }
+                )
+            .help("Set MDLL energy window")
+
+            .add_argument(
+                lyra::arg(lowerThreshold_, "lower threshold")
+                .required()
+                )
+
+            .add_argument(
+                lyra::arg(upperThreshold_, "upper threshold")
+                .required()
+                )
+
+            );
+    }
+
+    int runCommand(CliContext &ctx)
+    {
+        spdlog::debug("{}: lowerThreshold={}, upperThreshold={} ",
+                      __PRETTY_FUNCTION__, lowerThreshold_, upperThreshold_);
+
+        auto ec = mdll_set_energy_window(
+            ctx.cmdSock,
+            lowerThreshold_,
+            upperThreshold_);
+
+        if (ec)
+        {
+            spdlog::error("mdll_set_energy_window: {} ({}, {})",
+                          ec.message(), ec.value(), ec.category().name());
+            return 1;
+        }
+
+        return 0;
+    }
+};
+
 int main(int argc, char *argv[])
 {
     spdlog::set_level(spdlog::level::info);
@@ -1412,6 +1726,13 @@ int main(int argc, char *argv[])
     commands.emplace_back(std::make_unique<DaqCommand>(cli));
     commands.emplace_back(std::make_unique<ReadoutCommand>(cli));
     commands.emplace_back(std::make_unique<ReplayCommand>(cli));
+
+    commands.emplace_back(std::make_unique<MdllSetThresholds>(cli));
+    commands.emplace_back(std::make_unique<MdllSetSpectrum>(cli));
+    commands.emplace_back(std::make_unique<MdllSetTxDataSet>(cli));
+    commands.emplace_back(std::make_unique<MdllSetTimingWindow>(cli));
+    commands.emplace_back(std::make_unique<MdllSetEnergyWindow>(cli));
+    commands.emplace_back(std::make_unique<MdllSetPulser>(cli));
 
     commands.emplace_back(std::make_unique<CustomCommand>(cli));
 
