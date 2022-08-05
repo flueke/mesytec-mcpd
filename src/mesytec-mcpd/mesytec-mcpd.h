@@ -4,5 +4,6 @@
 #include "git_version.h"
 #include "mcpd_core.h"
 #include "mcpd_functions.h"
+#include "mdll_functions.h"
 
 #endif /* __MESYTEC_MCPD_H__ */

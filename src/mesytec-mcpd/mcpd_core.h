@@ -64,6 +64,7 @@ static_assert(sizeof(DataPacket) == MaxPayloadSize,
 static const u32 CommandPacketBufferType = 0x8000;
 static const u32 CommandPacketHeaderWords = 10u;
 static const u16 BufferTerminator = 0xFFFFu;
+static const u32 MdllDataBufferType = 0x0002;
 
 enum class CommandType: u16
 {
@@ -97,6 +98,19 @@ enum class CommandType: u16
     ReadIds = 36, // FIXME: not in docs, scans the busses for MPSD-8 modules
 
     GetVersion = 51,
+
+    // MDLL specific commands (in classic and the modern MVLC/MDPP based versions)
+    MdllSetTresholds = 60,
+    MdllSetSpectrum = 61,
+    MdllSetPulser = 65,
+    MdllSetTxDataSet = 66,
+    MdllSetTimingWindow = 67,
+    MdllSetEnergyWindow = 68,
+
+    // MDLL modern version only: generic register access.
+    MdllWriteRegister = 80,
+    MdllReadRegister = 81,
+
 };
 
 inline const char *to_string(const CommandType &cmd)
@@ -130,6 +144,15 @@ inline const char *to_string(const CommandType &cmd)
         case CommandType::SetFastTxMode: return "SetFastTxMode";
         case CommandType::ReadIds: return "ReadIds";
         case CommandType::GetVersion: return "GetVersion";
+
+        case CommandType::MdllSetTresholds: return "MdllSetTresholds";
+        case CommandType::MdllSetSpectrum: return "MdllSetSpectrum";
+        case CommandType::MdllSetPulser: return "MdllSetPulser";
+        case CommandType::MdllSetTxDataSet: return "MdllSetTxDataSet";
+        case CommandType::MdllSetTimingWindow: return "MdllSetTimingWindow";
+        case CommandType::MdllSetEnergyWindow: return "MdllSetEnergyWindow";
+        case CommandType::MdllWriteRegister: return "MdllWriteRegister";
+        case CommandType::MdllReadRegister: return "MdllReadRegister";
     }
 
     return "<unknown CommandType>";
@@ -268,6 +291,19 @@ enum class EventType
 {
     Neutron,
     Trigger
+};
+
+enum class MdllChannelPosition
+{
+    LowerLeft,
+    Middle,
+    UpperRight,
+};
+
+enum class MdllTxDataSet
+{
+    Default,
+    Timings,
 };
 
 inline const char *to_string(const EventType &et)

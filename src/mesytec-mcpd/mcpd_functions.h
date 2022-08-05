@@ -51,6 +51,28 @@ inline CommandPacket make_command_packet(
     return make_command_packet(static_cast<CommandType>(cmdId), mcpdId, data.data(), data.size());
 }
 
+// Variants without the mcpdId parameter. Use when creating MDLL command packets.
+inline CommandPacket make_command_packet(
+    const CommandType &cmd,
+    const u16 *data, u16 dataSize)
+{
+    return make_command_packet(cmd, 0, data, dataSize);
+}
+
+inline CommandPacket make_command_packet(
+    const CommandType &cmd,
+    const std::vector<u16> &data = {})
+{
+    return make_command_packet(cmd, data.data(), data.size());
+}
+
+inline CommandPacket make_command_packet(
+    u16 cmdId,
+    const std::vector<u16> &data = {})
+{
+    return make_command_packet(static_cast<CommandType>(cmdId), data.data(), data.size());
+}
+
 template<typename View>
 CommandPacket command_packet_from_data(const View &view)
 {
