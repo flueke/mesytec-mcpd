@@ -281,7 +281,11 @@ QVector<PreparsedLine> pre_parse(QTextStream &input)
         if (line.isEmpty())
             continue;
 
+#if QT_VERSION < QT_VERSION_CHECK(5, 14, 0)
         auto parts = line.split(reWordSplit, QString::SkipEmptyParts);
+#else
+        auto parts = line.split(reWordSplit, Qt::SkipEmptyParts);
+#endif
 
         if (parts.isEmpty())
             continue;
