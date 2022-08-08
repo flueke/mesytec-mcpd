@@ -183,6 +183,12 @@ std::error_code mcpd_set_dac_output_values(
 std::error_code mcpd_scan_busses(
     int sock, u8 mcpdId, std::array<u16, McpdBusCount> &dest);
 
+std::error_code mcpd_write_register(
+    int sock, u8 mcpdId, u16 address, u32 value);
+
+std::error_code mcpd_read_register(
+    int sock, u8 mcpdId, u16 address, u32 &dest);
+
 //
 // MPSD specific
 //

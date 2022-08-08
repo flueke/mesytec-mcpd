@@ -107,9 +107,9 @@ enum class CommandType: u16
     MdllSetTimingWindow = 67,
     MdllSetEnergyWindow = 68,
 
-    // MDLL modern version only: generic register access.
-    MdllWriteRegister = 80,
-    MdllReadRegister = 81,
+    // MCPD/MDLL modern version only: generic register access.
+    WriteRegister = 80,
+    ReadRegister = 81,
 
 };
 
@@ -151,8 +151,9 @@ inline const char *to_string(const CommandType &cmd)
         case CommandType::MdllSetTxDataSet: return "MdllSetTxDataSet";
         case CommandType::MdllSetTimingWindow: return "MdllSetTimingWindow";
         case CommandType::MdllSetEnergyWindow: return "MdllSetEnergyWindow";
-        case CommandType::MdllWriteRegister: return "MdllWriteRegister";
-        case CommandType::MdllReadRegister: return "MdllReadRegister";
+
+        case CommandType::WriteRegister: return "WriteRegister";
+        case CommandType::ReadRegister: return "ReadRegister";
     }
 
     return "<unknown CommandType>";
@@ -256,8 +257,8 @@ enum class CounterSource: u16
     DigitalIn1 = 4,
     DigitalIn2 = 5,
     AllDigitalAndAdcInputs = 6,
-    EventCounter,
-    MasterClock,
+    EventCounter = 7,
+    MasterClock = 8,
 };
 
 enum class ChannelPosition

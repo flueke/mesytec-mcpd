@@ -574,6 +574,71 @@ std::error_code mcpd_scan_busses(
     return {};
 }
 
+std::error_code mcpd_write_register(
+    int sock, u8 mcpdId, u16 address, u32 value)
+{
+    std::array<u16, 3> data =
+    {
+        address,
+        static_cast<u16>(value & 0xFFFF),
+        static_cast<u16>(value >> 16),
+    };
+
+    auto request = make_command_packet(CommandType::WriteRegister, mcpdId, data.data(), data.size());
+    CommandPacket response = {};
+
+    if (auto ec = command_transaction(sock, request, response))
+        return ec;
+
+    if (get_data_length(response) < get_data_length(request))
+    {
+        spdlog::warn("WriteRegister response too short, expected {} data words, got {}",
+                     get_data_length(response), get_data_length(request));
+    }
+
+    if (!std::equal(response.data, response.data + get_data_length(response),
+                    request.data))
+    {
+        spdlog::warn("WriteRegister response data does not match request data");
+    }
+
+    return {};
+}
+
+std::error_code mcpd_read_register(
+    int sock, u8 mcpdId, u16 address, u32 &dest)
+{
+    std::array<u16, 1> data =
+    {
+        address,
+    };
+
+    auto request = make_command_packet(CommandType::ReadRegister, mcpdId, data.data(), data.size());
+    CommandPacket response = {};
+
+    if (auto ec = command_transaction(sock, request, response))
+        return ec;
+
+    if (get_data_length(response) < 3)
+    {
+        spdlog::error("ReadRegister response too short, expected 3 data words, got {}",
+                      get_data_length(response));
+        return make_error_code(std::errc::protocol_error);
+    }
+
+    // check address
+    if (response.data[0] != address)
+    {
+        spdlog::warn("ReadRegister: request address != response address: 0x{:04X} != 0x{:04X}",
+                     address, response.data[0]);
+    }
+
+    dest = response.data[1] | (response.data[2] << 16);
+
+    return {};
+}
+
+
 #if 0 // untested/not implemented according to Gregor
 std::error_code mcpd_send_serial_string(
     int sock, u8 mcpdId,
