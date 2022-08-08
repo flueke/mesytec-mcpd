@@ -578,6 +578,28 @@ struct ScanBussesCommand: public BaseCommand
     }
 };
 
+namespace
+{
+
+// Helper function using std::stoul() with base=0 to allow parsing decimal, hex
+// and octal values.
+template<typename T>
+lyra::parser_result parse_unsigned_value(T &dest, const std::string &input)
+{
+    try
+    {
+        dest = std::stoul(input, nullptr, 0);
+        return lyra::parser_result::ok(lyra::parser_result_type::matched);
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+        return lyra::parser_result::error(lyra::parser_result_type::no_match, e.what());
+    }
+}
+
+}
+
 struct WriteRegisterCommand: public BaseCommand
 {
     u16 address_;
@@ -593,12 +615,12 @@ struct WriteRegisterCommand: public BaseCommand
             .help("write MCPD/MDLL internal register (modern versions only)")
 
             .add_argument(
-                lyra::arg(address_, "address")
+                lyra::arg([&] (const std::string &str) { return parse_unsigned_value(address_, str); }, "address")
                 .required()
                 )
 
             .add_argument(
-                lyra::arg(value_, "value")
+                lyra::arg([&] (const std::string &str) { return parse_unsigned_value(value_, str); }, "value")
                 .required()
                 )
             );
@@ -636,7 +658,7 @@ struct ReadRegisterCommand: public BaseCommand
             .help("read MCPD/MDLL internal register (modern versions only)")
 
             .add_argument(
-                lyra::arg(address_, "address")
+                lyra::arg([&] (const std::string &str) { return parse_unsigned_value(address_, str); }, "address")
                 .required()
                 )
             );
