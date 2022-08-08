@@ -1,4 +1,4 @@
-// Copyright 2018-2020 René Ferdinand Rivera Morell
+// Copyright 2018-2022 René Ferdinand Rivera Morell
 // Copyright 2017 Two Blue Cubes Ltd. All rights reserved.
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -20,6 +20,7 @@
 #include "lyra/literal.hpp"
 #include "lyra/main.hpp"
 #include "lyra/opt.hpp"
+#include "lyra/option_style.hpp"
 #include "lyra/parser.hpp"
 #include "lyra/parser_result.hpp"
 #include "lyra/val.hpp"

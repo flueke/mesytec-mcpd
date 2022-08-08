@@ -1,4 +1,5 @@
-// Copyright 2018-2019 René Ferdinand Rivera Morell
+// Copyright 2018-2022 René Ferdinand Rivera Morell
+// Copyright 2021 Max Ferger
 // Copyright 2017 Two Blue Cubes Ltd. All rights reserved.
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -14,8 +15,9 @@
 #include "lyra/detail/result.hpp"
 #include "lyra/detail/tokens.hpp"
 #include "lyra/detail/trait_utils.hpp"
-#include "lyra/val.hpp"
+#include "lyra/option_style.hpp"
 #include "lyra/parser_result.hpp"
+#include "lyra/val.hpp"
 
 #include <memory>
 #include <string>
@@ -23,63 +25,19 @@
 
 namespace lyra {
 
-/* tag::reference[]
-
-[#lyra_parser_customization]
-= `lyra::parser_customization`
-
-Customization interface for parsing of options.
-
-[source]
-----
-virtual std::string token_delimiters() const = 0;
-----
-
-Specifies the characters to use for splitting a cli argument into the option
-and its value (if any).
-
-[source]
-----
-virtual std::string option_prefix() const = 0;
-----
-
-Specifies the characters to use as possible prefix, either single or double,
-for all options.
-
-end::reference[] */
-struct parser_customization
-{
-	virtual std::string token_delimiters() const = 0;
-	virtual std::string option_prefix() const = 0;
-};
-
-/* tag::reference[]
-
-[#lyra_default_parser_customization]
-= `lyra::default_parser_customization`
-
-Is-a `lyra::parser_customization` that defines token delimiters as space (" ")
-or equal (`=`). And specifies the option prefix character as dash (`-`)
-resulting in long options with `--` and short options with `-`.
-
-This customization is used as the default if none is given.
-
-end::reference[] */
-struct default_parser_customization : parser_customization
-{
-	std::string token_delimiters() const override { return " ="; }
-	std::string option_prefix() const override { return "-"; }
-};
-
 namespace detail {
+
 class parse_state
 {
 	public:
 	parse_state(parser_result_type type,
-		token_iterator const & remaining_tokens, size_t parsed_tokens = 0)
+		token_iterator const & remaining_tokens,
+		size_t parsed_tokens = 0)
 		: result_type(type)
 		, tokens(remaining_tokens)
-	{}
+	{
+		(void)parsed_tokens;
+	}
 
 	parser_result_type type() const { return result_type; }
 	token_iterator remainingTokens() const { return tokens; }
@@ -112,7 +70,29 @@ struct parser_cardinality
 
 	// If one or more values are expected, it's required.
 	bool is_required() const { return (minimum > 0); }
+
+	void optional()
+	{
+		minimum = 0;
+		maximum = 1;
+	}
+	void required(size_t n = 1)
+	{
+		minimum = n;
+		maximum = n;
+	}
+	void counted(size_t n)
+	{
+		minimum = n;
+		maximum = n;
+	}
+	void bounded(size_t n, size_t m)
+	{
+		minimum = n;
+		maximum = m;
+	}
 };
+
 } // namespace detail
 
 /* tag::reference[]
@@ -128,9 +108,8 @@ class parse_result : public detail::basic_result<detail::parse_state>
 	public:
 	using base = detail::basic_result<detail::parse_state>;
 	using base::basic_result;
-	using base::logicError;
+	using base::error;
 	using base::ok;
-	using base::runtimeError;
 
 	parse_result(const base & other)
 		: base(other)
@@ -156,52 +135,63 @@ class parser
 
 	using help_text = std::vector<help_text_item>;
 
-	virtual help_text get_help_text() const { return {}; }
-	virtual std::string get_usage_text() const { return ""; }
-	virtual std::string get_description_text() const { return ""; }
+	[[deprecated]] help_text get_help_text() const { return {}; }
+	[[deprecated]] std::string get_usage_text() const { return ""; }
+	[[deprecated]] std::string get_description_text() const { return ""; }
 
-	virtual ~parser() = default;
-
-	virtual parse_result parse(std::string const & exe_name,
-		detail::token_iterator const & tokens,
-		parser_customization const & customize) const
+	virtual help_text get_help_text(const option_style &) const { return {}; }
+	virtual std::string get_usage_text(const option_style &) const
 	{
-		return this->parse(tokens, customize);
+		return "";
+	}
+	virtual std::string get_description_text(const option_style &) const
+	{
+		return "";
 	}
 
-	virtual parse_result parse(detail::token_iterator const & tokens,
-		parser_customization const & customize) const = 0;
+	virtual ~parser() = default;
 
 	virtual detail::parser_cardinality cardinality() const { return { 0, 1 }; }
 	bool is_optional() const { return cardinality().is_optional(); }
 	virtual bool is_group() const { return false; }
 	virtual result validate() const { return result::ok(); }
 	virtual std::unique_ptr<parser> clone() const { return nullptr; }
-	virtual bool is_named(const std::string & n) const { return false; }
+	virtual bool is_named(const std::string & n) const
+	{
+		(void)n;
+		return false;
+	}
 	virtual const parser * get_named(const std::string & n) const
 	{
 		if (is_named(n)) return this;
 		return nullptr;
 	}
 	virtual size_t get_value_count() const { return 0; }
-	virtual std::string get_value(size_t i) const { return ""; }
+	virtual std::string get_value(size_t i) const
+	{
+		(void)i;
+		return "";
+	}
+
+	virtual parse_result parse(detail::token_iterator const & tokens,
+		const option_style & style) const = 0;
 
 	protected:
-	void print_help_text(std::ostream & os) const
+	void print_help_text(std::ostream & os, const option_style & style) const
 	{
-		std::string usage_test = get_usage_text();
+		std::string usage_test = get_usage_text(style);
 		if (!usage_test.empty())
 			os << "USAGE:\n"
-			<< "  " << get_usage_text() << "\n\n";
+			   << "  " << get_usage_text(style) << "\n\n";
 
-		std::string description_test = get_description_text();
+		std::string description_test = get_description_text(style);
 		if (!description_test.empty())
-			os << get_description_text() << "\n";
+			os << get_description_text(style) << "\n";
 
 		os << "OPTIONS, ARGUMENTS:\n";
 		const std::string::size_type left_col_size = 26 - 3;
 		const std::string left_pad(left_col_size, ' ');
-		for (auto const & cols : get_help_text())
+		for (auto const & cols : get_help_text(style))
 		{
 			if (cols.option.size() > left_pad.size())
 				os << "  " << cols.option << "\n  " << left_pad << " "
@@ -251,7 +241,7 @@ The set of help texts for any options in the sub-parsers to this one, if any.
 
 [source]
 ----
-virtual help_text get_help_text() const;
+virtual help_text get_help_text(const option_style &) const;
 ----
 
 Collects, and returns, the set of help items for the sub-parser arguments in
@@ -265,7 +255,7 @@ the stream operator.
 
 [source]
 ----
-virtual std::string get_usage_text() const;
+virtual std::string get_usage_text(const option_style &) const;
 ----
 
 Returns the formatted `USAGE` text for this parser, and any contained
@@ -276,7 +266,7 @@ sub-parsers. This is called to print out the help text from the stream operator.
 
 [source]
 ----
-virtual std::string get_description_text() const;
+virtual std::string get_description_text(const option_style &) const;
 ----
 
 Returns the description text for this, and any contained sub-parsers. This is
@@ -299,7 +289,7 @@ A parser that can be composed with other parsers using `operator|`. Composing
 two `composable_parser` instances generates a `cli` parser.
 
 end::reference[] */
-template <typename DerivedT>
+template <typename Derived>
 class composable_parser : public parser
 {};
 
@@ -325,28 +315,37 @@ class bound_parser : public composable_parser<Derived>
 	explicit bound_parser(std::shared_ptr<detail::BoundRef> const & ref)
 		: m_ref(ref)
 	{
-		if (m_ref->isContainer()) m_cardinality = { 0, 0 };
+		if (m_ref->isContainer())
+			m_cardinality = { 0, 0 };
 		else
 			m_cardinality = { 0, 1 };
 	}
-	bound_parser(std::shared_ptr<detail::BoundRef> const & ref, std::string const & hint)
-		: m_ref(ref), m_hint(hint)
+	bound_parser(
+		std::shared_ptr<detail::BoundRef> const & ref, std::string const & hint)
+		: m_ref(ref)
+		, m_hint(hint)
 	{
-		if (m_ref->isContainer()) m_cardinality = { 0, 0 };
+		if (m_ref->isContainer())
+			m_cardinality = { 0, 0 };
 		else
 			m_cardinality = { 0, 1 };
 	}
 
 	public:
-
-	enum class ctor_lambda_e { val };
+	enum class ctor_lambda_e
+	{
+		val
+	};
 
 	template <typename Reference>
 	bound_parser(Reference & ref, std::string const & hint);
 
 	template <typename Lambda>
-	bound_parser(Lambda const & ref, std::string const & hint,
-	typename std::enable_if<detail::is_invocable<Lambda>::value, ctor_lambda_e>::type = ctor_lambda_e::val);
+	bound_parser(Lambda const & ref,
+		std::string const & hint,
+		typename std::enable_if<detail::is_invocable<Lambda>::value,
+			ctor_lambda_e>::type
+		= ctor_lambda_e::val);
 
 	template <typename T>
 	explicit bound_parser(detail::BoundVal<T> && val)
@@ -367,9 +366,11 @@ class bound_parser : public composable_parser<Derived>
 	{
 		return m_cardinality;
 	}
-	std::string hint() const { return m_hint; }
+	std::string hint() const;
+	Derived & hint(std::string const & hint);
 
-	template <typename T, typename... Rest,
+	template <typename T,
+		typename... Rest,
 		typename std::enable_if<!detail::is_invocable<T>::value, int>::type = 0>
 	Derived & choices(T val0, Rest... rest);
 	template <typename Lambda,
@@ -384,12 +385,18 @@ class bound_parser : public composable_parser<Derived>
 		return make_clone<Derived>(this);
 	}
 
-	virtual bool is_named(const std::string &n) const override
+	virtual bool is_named(const std::string & n) const override
 	{
 		return n == m_hint;
 	}
-	virtual size_t get_value_count() const override { return m_ref->get_value_count(); }
-	virtual std::string get_value(size_t i) const override { return m_ref->get_value(i); }
+	virtual size_t get_value_count() const override
+	{
+		return m_ref->get_value_count();
+	}
+	virtual std::string get_value(size_t i) const override
+	{
+		return m_ref->get_value(i);
+	}
 };
 
 /* tag::reference[]
@@ -424,18 +431,18 @@ end::reference[] */
 template <typename Derived>
 template <typename Reference>
 bound_parser<Derived>::bound_parser(Reference & ref, std::string const & hint)
-	: bound_parser(std::make_shared<detail::BoundValueRef<Reference>>(ref), hint)
-{
-}
+	: bound_parser(
+		std::make_shared<detail::BoundValueRef<Reference>>(ref), hint)
+{}
 
 template <typename Derived>
 template <typename Lambda>
-bound_parser<Derived>::bound_parser(
-	Lambda const & ref, std::string const & hint,
-	typename std::enable_if<detail::is_invocable<Lambda>::value, ctor_lambda_e>::type)
+bound_parser<Derived>::bound_parser(Lambda const & ref,
+	std::string const & hint,
+	typename std::enable_if<detail::is_invocable<Lambda>::value,
+		ctor_lambda_e>::type)
 	: bound_parser(std::make_shared<detail::BoundLambda<Lambda>>(ref), hint)
-{
-}
+{}
 
 /* tag::reference[]
 
@@ -511,7 +518,8 @@ end::reference[] */
 template <typename Derived>
 Derived & bound_parser<Derived>::required(size_t n)
 {
-	if (m_ref->isContainer()) return this->cardinality(1, 0);
+	if (m_ref->isContainer())
+		return this->cardinality(1, 0);
 	else
 		return this->cardinality(n);
 }
@@ -573,7 +581,8 @@ form the `check_choice` function is called with the parsed value and returns
 
 end::reference[] */
 template <typename Derived>
-template <typename T, typename... Rest,
+template <typename T,
+	typename... Rest,
 	typename std::enable_if<!detail::is_invocable<T>::value, int>::type>
 Derived & bound_parser<Derived>::choices(T val0, Rest... rest)
 {
@@ -597,6 +606,39 @@ Derived & bound_parser<Derived>::choices(const T (&choice_values)[N])
 {
 	value_choices = std::make_shared<detail::choices_set<T>>(
 		std::vector<T> { choice_values, choice_values + N });
+	return static_cast<Derived &>(*this);
+}
+
+/* tag::reference[]
+
+[#lyra_bound_parser_hint]
+=== `lyra::bound_parser::hint`
+
+[source]
+----
+template <typename Derived>
+std::string lyra::bound_parser<Derived>::hint() const
+
+template <typename Derived>
+Derived & lyra::bound_parser<Derived>::hint(std::string const & hint)
+----
+
+Selectors to read and write the hint of a variable-bound parser.
+
+The hint should not be modified anymore, once the parser is applied to arguments
+or used in a `lyra::composable_parser`.
+
+end::reference[] */
+template <typename Derived>
+std::string bound_parser<Derived>::hint() const
+{
+	return m_hint;
+}
+
+template <typename Derived>
+Derived & bound_parser<Derived>::hint(std::string const & hint)
+{
+	m_hint = hint;
 	return static_cast<Derived &>(*this);
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2020 René Ferdinand Rivera Morell
+// Copyright 2020-2022 René Ferdinand Rivera Morell
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -10,6 +10,7 @@
 #include <string>
 
 namespace lyra {
+
 /* tag::reference[]
 
 [#lyra_literal]
@@ -38,14 +39,18 @@ class literal : public parser
 
 	// Internal.
 
-	virtual std::string get_usage_text() const override { return name; }
+	virtual std::string get_usage_text(const option_style &) const override
+	{
+		return name;
+	}
 
-	virtual std::string get_description_text() const override
+	virtual std::string get_description_text(
+		const option_style &) const override
 	{
 		return description;
 	}
 
-	virtual help_text get_help_text() const override
+	virtual help_text get_help_text(const option_style &) const override
 	{
 		return { { name, description } };
 	}
@@ -53,7 +58,7 @@ class literal : public parser
 	using parser::parse;
 
 	virtual parse_result parse(detail::token_iterator const & tokens,
-		parser_customization const &) const override
+		const option_style &) const override
 	{
 		auto validationResult = validate();
 		if (!validationResult) return parse_result(validationResult);
@@ -68,7 +73,7 @@ class literal : public parser
 		}
 		else
 		{
-			return parse_result(parser_result::runtimeError(
+			return parse_result(parser_result::error(
 				parser_result_type::no_match, "Expected '" + name + "'."));
 		}
 	}

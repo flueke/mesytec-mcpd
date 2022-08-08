@@ -1,5 +1,5 @@
 /*
-Copyright 2019 René Ferdinand Rivera Morell
+Copyright 2019-2022 René Ferdinand Rivera Morell
 Distributed under the Boost Software License, Version 1.0.
 (See accompanying file LICENSE.txt or copy at
 http://www.boost.org/LICENSE_1_0.txt)
@@ -78,7 +78,7 @@ int main(int argc, const char ** argv)
 	// Check that the arguments where valid.
 	if (!result)
 	{
-		std::cerr << "Error in command line: " << result.errorMessage()
+		std::cerr << "Error in command line: " << result.message()
 				  << std::endl;
 		return 1;
 	}

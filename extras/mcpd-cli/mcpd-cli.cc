@@ -1868,7 +1868,7 @@ int main(int argc, char *argv[])
     if (!parsed)
     {
         std::cerr << std::endl << cli << std::endl;
-        spdlog::error("Error parsing command line: {}", parsed.errorMessage());
+        spdlog::error("Error parsing command line: {}", parsed.message());
         return 1;
     }
 

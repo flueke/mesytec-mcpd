@@ -1,4 +1,4 @@
-// Copyright 2019 René Ferdinand Rivera Morell
+// Copyright 2019-2022 René Ferdinand Rivera Morell
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -17,6 +17,7 @@
 #include <iostream>
 
 namespace lyra {
+
 /* tag::reference[]
 
 [#lyra_main]
@@ -54,6 +55,17 @@ class main final : protected cli
 	int operator()(int argc, const char ** argv, L action);
 
 	using cli::operator[];
+
+	main & style(const option_style & style)
+	{
+		cli::style(style);
+		return *this;
+	}
+	main & style(option_style && style)
+	{
+		cli::style(style);
+		return *this;
+	}
 };
 
 /* tag::reference[]
@@ -145,10 +157,13 @@ Example specifications:
 | `("-o", 0)` | Short `-o` option as `int` value.
 | `("--opt", 0)` | Long `--opt` option as `int` value.
 | `({"-o", "--opt"}, 1.0f)` | Short and long option as `float` value.
-| `({"-o", "The option."}, 1.0f)` | Short option and help description as `float` value.
+| `({"-o", "The option."}, 1.0f)` | Short option and help description as `float`
+value.
 | `("opt", 2)` | Positional, i.e. `lyra::arg`, argument as `int` value.
-| `({"opt", "The option."}, 2)` | Positional argument and help description as `int` value.
-| `("--opt", std::vector<float>())` | Long option with as multiple float values.
+| `({"opt", "The option."}, 2)` | Positional argument and help description as
+`int` value.
+| `("--opt", std::vector<float>())` | Long option with as multiple
+float values.
 |===
 
 end::reference[] */
@@ -211,7 +226,7 @@ template <typename L>
 int main::operator()(const args & argv, L action)
 {
 	auto result = cli::parse(argv);
-	if (!result) std::cerr << result.errorMessage() << "\n\n";
+	if (!result) std::cerr << result.message() << "\n\n";
 	if (show_help || !result)
 		std::cout << *this << "\n";
 	else

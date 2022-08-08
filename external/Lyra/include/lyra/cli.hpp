@@ -1,4 +1,4 @@
-// Copyright 2018-2020 René Ferdinand Rivera Morell
+// Copyright 2018-2022 René Ferdinand Rivera Morell
 // Copyright 2017 Two Blue Cubes Ltd. All rights reserved.
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -8,13 +8,17 @@
 #define LYRA_CLI_HPP
 
 #include "lyra/arguments.hpp"
+#include "lyra/detail/deprecated_parser_customization.hpp"
 #include "lyra/detail/from_string.hpp"
+#include "lyra/detail/print.hpp"
 #include "lyra/exe_name.hpp"
 #include "lyra/group.hpp"
+#include "lyra/option_style.hpp"
 
 #include <type_traits>
 
 namespace lyra {
+
 /* tag::reference[]
 
 [#lyra_cli]
@@ -73,8 +77,7 @@ class cli : protected arguments
 			: parser_ref(p)
 		{}
 
-		template <
-			typename T,
+		template <typename T,
 			typename std::enable_if<detail::is_convertible_from_string<
 				typename detail::remove_cvref<T>::type>::value>::
 				type * = nullptr>
@@ -82,8 +85,7 @@ class cli : protected arguments
 		{
 			typename detail::remove_cvref<T>::type result {};
 			if (parser_ref)
-				detail::from_string<
-					std::string,
+				detail::from_string<std::string,
 					typename detail::remove_cvref<T>::type>(
 					parser_ref->get_value(0), result);
 			return result;
@@ -117,6 +119,9 @@ class cli : protected arguments
 
 	value_result operator[](const std::string & n);
 
+	cli & style(const option_style & style);
+	cli & style(option_style && style);
+
 	// Stream out generates the help output.
 	friend std::ostream & operator<<(std::ostream & os, cli const & parser)
 	{
@@ -124,10 +129,24 @@ class cli : protected arguments
 	}
 
 	// Parse from arguments.
-	parse_result parse(
-		args const & args,
-		parser_customization const & customize
-		= default_parser_customization()) const;
+	parse_result parse(args const & args) const
+	{
+		if (opt_style)
+			return parse(args, *opt_style);
+		else
+			return parse(args, option_style::posix());
+	}
+	parse_result parse(args const & args, const option_style & style) const;
+
+	// Backward compatability parse() that takes `parser_customization` and
+	// converts to `option_style`.
+	[[deprecated]] parse_result parse(
+		args const & args, const parser_customization & customize) const
+	{
+		return this->parse(args,
+			option_style(customize.token_delimiters(),
+				customize.option_prefix(), 2, customize.option_prefix(), 1));
+	}
 
 	// Internal..
 
@@ -142,22 +161,14 @@ class cli : protected arguments
 	protected:
 	mutable exe_name m_exeName;
 
-	virtual std::string get_usage_text() const override
+	virtual std::string get_usage_text(
+		const option_style & style) const override
 	{
 		if (!m_exeName.name().empty())
-			return m_exeName.name() + " " + arguments::get_usage_text();
+			return m_exeName.name() + " " + arguments::get_usage_text(style);
 		else
 			// We use an empty exe name as an indicator to remove USAGE text.
 			return "";
-	}
-
-	parse_result parse(
-		std::string const & exe_name,
-		detail::token_iterator const & tokens,
-		parser_customization const & customize) const override
-	{
-		m_exeName.set(exe_name);
-		return parse(tokens, customize);
 	}
 };
 
@@ -306,23 +317,58 @@ inline cli::value_result cli::operator[](const std::string & n)
 [source]
 ----
 parse_result cli::parse(
-	args const& args, parser_customization const& customize) const;
+	args const& args, const option_style& customize) const;
 ----
 
-Parses given arguments `args` and optional parser customization `customize`.
+Parses given arguments `args` and optional option style.
 The result indicates success or failure, and if failure what kind of failure
 it was. The state of variables bound to options is unspecified and any bound
 callbacks may have been called.
 
 end::reference[] */
-inline parse_result
-	cli::parse(args const & args, parser_customization const & customize) const
+inline parse_result cli::parse(
+	args const & args, const option_style & style) const
 {
-	return parse(
-		args.exe_name(),
-		detail::token_iterator(
-			args, customize.token_delimiters(), customize.option_prefix()),
-		customize);
+	LYRA_PRINT_SCOPE("cli::parse");
+	m_exeName.set(args.exe_name());
+	detail::token_iterator args_tokens(args, style);
+	parse_result result = parse(args_tokens, style);
+	if (result
+		&& (result.value().type() == parser_result_type::no_match
+			|| result.value().type() == parser_result_type::matched))
+	{
+		if (result.value().have_tokens())
+		{
+			return parse_result::error(result.value(),
+				"Unrecognized token: "
+					+ result.value().remainingTokens().argument().name);
+		}
+	}
+	return result;
+}
+
+/* tag::reference[]
+[#lyra_cli_style]
+=== `lyra::cli::style`
+
+[source]
+----
+lyra::cli & lyra::cli::style(const lyra::option_style & style)
+lyra::cli & lyra::cli::style(lyra::option_style && style)
+----
+
+Specifies the <<lyra_option_style>> to accept for this instance.
+
+end::reference[] */
+inline cli & cli::style(const option_style & style)
+{
+	opt_style = std::make_shared<option_style>(style);
+	return *this;
+}
+inline cli & cli::style(option_style && style)
+{
+	opt_style = std::make_shared<option_style>(std::move(style));
+	return *this;
 }
 
 } // namespace lyra

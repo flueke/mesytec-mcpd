@@ -1,5 +1,5 @@
 /*
-Copyright 2019 René Ferdinand Rivera Morell
+Copyright 2019-2022 René Ferdinand Rivera Morell
 Distributed under the Boost Software License, Version 1.0.
 (See accompanying file LICENSE.txt or copy at
 http://www.boost.org/LICENSE_1_0.txt)
@@ -20,7 +20,7 @@ void test_val(bfg::mini_test::scope& test, Value test_value, Value default_value
 		auto cli = lyra::cli() | arg(arg_value, "value");
 		char* args[] = { (char*)"TestApp", (char*)test_value_s.c_str() };
 		auto result = cli.parse({ 2, args });
-		if (!result) std::cerr << result.errorMessage() << '\n';
+		if (!result) std::cerr << result.message() << '\n';
 		test(REQUIRE(result));
 		test(arg_value == test_value, "arg_value == " + test_value_s, CONTEXT);
 	}
@@ -30,7 +30,7 @@ void test_val(bfg::mini_test::scope& test, Value test_value, Value default_value
 		char* args[]
 			= { (char*)"TestApp", (char*)"--value", (char*)test_value_s.c_str() };
 		auto result = cli.parse({ 3, args });
-		if (!result) std::cerr << result.errorMessage() << '\n';
+		if (!result) std::cerr << result.message() << '\n';
 		test(REQUIRE(result));
 		test(arg_value == test_value, "arg_value == " + test_value_s, CONTEXT);
 	}
@@ -41,7 +41,7 @@ void test_val(bfg::mini_test::scope& test, Value test_value, Value default_value
 		char* args[]
 			= { (char*)"TestApp", (char*)value_arg.c_str() };
 		auto result = cli.parse({ 2, args });
-		if (!result) std::cerr << result.errorMessage() << '\n';
+		if (!result) std::cerr << result.message() << '\n';
 		test(REQUIRE(result));
 		test(arg_value == test_value, "arg_value == " + test_value_s, CONTEXT);
 	}

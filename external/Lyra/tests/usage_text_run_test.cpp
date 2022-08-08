@@ -1,5 +1,5 @@
 /*
-Copyright 2020 René Ferdinand Rivera Morell
+Copyright 2020-2022 René Ferdinand Rivera Morell
 Distributed under the Boost Software License, Version 1.0.
 (See accompanying file LICENSE.txt or copy at
 http://www.boost.org/LICENSE_1_0.txt)
@@ -41,10 +41,10 @@ int main()
 			= lyra::opt(named_required, "required-arg")["--required"](
 				"You must supply this arg");
 		test(REQUIRE(
-			opt_required.get_usage_text().find("--required")
+			opt_required.get_usage_text(option_style::posix()).find("--required")
 			!= std::string::npos));
 		test(REQUIRE(
-			opt_required.get_usage_text().find("<required-arg>")
+			opt_required.get_usage_text(option_style::posix()).find("<required-arg>")
 			!= std::string::npos));
 	}
 

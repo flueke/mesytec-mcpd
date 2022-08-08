@@ -1,4 +1,4 @@
-// Copyright 2018-2019 René Ferdinand Rivera Morell
+// Copyright 2018-2022 René Ferdinand Rivera Morell
 // Copyright 2017 Two Blue Cubes Ltd. All rights reserved.
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -17,144 +17,133 @@
 #include <type_traits>
 #include <vector>
 
-namespace lyra
+namespace lyra { namespace detail {
+
+/*
+Type erased base for set of choices. I.e. it's an "interface".
+*/
+struct choices_base
 {
-namespace detail
+	virtual ~choices_base() = default;
+	virtual parser_result contains_value(std::string const & val) const = 0;
+};
+
+/*
+Stores a set of choice values and provides checking if a given parsed
+string value is one of the choices.
+*/
+template <typename T>
+struct choices_set : choices_base
 {
-	/*
-	Type erased base for set of choices. I.e. it's an "interface".
-	*/
-	struct choices_base
+	// The allowed values.
+	std::vector<T> values;
+
+	template <typename... Vals>
+	explicit choices_set(Vals... vals)
+		: choices_set({ vals... })
+	{}
+
+	explicit choices_set(const std::vector<T> & vals)
+		: values(vals)
+	{}
+
+	// Checks if the given string val exists in the set of
+	// values. Returns a parsing error if the value is not present.
+	parser_result contains_value(std::string const & val) const override
 	{
-		virtual ~choices_base() = default;
-		virtual parser_result contains_value(std::string const& val) const = 0;
-	};
+		T value;
+		auto parse = parse_string(val, value);
+		if (!parse)
+		{
+			return parser_result::error(
+				parser_result_type::no_match, parse.message());
+		}
+		bool result = std::count(values.begin(), values.end(), value) > 0;
+		if (result)
+		{
+			return parser_result::ok(parser_result_type::matched);
+		}
+		// We consider not finding a choice a parse error.
+		return parser_result::error(parser_result_type::no_match,
+			"Value '" + val
+				+ "' not expected. Allowed values are: " + this->to_string());
+	}
 
-	/*
-	Stores a set of choice values and provides checking if a given parsed
-	string value is one of the choices.
-	*/
-	template <typename T>
-	struct choices_set : choices_base
+	// Returns a comma separated list of the allowed values.
+	std::string to_string() const
 	{
-		// The allowed values.
-		std::vector<T> values;
-
-		template <typename... Vals>
-		explicit choices_set(Vals... vals)
-			: choices_set({ vals... })
+		std::string result;
+		for (const T & val : values)
 		{
-		}
-
-		explicit choices_set(const std::vector<T> & vals)
-			: values(vals)
-		{
-		}
-
-		// Checks if the given string val exists in the set of
-		// values. Returns a parsing error if the value is not present.
-		parser_result contains_value(std::string const& val) const override
-		{
-			T value;
-			auto parse = parse_string(val, value);
-			if (!parse)
+			if (!result.empty()) result += ", ";
+			std::string val_string;
+			if (detail::to_string(val, val_string))
 			{
-				return parser_result::runtimeError(
-					parser_result_type::no_match, parse.errorMessage());
+				result += val_string;
 			}
-			bool result = std::count(values.begin(), values.end(), value) > 0;
-			if (result)
+			else
 			{
-				return parser_result::ok(parser_result_type::matched);
+				result += "<value error>";
 			}
-			// We consider not finding a choice a parse error.
-			return parser_result::runtimeError(
-				parser_result_type::no_match,
-				"Value '" + val + "' not expected. Allowed values are: "
-					+ this->to_string());
 		}
+		return result;
+	}
 
-		// Returns a comma separated list of the allowed values.
-		std::string to_string() const
-		{
-			std::string result;
-			for (const T& val : values)
-			{
-				if (!result.empty()) result += ", ";
-				std::string val_string;
-				if (detail::to_string(val, val_string))
-				{
-					result += val_string;
-				}
-				else
-				{
-					result += "<value error>";
-				}
-			}
-			return result;
-		}
+	protected:
+	explicit choices_set(std::initializer_list<T> const & vals)
+		: values(vals)
+	{}
+};
 
-		protected:
-		explicit choices_set(std::initializer_list<T> const& vals)
-			: values(vals)
-		{
-		}
-	};
+template <>
+struct choices_set<const char *> : choices_set<std::string>
+{
+	template <typename... Vals>
+	explicit choices_set(Vals... vals)
+		: choices_set<std::string>(vals...)
+	{}
+};
 
-	template <>
-	struct choices_set<const char*> : choices_set<std::string>
+/*
+Calls a designated function to check if the choice is valid.
+*/
+template <typename Lambda>
+struct choices_check : choices_base
+{
+	static_assert(unary_lambda_traits<Lambda>::isValid,
+		"Supplied lambda must take exactly one argument");
+	static_assert(std::is_same<bool,
+					  typename unary_lambda_traits<Lambda>::ReturnType>::value,
+		"Supplied lambda must return bool");
+
+	Lambda checker;
+	using value_type = typename unary_lambda_traits<Lambda>::ArgType;
+
+	explicit choices_check(Lambda const & checker)
+		: checker(checker)
+	{}
+
+	// Checks if the given string val exists in the set of
+	// values. Returns a parsing error if the value is not present.
+	parser_result contains_value(std::string const & val) const override
 	{
-		template <typename... Vals>
-		explicit choices_set(Vals... vals)
-			: choices_set<std::string>(vals...)
+		value_type value;
+		auto parse = parse_string(val, value);
+		if (!parse)
 		{
+			return parser_result::error(
+				parser_result_type::no_match, parse.message());
 		}
-	};
-
-	/*
-	Calls a designated function to check if the choice is valid.
-	*/
-	template <typename Lambda>
-	struct choices_check : choices_base
-	{
-		static_assert(
-			unary_lambda_traits<Lambda>::isValid,
-			"Supplied lambda must take exactly one argument");
-		static_assert(
-			std::is_same<
-				bool, typename unary_lambda_traits<Lambda>::ReturnType>::value,
-			"Supplied lambda must return bool");
-
-		Lambda checker;
-		using value_type = typename unary_lambda_traits<Lambda>::ArgType;
-
-		explicit choices_check(Lambda const& checker)
-			: checker(checker)
+		if (checker(value))
 		{
+			return parser_result::ok(parser_result_type::matched);
 		}
+		// We consider not finding a choice a parse error.
+		return parser_result::error(
+			parser_result_type::no_match, "Value '" + val + "' not expected.");
+	}
+};
 
-		// Checks if the given string val exists in the set of
-		// values. Returns a parsing error if the value is not present.
-		parser_result contains_value(std::string const& val) const override
-		{
-			value_type value;
-			auto parse = parse_string(val, value);
-			if (!parse)
-			{
-				return parser_result::runtimeError(
-					parser_result_type::no_match, parse.errorMessage());
-			}
-			if (checker(value))
-			{
-				return parser_result::ok(parser_result_type::matched);
-			}
-			// We consider not finding a choice a parse error.
-			return parser_result::runtimeError(
-				parser_result_type::no_match,
-				"Value '" + val + "' not expected.");
-		}
-	};
-} // namespace detail
-} // namespace lyra
+}} // namespace lyra::detail
 
 #endif

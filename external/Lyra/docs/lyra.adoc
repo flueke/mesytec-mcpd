@@ -2,16 +2,19 @@
 :copyright: Copyright 2019 René Ferdinand Rivera Morell
 :author: René Ferdinand Rivera Morell
 :email: grafikrobot@gmail.com
-:revnumber: 1.5
+:revnumber: 1.6
 :version-label!:
 :reproducible:
 :nofooter:
 :sectanchors:
 :sectnums:
-:sectnumlevels: 5
+:sectnumlevels: 2
+:stylesheet: amber.css
 :icons: font
-:source-highlighter: pygments
+:source-highlighter: rouge
+:rouge-style: base16.solarized
 :source-language: c++
+:tabsize: 4
 :toc: left
 :toclevels: 2
 :caution-caption: ⚑
@@ -24,13 +27,6 @@
 :P: +
 :tabsize: 4
 
-ifdef::backend-html5[]
-++++
-<style>
-include::std.css[]
-</style>
-++++
-endif::[]
 
 == Introduction
 
@@ -252,41 +248,97 @@ include::../examples/doc_simple_alt.cpp[tag=doc]
 
 include::../examples/doc_simple.cpp[tag=doc]
 
+include::../examples/count_flag.cpp[tag=doc]
+
+include::../examples/option_styles.cpp[tag=doc]
+
 :leveloffset: -1
 
 == Reference
 
 :leveloffset: +2
 
-include::../include/lyra/parser.hpp[tag=reference]
-
-include::../include/lyra/cli.hpp[tag=reference]
-
-include::../include/lyra/opt.hpp[tag=reference]
-
 include::../include/lyra/arg.hpp[tag=reference]
-
-include::../include/lyra/help.hpp[tag=reference]
-
-include::../include/lyra/exe_name.hpp[tag=reference]
-
 include::../include/lyra/args.hpp[tag=reference]
-
 include::../include/lyra/arguments.hpp[tag=reference]
-
-include::../include/lyra/literal.hpp[tag=reference]
-
-include::../include/lyra/group.hpp[tag=reference]
-
+include::../include/lyra/cli.hpp[tag=reference]
 include::../include/lyra/command.hpp[tag=reference]
-
+include::../include/lyra/exe_name.hpp[tag=reference]
+include::../include/lyra/group.hpp[tag=reference]
+include::../include/lyra/help.hpp[tag=reference]
+include::../include/lyra/literal.hpp[tag=reference]
 include::../include/lyra/main.hpp[tag=reference]
-
+include::../include/lyra/opt.hpp[tag=reference]
+include::../include/lyra/option_style.hpp[tag=reference]
+include::../include/lyra/parser.hpp[tag=reference]
 include::../include/lyra/val.hpp[tag=reference]
 
 :leveloffset: -2
 
 == History
+
+=== 1.6
+
+Even though most of the changes for this release are to fix various reported
+bug fixes, fixing those bugs has meant dealing with some long standing
+internal parser inconsistencies. While I try to not break backwards
+compatibility, I likely can't catch all of the corner cases people have
+discovered.
+
+WARNING: This release has some internal cleanup of the parser result types. It
+also has an externally visible change to the `parse` function result type. It
+renames the `errorMessage()` function to `message()`. The `errorMessage()`
+function is marked deprecated and will be removed in a future release.
+
+Changes:
+
+* *New*: Add `lyra::option_style` type to better customize the syntax of
+	options allowed. This replaces the "old" `lyra::parser_customization` as a
+	better way. The `lyra::parser_customization` is now deprecated, and will
+	be removed at some future release.
+	-- _René Ferdinand Rivera Morell_
+* *New*: Add example to show how to count flags with cardinality greater than
+	one (1). Shows how to handle increasing verbosity with `-vvvv`.
+	-- _René Ferdinand Rivera Morell_
+* *New*: Add capability to control the cardinality of argument groups.
+	-- _René Ferdinand Rivera Morell_
+* *New*: Allow setting hint after construction of `lyra::bound_parser`.
+	-- _Max Ferger_
+* Fix virtual overload hiding of `parse` method.
+	-- _René Ferdinand Rivera Morell_
+* Fix previously removed error for when expected option specifications
+	do not have the required `-` prefix.
+	-- _René Ferdinand Rivera Morell_
+* Fix inconsistencies in parsing arguments in a group followed by other
+	arguments. (issue #49)
+	-- _René Ferdinand Rivera Morell_
+* Fix incorrectly accepting negative values for unsigned integer arguments.
+	The argument value conversion now checks the input for acceptable digits
+	in the input before attempting to parse it.
+	-- _René Ferdinand Rivera Morell_
+* Fix sub-command arguments being ignored even when they are marked as
+	required.
+	-- _René Ferdinand Rivera Morell_
+* Fix assigned values for flag options (`--flag=no`) being ignore. They now
+	cause an error when specified.
+	-- _René Ferdinand Rivera Morell_
+* Fix choices being allowed for for flag options, but ignored. Specifying
+	choices on flag options now signal an error.
+	-- _René Ferdinand Rivera Morell_
+* Tested with
+		Visual Studio 2019, VS 2022,
+		MinGW-64 (gcc 8.1.0),
+		Linux (
+			clang 3.9, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13;
+			gcc 5, 6, 7, 8, 9, 10, 11),
+		Xcode (
+			11.2.1, 11.3.1, 11.4.1, 11.5, 11.6, 11.7, 12.0.1, 12.2, 12.3,
+			12.4, 13.0),
+		on Azure Pipelines;
+	and with
+		VS 2015, VS 2017,
+		MinGW-64 (gcc 6.3, 7.3)
+		on AppVeyor.
 
 === 1.5.1
 
