@@ -139,6 +139,45 @@ struct SetupCommand: public BaseCommand
     }
 };
 
+struct SetIdCommand: public BaseCommand
+{
+    u16 newId_ = 0;
+
+    SetIdCommand(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "setid",
+                [this] (const lyra::group &) { this->run_ = true; }
+                )
+            .help("Set MCPD id")
+
+            .add_argument(
+                lyra::arg(newId_, "newId")
+                .required()
+                .help("new mcpd id")
+                )
+            );
+    }
+
+    int runCommand(CliContext &ctx) override
+    {
+        spdlog::debug("{} {}", __PRETTY_FUNCTION__, newId_);
+
+        auto ec = mcpd_set_id(ctx.cmdSock, ctx.mcpdId, newId_);
+
+        if (ec)
+        {
+            spdlog::error("Error setting mcpdId: {} ({}, {})",
+                          ec.message(), ec.value(), ec.category().name());
+            return 1;
+        }
+
+        ctx.mcpdId = newId_;
+        return 0;
+    }
+};
+
 struct TimingCommand: public BaseCommand
 {
     std::string role_;
@@ -534,6 +573,90 @@ struct ScanBussesCommand: public BaseCommand
 
         for (size_t bus=0; bus<scanDest.size(); ++bus)
             spdlog::info("  [{}]: {}", bus, scanDest[bus]);
+
+        return 0;
+    }
+};
+
+struct WriteRegisterCommand: public BaseCommand
+{
+    u16 address_;
+    u32 value_;
+
+    WriteRegisterCommand(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "write_register",
+                 [this] (const lyra::group &) { this->run_ = true; }
+                )
+            .help("write MCPD/MDLL internal register (modern versions only)")
+
+            .add_argument(
+                lyra::arg(address_, "address")
+                .required()
+                )
+
+            .add_argument(
+                lyra::arg(value_, "value")
+                .required()
+                )
+            );
+    }
+
+    int runCommand(CliContext &ctx) override
+    {
+        spdlog::debug("{}: address=0x{:04X}, value=0x{:08X}",
+                      __PRETTY_FUNCTION__, address_, value_);
+
+        auto ec = mcpd_write_register(ctx.cmdSock, ctx.mcpdId, address_, value_);
+
+        if (ec)
+        {
+            spdlog::error("mcpd_write_register: {} ({}, {})",
+                          ec.message(), ec.value(), ec.category().name());
+            return 1;
+        }
+
+        return 0;
+    }
+};
+
+struct ReadRegisterCommand: public BaseCommand
+{
+    u16 address_;
+
+    ReadRegisterCommand(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "read_register",
+                 [this] (const lyra::group &) { this->run_ = true; }
+                 )
+            .help("read MCPD/MDLL internal register (modern versions only)")
+
+            .add_argument(
+                lyra::arg(address_, "address")
+                .required()
+                )
+            );
+    }
+
+    int runCommand(CliContext &ctx) override
+    {
+        spdlog::debug("{}: address=0x{:04X}", __PRETTY_FUNCTION__, address_);
+
+        u32 dest{};
+        auto ec = mcpd_read_register(ctx.cmdSock, ctx.mcpdId, address_, dest);
+
+        if (ec)
+        {
+            spdlog::error("mcpd_read_register: {} ({}, {})",
+                          ec.message(), ec.value(), ec.category().name());
+            return 1;
+        }
+
+        spdlog::info("mcdp_read_register: 0x{:04X} = 0x{:08X}", address_, dest);
 
         return 0;
     }
@@ -1708,6 +1831,7 @@ int main(int argc, char *argv[])
     std::vector<std::unique_ptr<BaseCommand>> commands;
 
     commands.emplace_back(std::make_unique<SetupCommand>(cli));
+    commands.emplace_back(std::make_unique<SetIdCommand>(cli));
     commands.emplace_back(std::make_unique<TimingCommand>(cli));
     commands.emplace_back(std::make_unique<RunIdCommand>(cli));
     commands.emplace_back(std::make_unique<CellCommand>(cli));
@@ -1717,6 +1841,9 @@ int main(int argc, char *argv[])
     commands.emplace_back(std::make_unique<VersionCommand>(cli));
     commands.emplace_back(std::make_unique<DacSetupCommand>(cli));
     commands.emplace_back(std::make_unique<ScanBussesCommand>(cli));
+
+    commands.emplace_back(std::make_unique<WriteRegisterCommand>(cli));
+    commands.emplace_back(std::make_unique<ReadRegisterCommand>(cli));
 
     commands.emplace_back(std::make_unique<MpsdSetGainCommand>(cli));
     commands.emplace_back(std::make_unique<MpsdSetTresholdCommand>(cli));
