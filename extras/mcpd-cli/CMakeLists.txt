@@ -16,6 +16,9 @@ target_link_libraries(mcpd-cli
     #PRIVATE gnuplot_iostream
     )
 
+# LYRA_DEBUG enables very verbose output from the lyra cli parser
+#target_compile_definitions(mcpd-cli PRIVATE -DLYRA_DEBUG)
+
 if (ROOT_FOUND)
     target_compile_definitions(mcpd-cli PRIVATE -DMESYTEC_MCPD_ENABLE_ROOT)
     target_sources(mcpd-cli PRIVATE mcpd_root_histos.cc)
