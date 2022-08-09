@@ -593,8 +593,8 @@ lyra::parser_result parse_unsigned_value(T &dest, const std::string &input)
     }
     catch(const std::exception& e)
     {
-        std::cerr << e.what() << '\n';
-        return lyra::parser_result::error(lyra::parser_result_type::no_match, e.what());
+        auto msg = fmt::format("Error parsing unsigned value from \"{}\"", input);
+        return lyra::parser_result::error(lyra::parser_result_type::short_circuit_all, msg);
     }
 }
 
