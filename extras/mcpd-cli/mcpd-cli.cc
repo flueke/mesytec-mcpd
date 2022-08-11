@@ -1920,7 +1920,8 @@ int main(int argc, char *argv[])
 
     if (showHelp)
     {
-        std::cerr << cli << std::endl;
+        std::cout << cli << std::endl;
+        std::cout << "MCPD address and id can also be specified via the environment variables MCPD_ADDRESS and MCPD_ID." << std::endl;
         return 0;
     }
 
