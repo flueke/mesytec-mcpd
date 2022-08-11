@@ -446,6 +446,7 @@ std::error_code mcpd_set_bus_capabilities(int sock, u8 mcpdId, u8 capBits, u8 &r
     return {};
 }
 
+// TODO: the role argument is now a 2-bit field: if bit 1 is set an external clock signal can be input on chopper3
 std::error_code mcpd_set_timing_options(int sock, u8 mcpdId, TimingRole role, BusTermination term)
 {
     auto request = make_command_packet(
