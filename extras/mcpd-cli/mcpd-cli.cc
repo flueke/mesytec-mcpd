@@ -302,7 +302,7 @@ struct CellCommand: public BaseCommand
             .add_argument(
                 lyra::arg(trigger_, "triggerValue")
                 .required()
-                .help("0: NoTrigger, 1-4: AuxTimer1-4, 5/6: Digital Input 1/2, 7: Compare Register")
+                .help("0: NoTrigger, 1-4: AuxTimer0-3, 5/6: Digital Input 1/2, 7: Compare Register")
                 )
 
             .add_argument(
