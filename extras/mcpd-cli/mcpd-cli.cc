@@ -1131,7 +1131,11 @@ struct ReadoutCommand: public BaseCommand
             if (ec)
             {
                 if (ec == std::errc::interrupted)
+                {
+                    spdlog::debug("readout: interrupted while reading from network: {}",
+                                  ec.message());
                     break;
+                }
 
                 if (ec != SocketErrorType::Timeout)
                 {

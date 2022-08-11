@@ -515,6 +515,7 @@ std::error_code receive_one_packet(int sockfd, u8 *dest, size_t size,
 {
     bytesTransferred = 0u;
 
+    // FIXME (maybe): check for EINTR (happening e.g. when running in a linux terminal on window resize)
     ssize_t res = ::recv(sockfd, reinterpret_cast<char *>(dest), size, 0);
 
     if (res < 0)
