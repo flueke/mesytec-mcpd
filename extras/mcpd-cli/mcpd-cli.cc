@@ -195,15 +195,15 @@ struct TimingCommand: public BaseCommand
             .add_argument(
                 lyra::arg(role_, "role")
                 .required()
-                .choices("master", "slave")
-                .help("role=master|slave")
+                .choices("master", "slave", "1", "0")
+                .help("role=master|slave|1|0")
                 )
 
             .add_argument(
                 lyra::arg(term_, "termination")
                 .required()
-                .choices("on", "off")
-                .help("termination=on|off")
+                .choices("on", "off", "1", "0")
+                .help("termination=on|off|1|0")
                 )
             );
     }
@@ -224,8 +224,19 @@ struct TimingCommand: public BaseCommand
             return 1;
         }
 
-        auto role = role_ == "master" ? TimingRole::Master : TimingRole::Slave;
-        auto term = term_ == "on" ? BusTermination::On : BusTermination::Off;
+        TimingRole role{};
+
+        if (role_ == "master" || role_ == "1")
+            role = TimingRole::Master;
+        else
+            role = TimingRole::Slave;
+
+        BusTermination term{};
+
+        if (term_ == "on" || term_ == "1")
+            term = BusTermination::On;
+        else
+            term = BusTermination::Off;
 
         auto ec = mcpd_set_timing_options(ctx.cmdSock, ctx.mcpdId, role, term);
 
