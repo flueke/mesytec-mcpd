@@ -154,7 +154,7 @@ std::error_code mcpd_get_all_parameters(int sock, u8 mcpdId, McpdParams &dest);
 std::error_code mcpd_get_bus_capabilities(int sock, u8 mcpdId, BusCapabilities &caps);
 std::error_code mcpd_set_bus_capabilities(int sock, u8 mcpdId, u8 capBits, u8 &resultBits);
 
-std::error_code mcpd_set_timing_options(int sock, u8 mcpdId, TimingRole role, BusTermination term);
+std::error_code mcpd_set_timing_options(int sock, u8 mcpdId, TimingRole role, BusTermination term, bool extSync = false);
 
 std::error_code mcpd_set_master_clock_value(int sock, u8 mcpdId, u64 clock);
 

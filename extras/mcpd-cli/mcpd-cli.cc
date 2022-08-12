@@ -182,6 +182,7 @@ struct TimingCommand: public BaseCommand
 {
     std::string role_;
     std::string term_;
+    std::string extSync_;
 
     TimingCommand(lyra::cli &cli)
     {
@@ -205,12 +206,19 @@ struct TimingCommand: public BaseCommand
                 .choices("on", "off", "1", "0")
                 .help("termination=on|off|1|0")
                 )
+
+            .add_argument(
+                lyra::arg(extSync_, "external sync")
+                .optional()
+                .choices("on", "off", "1", "0")
+                .help("extSync=on|off|1|0")
+                )
             );
     }
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{} role={} term={}", __PRETTY_FUNCTION__, role_, term_);
+        spdlog::debug("{} role={} term={} extSync={}", __PRETTY_FUNCTION__, role_, term_, extSync_);
 
         if (role_.empty())
         {
@@ -238,7 +246,12 @@ struct TimingCommand: public BaseCommand
         else
             term = BusTermination::Off;
 
-        auto ec = mcpd_set_timing_options(ctx.cmdSock, ctx.mcpdId, role, term);
+        bool extSync = false;
+
+        if (extSync_ == "on" || extSync_ == "1")
+            extSync = true;
+
+        auto ec = mcpd_set_timing_options(ctx.cmdSock, ctx.mcpdId, role, term, extSync);
 
         if (ec)
         {
