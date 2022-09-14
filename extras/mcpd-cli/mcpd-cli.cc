@@ -1213,7 +1213,8 @@ struct ReadoutCommand: public BaseCommand
                     for(size_t ei=0; ei<eventCount; ++ei)
                     {
                         auto event = decode_event(dataPacket, ei);
-                        spdlog::info("{}", to_string(event));
+                        u64 rawevent = get_event(dataPacket, ei);
+                        spdlog::info("{} (raw_value={:#x})", to_string(event), rawevent);
                     }
                 }
 
