@@ -702,7 +702,7 @@ struct ReadRegisterCommand: public BaseCommand
             return 1;
         }
 
-        spdlog::info("mcdp_read_register: 0x{:04X} = 0x{:08X}", address_, dest);
+        spdlog::info("mcdp_read_register: 0x{0:04X} = 0x{1:08X} ({1} decimal)", address_, dest);
 
         return 0;
     }
