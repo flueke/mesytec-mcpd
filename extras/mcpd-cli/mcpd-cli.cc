@@ -752,7 +752,7 @@ struct MpsdSetGainCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("version: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mpsd_set_gain: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
@@ -797,7 +797,7 @@ struct MpsdSetTresholdCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("version: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mpsd_set_threshold: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
@@ -868,7 +868,7 @@ struct MpsdSetPulserCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("version: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mpsd_set_pulser: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
@@ -887,7 +887,7 @@ struct MpsdGetParametersCommand: public BaseCommand
                 "mpsd_get_parameters",
                  [this] (const lyra::group &) { this->run_ = true; }
                  )
-            .help("set per-channel mpsd gain")
+            .help("get mpsd parameters")
 
             .add_argument(
                 lyra::arg(mpsdId_, "mpsdid")
@@ -907,7 +907,7 @@ struct MpsdGetParametersCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("version: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mpsd_get_parameters: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
