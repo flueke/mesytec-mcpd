@@ -218,6 +218,13 @@ std::error_code mpsd_get_params(
     u8 mpsdId,
     MpsdParameters &dest);
 
+//
+// MSTD specific
+//
+std::error_code mstd_set_gain(
+    int sock, u8 mcpdId,
+    u8 mstdId, u8 channel, u8 gain);
+
 }
 }
 

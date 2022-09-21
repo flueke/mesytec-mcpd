@@ -94,6 +94,7 @@ enum class CommandType: u16
     SetBusCapabilities = 23,
     GetMpsdParams = 24,
     SetFastTxMode = 25,
+    SetMstdGain = 26,
 
     ReadIds = 36, // FIXME: not in docs, scans the busses for MPSD-8 modules
 
@@ -142,6 +143,7 @@ inline const char *to_string(const CommandType &cmd)
         case CommandType::SetBusCapabilities: return "SetBusCapabilities";
         case CommandType::GetMpsdParams: return "GetMpsdParams";
         case CommandType::SetFastTxMode: return "SetFastTxMode";
+        case CommandType::SetMstdGain: return "SetMstdGain";
         case CommandType::ReadIds: return "ReadIds";
         case CommandType::GetVersion: return "GetVersion";
 

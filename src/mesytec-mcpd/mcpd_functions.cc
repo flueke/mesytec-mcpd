@@ -708,8 +708,8 @@ std::error_code mpsd_set_gain(
     auto request = make_command_packet(CommandType::SetGain, mcpdId, data.data(), data.size());
     CommandPacket response = {};
 
-    // Call the internal version so that the error value in the response is
-    // ignored.
+    // The command always sets the error flag in the response. Call the
+    // internal version of command_transaction_() here ignoring the error flag.
     if (auto ec = command_transaction_(sock, request, response, true))
         return ec;
 
@@ -800,6 +800,26 @@ std::error_code mpsd_get_params(
     dest.busTxCaps = response.data[1];
     dest.fastTxFormat = response.data[2];
     dest.firmwareRevision = response.data[3];
+
+    return {};
+}
+
+std::error_code mstd_set_gain(
+    int sock, u8 mcpdId,
+    u8 mstdId, u8 channel, u8 gain)
+{
+    std::array<u16, 3> data =
+    {
+        static_cast<u16>(mstdId),
+        static_cast<u16>(channel),
+        static_cast<u16>(gain),
+    };
+
+    auto request = make_command_packet(CommandType::SetMstdGain, mcpdId, data.data(), data.size());
+    CommandPacket response = {};
+
+    if (auto ec = command_transaction(sock, request, response))
+        return ec;
 
     return {};
 }
