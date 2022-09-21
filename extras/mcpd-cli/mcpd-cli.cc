@@ -920,6 +920,57 @@ struct MpsdGetParametersCommand: public BaseCommand
     }
 };
 
+struct MstdSetGainCommand: public BaseCommand
+{
+    u16 mstdId_ = 0u;
+    u16 channel_ = 0u;
+    u16 gain_ = 0u;
+
+    MstdSetGainCommand(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "mstd_set_gain",
+                [this] (const lyra::group &) { this->run_ = true; }
+                )
+            .help("set per-channel mstd gain")
+
+            .add_argument(
+                lyra::arg(mstdId_, "mstdId")
+                .required()
+                .help("mstd id")
+                )
+
+            .add_argument(
+                lyra::arg(channel_, "channel")
+                .required()
+                .help("channel within mstd (0..15, 16=all channels)")
+                )
+
+            .add_argument(
+                lyra::arg(gain_, "gain")
+                .required()
+                .help("gain value (0..255)")
+                )
+            );
+    }
+
+    int runCommand(CliContext &ctx)
+    {
+        spdlog::debug("{} mstdId_={}, channel={}, gain={}",
+                      __PRETTY_FUNCTION__, mstdId_, channel_, gain_);
+
+        auto ec = mstd_set_gain(ctx.cmdSock, ctx.mcpdId, mstdId_, channel_, gain_);
+
+        if (ec)
+        {
+            spdlog::error("mstd_set_gain: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            return 1;
+        }
+
+        return 0;
+    }
+};
 
 struct DaqCommand: public BaseCommand
 {
@@ -1219,8 +1270,8 @@ struct ReadoutCommand: public BaseCommand
                 }
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
-            if (rootHistoContext_.histoOutFile)
-                root_histos_process_packet(rootHistoContext_, dataPacket);
+                if (rootHistoContext_.histoOutFile)
+                    root_histos_process_packet(rootHistoContext_, dataPacket);
 #endif
 
                 ++counters.packets;
@@ -1901,6 +1952,8 @@ int main(int argc, char *argv[])
     commands.emplace_back(std::make_unique<MpsdSetPulserCommand>(cli));
     commands.emplace_back(std::make_unique<MpsdGetParametersCommand>(cli));
 
+    commands.emplace_back(std::make_unique<MstdSetGainCommand>(cli));
+
     commands.emplace_back(std::make_unique<DaqCommand>(cli));
     commands.emplace_back(std::make_unique<ReadoutCommand>(cli));
     commands.emplace_back(std::make_unique<ReplayCommand>(cli));
@@ -1931,7 +1984,7 @@ int main(int argc, char *argv[])
 
     if (showVersion)
     {
-        std::cout << fmt::format("mcpd-cli {}\nCopyright (c) 2021 mesytec GmbH & Co. KG\nLicense: Boost Software License - Version 1.0 - August 17th, 2003",
+        std::cout << fmt::format("mcpd-cli {}\nCopyright (c) 2021-22 mesytec GmbH & Co. KG\nLicense: Boost Software License - Version 1.0 - August 17th, 2003",
                                  library_version()) << std::endl;
         return 0;
     }
