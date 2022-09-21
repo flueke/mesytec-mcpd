@@ -3,7 +3,9 @@
 
 #include "mcpd_functions.h"
 
-namespace mesytec::mcpd
+namespace mesytec
+{
+namespace mcpd
 {
 
 std::error_code mdll_set_thresholds(
@@ -43,6 +45,7 @@ std::error_code mdll_set_energy_window(
     u8 lowerThreshold,
     u8 upperThreshold);
 
+}
 }
 
 #endif /* __MDLL_FUNCTIONS_H__ */
