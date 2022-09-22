@@ -73,7 +73,7 @@ struct SetupCommand: public BaseCommand
     std::string newAddress_;
     u16 newId_ = 0;
     std::string dataDestAddress_ = "0.0.0.0";
-    u16 dataPort_ = McpdDefaultPort + 1u;
+    u16 dataPort_ = McpdDefaultPort;
 
 
     SetupCommand(lyra::cli &cli)
