@@ -1932,6 +1932,7 @@ int main(int argc, char *argv[])
 
     std::vector<std::unique_ptr<BaseCommand>> commands;
 
+    // MCPD/MDLL core commands
     commands.emplace_back(std::make_unique<SetupCommand>(cli));
     commands.emplace_back(std::make_unique<SetIdCommand>(cli));
     commands.emplace_back(std::make_unique<TimingCommand>(cli));
@@ -1944,20 +1945,20 @@ int main(int argc, char *argv[])
     commands.emplace_back(std::make_unique<DacSetupCommand>(cli));
     commands.emplace_back(std::make_unique<ScanBussesCommand>(cli));
 
+    // extension for the modern FPGA based MCPD/MDLL versions
     commands.emplace_back(std::make_unique<WriteRegisterCommand>(cli));
     commands.emplace_back(std::make_unique<ReadRegisterCommand>(cli));
 
+    // MPSD
     commands.emplace_back(std::make_unique<MpsdSetGainCommand>(cli));
     commands.emplace_back(std::make_unique<MpsdSetTresholdCommand>(cli));
     commands.emplace_back(std::make_unique<MpsdSetPulserCommand>(cli));
     commands.emplace_back(std::make_unique<MpsdGetParametersCommand>(cli));
 
+    // MSTD
     commands.emplace_back(std::make_unique<MstdSetGainCommand>(cli));
 
-    commands.emplace_back(std::make_unique<DaqCommand>(cli));
-    commands.emplace_back(std::make_unique<ReadoutCommand>(cli));
-    commands.emplace_back(std::make_unique<ReplayCommand>(cli));
-
+    // MDLL
     commands.emplace_back(std::make_unique<MdllSetThresholds>(cli));
     commands.emplace_back(std::make_unique<MdllSetSpectrum>(cli));
     commands.emplace_back(std::make_unique<MdllSetTxDataSet>(cli));
@@ -1965,7 +1966,12 @@ int main(int argc, char *argv[])
     commands.emplace_back(std::make_unique<MdllSetEnergyWindow>(cli));
     commands.emplace_back(std::make_unique<MdllSetPulser>(cli));
 
+    // Non-device specific commands (DAQ control, readout, replay, ...)
     commands.emplace_back(std::make_unique<CustomCommand>(cli));
+    commands.emplace_back(std::make_unique<DaqCommand>(cli));
+    commands.emplace_back(std::make_unique<ReadoutCommand>(cli));
+    commands.emplace_back(std::make_unique<ReplayCommand>(cli));
+
 
     auto parsed = cli.parse({argc, argv});
 
