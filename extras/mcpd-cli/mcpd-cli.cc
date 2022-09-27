@@ -1038,7 +1038,7 @@ void report_counters(const ReadoutCounters &counters, const std::string &title =
 
 struct ReadoutCommand: public BaseCommand
 {
-    u16 dataPort_ = McpdDefaultPort + 1;
+    u16 dataPort_ = McpdDefaultPort;
     std::string listfilePath_;
     bool noListfile_ = false;
     size_t duration_s_ = 0u;
