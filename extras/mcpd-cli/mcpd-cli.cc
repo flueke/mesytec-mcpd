@@ -576,7 +576,6 @@ struct ScanBussesCommand: public BaseCommand
                  [this] (const lyra::group &) { this->run_ = true; }
                 )
             .help("Scan MCPD busses for connected MPSD modules")
-
             );
     }
 
@@ -597,6 +596,84 @@ struct ScanBussesCommand: public BaseCommand
 
         for (size_t bus=0; bus<scanDest.size(); ++bus)
             spdlog::info("  [{}]: {}", bus, scanDest[bus]);
+
+        return 0;
+    }
+};
+
+struct GetBusCapabilitiesCommand: public BaseCommand
+{
+    GetBusCapabilitiesCommand(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "get_bus_capabilities",
+                 [this] (const lyra::group &) { this->run_ = true; }
+                )
+            .help("Get MCPD bus transmit capabilities")
+            );
+    }
+
+    int runCommand(CliContext &ctx) override
+    {
+        spdlog::debug("{}", __PRETTY_FUNCTION__);
+
+        BusCapabilities caps = {};
+        auto ec = mcpd_get_bus_capabilities(ctx.cmdSock, ctx.mcpdId, caps);
+
+        if (ec)
+        {
+            spdlog::error("mcpd_get_bus_capabilities: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            return 1;
+        }
+
+        spdlog::info("mcpd_get_bus_capabilities: available=\"{}\" (0x{:02X}), current=\"{}\" (0x{:02X})",
+            bus_capabilities_to_string(caps.available), caps.available,
+            bus_capabilities_to_string(caps.selected), caps.selected);
+
+        return 0;
+    }
+};
+
+struct SetBusCapabilitiesCommand: public BaseCommand
+{
+    u16 capsValue_;
+
+    SetBusCapabilitiesCommand(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "set_bus_capabilities",
+                 [this] (const lyra::group &) { this->run_ = true; }
+                )
+            .help("Set MCPD bus transmit capabilities")
+
+            .add_argument(
+                lyra::arg(capsValue_, "value")
+                .required()
+                .help("new bus transmit capabilities value")
+                )
+            );
+    }
+
+    int runCommand(CliContext &ctx) override
+    {
+        spdlog::debug("{} capsValue={} (\"{}\")", __PRETTY_FUNCTION__,
+            capsValue_, bus_capabilities_to_string(capsValue_));
+
+        u8 result = {};
+
+        auto ec = mcpd_set_bus_capabilities(ctx.cmdSock, ctx.mcpdId, capsValue_, result);
+
+        if (ec)
+        {
+            spdlog::error("mcpd_set_bus_capabilities: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            return 1;
+        }
+
+        spdlog::info("mcpd_set_bus_capabilities: wanted={} ({}), got={} ({})",
+            capsValue_, bus_capabilities_to_string(capsValue_),
+            result, bus_capabilities_to_string(result));
 
         return 0;
     }
@@ -2050,6 +2127,9 @@ int main(int argc, char *argv[])
     commands.emplace_back(std::make_unique<VersionCommand>(cli));
     commands.emplace_back(std::make_unique<DacSetupCommand>(cli));
     commands.emplace_back(std::make_unique<ScanBussesCommand>(cli));
+    commands.emplace_back(std::make_unique<GetBusCapabilitiesCommand>(cli));
+    commands.emplace_back(std::make_unique<SetBusCapabilitiesCommand>(cli));
+
     commands.emplace_back(std::make_unique<ReadPeripheralRegisterCommand>(cli));
     commands.emplace_back(std::make_unique<WritePeripheralRegisterCommand>(cli));
 

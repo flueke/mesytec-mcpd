@@ -194,7 +194,6 @@ struct McpdParams
 
 namespace bus_capabilities
 {
-    // FIXME: improve the names once I understand them
     static const unsigned PosOrAmp = 1u << 0;
     static const unsigned TofPosOrAmp = 1u << 1;
     static const unsigned TofPosAndAmp = 1u << 2;
@@ -202,8 +201,8 @@ namespace bus_capabilities
 
 struct BusCapabilities
 {
-    u8 available;
-    u8 selected;
+    u8 available; // the available bus tx capabilities
+    u8 selected;  // the current bus tx setting
 };
 
 enum class TimingRole
@@ -326,6 +325,18 @@ inline const char *to_string(const EventType &et)
     }
 
     return "<unknown EventType>";
+}
+
+inline const char *bus_capabilities_to_string(const unsigned caps)
+{
+    if (caps & bus_capabilities::TofPosAndAmp)
+        return "TPA";
+    if (caps & bus_capabilities::TofPosOrAmp)
+        return "TP";
+    if (caps & bus_capabilities::PosOrAmp)
+        return "P";
+
+    return "";
 }
 
 namespace event_constants
