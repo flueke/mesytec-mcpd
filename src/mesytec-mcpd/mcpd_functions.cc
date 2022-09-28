@@ -644,6 +644,46 @@ std::error_code mcpd_read_register(
     return {};
 }
 
+std::error_code read_peripheral_register(
+    int sock, u8 mcpdId, u8 mpsdId,
+    u16 registerNumber, u16 &dest)
+{
+    std::array<u16, 2> data =
+    {
+        static_cast<u16>(mpsdId),
+        registerNumber,
+    };
+
+    auto request = make_command_packet(CommandType::ReadPeripheralRegister, mcpdId, data.data(), data.size());
+    CommandPacket response = {};
+
+    if (auto ec = command_transaction(sock, request, response))
+        return ec;
+
+    dest = response.data[2];
+
+    return {};
+}
+
+std::error_code write_peripheral_register(
+    int sock, u8 mcpdId, u8 mpsdId,
+    u16 registerNumber, u16 registerValue)
+{
+    std::array<u16, 3> data =
+    {
+        static_cast<u16>(mpsdId),
+        registerNumber,
+        registerValue,
+    };
+
+    auto request = make_command_packet(CommandType::WritePeripheralRegister, mcpdId, data.data(), data.size());
+    CommandPacket response = {};
+
+    if (auto ec = command_transaction(sock, request, response))
+        return ec;
+
+    return {};
+}
 
 #if 0 // untested/not implemented according to Gregor
 std::error_code mcpd_send_serial_string(

@@ -708,6 +708,112 @@ struct ReadRegisterCommand: public BaseCommand
     }
 };
 
+struct ReadPeripheralRegisterCommand: public BaseCommand
+{
+    u16 mpsdId_ = 0;
+    u16 registerNumber_ = 0;
+
+    ReadPeripheralRegisterCommand(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "read_peripheral_register",
+                [this] (const lyra::group &) { this->run_ = true; }
+                )
+            .help("read peripheral module (MCPD/MSTD) register")
+
+            .add_argument(
+                lyra::arg(mpsdId_, "mpsdId")
+                .required()
+                .help("MPSD/MSTD ID (bus number)")
+            )
+
+            .add_argument(
+                lyra::arg(registerNumber_, "registerNumber")
+                .required()
+                .help("register to read")
+            )
+        );
+    }
+
+    int runCommand(CliContext &ctx) override
+    {
+        spdlog::debug("{}, mpsdId={}, registerNumber={}", __PRETTY_FUNCTION__, mpsdId_, registerNumber_);
+
+        u16 dest{};
+
+        auto ec = read_peripheral_register(ctx.cmdSock, ctx.mcpdId, mpsdId_, registerNumber_, dest);
+
+        if (ec)
+        {
+            spdlog::error("Error reading peripheral register: {} ({}, {})",
+                ec.message(), ec.value(), ec.category().name());
+            return 1;
+        }
+
+        spdlog::info("read_peripheral_register: mpsdId={0:}, register={1:}, value=0x{2:04X} ({2:} decimal)",
+            mpsdId_, registerNumber_, dest);
+
+        return 0;
+    }
+};
+
+struct WritePeripheralRegisterCommand: public BaseCommand
+{
+    u16 mpsdId_ = 0;
+    u16 registerNumber_ = 0;
+    u16 registerValue_ = 0;
+
+    WritePeripheralRegisterCommand(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "write_peripheral_register",
+                [this] (const lyra::group &) { this->run_ = true; }
+                )
+            .help("write peripheral module (MCPD/MSTD) register")
+
+            .add_argument(
+                lyra::arg(mpsdId_, "mpsdId")
+                .required()
+                .help("MPSD/MSTD ID (bus number)")
+            )
+
+            .add_argument(
+                lyra::arg(registerNumber_, "registerNumber")
+                .required()
+                .help("register to write")
+            )
+
+            .add_argument(
+                lyra::arg(registerValue_, "registerValue")
+                .required()
+                .help("value to write")
+            )
+        );
+    }
+
+    int runCommand(CliContext &ctx) override
+    {
+        spdlog::debug("{}, mpsdId={}, registerNumber={}, registerValue={}",
+            __PRETTY_FUNCTION__, mpsdId_, registerNumber_, registerValue_);
+
+        auto ec = write_peripheral_register(ctx.cmdSock, ctx.mcpdId, mpsdId_, registerNumber_, registerValue_);
+
+        if (ec)
+        {
+            spdlog::error("Error writing peripheral register: {} ({}, {})",
+                ec.message(), ec.value(), ec.category().name());
+            return 1;
+        }
+
+        spdlog::info("write_peripheral_register: mpsdId={0:}, register={1:}, value=0x{2:04X} ({2:} decimal)",
+            mpsdId_, registerNumber_, registerValue_);
+
+        return 0;
+    }
+};
+
 struct MpsdSetGainCommand: public BaseCommand
 {
     u16 mpsdId_ = 0u;
@@ -1944,6 +2050,8 @@ int main(int argc, char *argv[])
     commands.emplace_back(std::make_unique<VersionCommand>(cli));
     commands.emplace_back(std::make_unique<DacSetupCommand>(cli));
     commands.emplace_back(std::make_unique<ScanBussesCommand>(cli));
+    commands.emplace_back(std::make_unique<ReadPeripheralRegisterCommand>(cli));
+    commands.emplace_back(std::make_unique<WritePeripheralRegisterCommand>(cli));
 
     // extension for the modern FPGA based MCPD/MDLL versions
     commands.emplace_back(std::make_unique<WriteRegisterCommand>(cli));

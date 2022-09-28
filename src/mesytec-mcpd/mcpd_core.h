@@ -100,6 +100,10 @@ enum class CommandType: u16
 
     GetVersion = 51,
 
+    // Read/write internal registers of MPSD/MSTD modules
+    ReadPeripheralRegister = 52,
+    WritePeripheralRegister = 53,
+
     // MDLL specific commands (in classic and the modern MVLC/MDPP based versions)
     MdllSetTresholds = 60,
     MdllSetSpectrum = 61,
@@ -111,7 +115,6 @@ enum class CommandType: u16
     // MCPD/MDLL modern version only: generic register access.
     WriteRegister = 80,
     ReadRegister = 81,
-
 };
 
 inline const char *to_string(const CommandType &cmd)
@@ -146,6 +149,9 @@ inline const char *to_string(const CommandType &cmd)
         case CommandType::SetMstdGain: return "SetMstdGain";
         case CommandType::ReadIds: return "ReadIds";
         case CommandType::GetVersion: return "GetVersion";
+
+        case CommandType::ReadPeripheralRegister: return "ReadPeripheralRegister";
+        case CommandType::WritePeripheralRegister: return "WritePeripheralRegister";
 
         case CommandType::MdllSetTresholds: return "MdllSetTresholds";
         case CommandType::MdllSetSpectrum: return "MdllSetSpectrum";

@@ -189,6 +189,14 @@ std::error_code mcpd_write_register(
 std::error_code mcpd_read_register(
     int sock, u8 mcpdId, u16 address, u32 &dest);
 
+std::error_code read_peripheral_register(
+    int sock, u8 mcpdId, u8 mpsdId,
+    u16 registerNumber, u16 &dest);
+
+std::error_code write_peripheral_register(
+    int sock, u8 mcpdId, u8 mpsdId,
+    u16 registerNumber, u16 registerValue);
+
 //
 // MPSD specific
 //
