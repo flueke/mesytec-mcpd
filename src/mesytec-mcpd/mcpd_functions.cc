@@ -797,6 +797,8 @@ std::error_code mpsd_set_pulser(
     if (auto ec = command_transaction(sock, request, response))
         return ec;
 
+    assert(get_data_length(response) >= 5);
+
     return {};
 }
 
