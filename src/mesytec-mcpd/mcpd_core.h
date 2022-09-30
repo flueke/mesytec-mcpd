@@ -26,12 +26,18 @@ static const std::size_t CommandPacketMaxDataWords = 726;
 static const std::size_t DataPacketMaxDataWords = 715;
 
 #pragma pack(push, 1)
-struct CommandPacket
+struct PacketBase
 {
-    u16 bufferLength;
-    u16 bufferType;
-    u16 headerLength;
-    u16 bufferNumber;
+    u16 bufferLength;   // Length of the packet in 16 bit words starting from bufferType
+                        // up to and including the last data word.
+    u16 bufferType;     // Type of the buffer (CommandPacketBufferType).
+    u16 headerLength;   // Length of the packet header (up to and including the headerChecksum
+                        // field) in 16 bits words (=> constant value of 10).
+    u16 bufferNumber;   // 16 bit buffer number allowing to detect packet loss
+};
+
+struct CommandPacket: public PacketBase
+{
     u16 cmd;
     u8 deviceStatus;
     u8 deviceId;
@@ -40,12 +46,8 @@ struct CommandPacket
     u16 data[CommandPacketMaxDataWords];
 };
 
-struct DataPacket
+struct DataPacket: public PacketBase
 {
-    u16 bufferLength;
-    u16 bufferType;
-    u16 headerLength;
-    u16 bufferNumber;
     u16 runId;
     u8 deviceStatus;
     u8 deviceId;
