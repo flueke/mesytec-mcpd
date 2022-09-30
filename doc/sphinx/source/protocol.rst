@@ -98,6 +98,10 @@ packet from a control pc to a MCPD-8.
   8 bit wide bit field for sync and start/stop status. Can be left blank in
   buffers sent by control pc.
 
+  bit0: 0=DAQ stopped, 1=DAQ running
+
+  bit3: 0=sync ok, 1=sync error
+
 * Header Timestamp
 
   48 bits synchronized system timer (100 ns binning) generated shortly before
