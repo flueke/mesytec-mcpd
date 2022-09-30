@@ -547,18 +547,17 @@ struct DecodedEvent
 {
     struct Neutron
     {
-        u8 mpsdId;
-        u8 channel;
-        u16 amplitude;
-        u16 position;
+        u8 mpsdId;      // 3 bit mpsd/bus id
+        u8 channel;     // 5 bit channel number
+        u16 amplitude;  // 10 bit amplitude
+        u16 position;   // 10 bit position
     };
 
     struct Trigger
     {
-        u8 triggerId;
-        u8 dataId;
-        u32 value;
-        u64 timestamp;
+        u8 triggerId;   // 3 bit trigger id (see TriggerSource enum for possible values)
+        u8 dataId;      // 4 bit data id (see DataSource enum for possible values)
+        u32 value;      // 32 bit data value
     };
 
     EventType type;
@@ -569,8 +568,8 @@ struct DecodedEvent
         Trigger trigger;
     };
 
-    u64 timestamp;
-
+    u64 timestamp;  // The full event timestamp calculated by adding up the 48 bit
+                    // packet header timestamp and the 19 bit event timestamp.
 };
 
 inline DecodedEvent decode_event(const DataPacket &packet, size_t eventNum)
@@ -629,7 +628,7 @@ Out &format(Out &out, const DecodedEvent &event)
             break;
     }
 
-    out << fmt::format(", timestamp={}", event.timestamp);
+    out << fmt::format(", full_timestamp={}", event.timestamp);
 
     return out;
 }
