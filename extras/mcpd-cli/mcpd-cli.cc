@@ -436,7 +436,7 @@ struct ParamSourceCommand: public BaseCommand
         spdlog::debug("{}, param={}, source={}",
                       __PRETTY_FUNCTION__, param_, source_);
 
-        auto ec = mcpd_set_param_source(ctx.cmdSock, ctx.mcpdId, param_, static_cast<CounterSource>(source_));
+        auto ec = mcpd_set_param_source(ctx.cmdSock, ctx.mcpdId, param_, static_cast<DataSource>(source_));
 
         if (ec)
         {

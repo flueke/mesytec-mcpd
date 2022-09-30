@@ -258,7 +258,7 @@ namespace compare_register_special_values
 
 static const std::size_t CellCount = 6;
 
-enum class CounterSource: u16
+enum class DataSource: u16
 {
     Monitor0 = 0,
     Monitor1 = 1,

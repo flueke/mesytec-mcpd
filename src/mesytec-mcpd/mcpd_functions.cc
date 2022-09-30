@@ -529,7 +529,7 @@ std::error_code mcpd_setup_auxtimer(
 std::error_code mcpd_set_param_source(
     int sock, u8 mcpdId,
     u16 param,
-    const CounterSource &source)
+    const DataSource &source)
 {
     std::array<u16, 2> data =
     {
