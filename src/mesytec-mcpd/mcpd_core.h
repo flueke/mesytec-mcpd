@@ -64,9 +64,10 @@ static_assert(sizeof(DataPacket) == MaxPayloadSize,
               "DataPacket too large for standard MTU");
 
 static const u32 CommandPacketBufferType = 0x8000;
+static const u32 McpdDataBufferType = 0x0001;
+static const u32 MdllDataBufferType = 0x0002;
 static const u32 CommandPacketHeaderWords = 10u;
 static const u16 BufferTerminator = 0xFFFFu;
-static const u32 MdllDataBufferType = 0x0002;
 
 enum class CommandType: u16
 {
