@@ -2239,8 +2239,8 @@ int main(int argc, char *argv[])
 
     if (!(*activeCommand)->offline())
     {
-        spdlog::info("Connecting to mcpd @ {}:{}, mcpdId={} ...",
-                     ctx.mcpdAddress, ctx.mcpdPort, ctx.mcpdId);
+        spdlog::debug("Connecting to mcpd @ {}:{}, mcpdId={} ...",
+                      ctx.mcpdAddress, ctx.mcpdPort, ctx.mcpdId);
 
         ctx.cmdSock = connect_udp_socket(ctx.mcpdAddress, ctx.mcpdPort, &ec);
 
