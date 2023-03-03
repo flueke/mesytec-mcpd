@@ -57,6 +57,7 @@ std::error_code command_transaction_(
         {
             spdlog::trace("request (attempt={}/{}): {}",
                           attempt+1, MaxAttempts, to_string(request));
+            spdlog::trace("request: {}", raw_data_to_string(request));
 
             auto ec = send_command(sock, request);
 
@@ -75,6 +76,7 @@ std::error_code command_transaction_(
                 return ec;
 
             spdlog::trace("response: {}", to_string(response));
+            spdlog::trace("response: {}", raw_data_to_string(response));
 
             if (response.bufferType != CommandPacketBufferType)
             {

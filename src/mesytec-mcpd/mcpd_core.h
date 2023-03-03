@@ -451,7 +451,7 @@ Out &format(Out &out, const CommandPacket &packet, bool logData = true)
     out << fmt::format("  time={}, {}, {}", packet.time[0], packet.time[1], packet.time[2]) << std::endl;
     out << fmt::format("  headerChecksum=0x{:04X}", packet.headerChecksum) << std::endl;
 
-    u16 dataLen = get_data_length(packet);
+    const u16 dataLen = get_data_length(packet);
 
     out << fmt::format("  calculated data length={}", dataLen) << std::endl;
 
@@ -467,6 +467,27 @@ inline std::string to_string(const CommandPacket &packet)
     std::stringstream ss;
     format(ss, packet);
     return ss.str();
+}
+
+inline std::string raw_data_to_string(const CommandPacket &packet)
+{
+    const u16 dataLen = get_data_length(packet);
+    const auto rawShortData = reinterpret_cast<const u16 *>(&packet);
+    const auto rawShortSize = sizeof(CommandPacket) / sizeof(u16) - CommandPacketMaxDataWords + dataLen;
+    assert(rawShortSize < sizeof(CommandPacket));
+
+    std::stringstream out;
+    out << "raw packet header (including header checksum):\n";
+    for (size_t i = 0; i < packet.headerLength; ++i)
+        out << fmt::format("  [{:02d}] {:#06x}\n", i, rawShortData[i]);
+
+    out << "raw packet data:\n";
+    for (size_t i = packet.headerLength; i < packet.headerLength + dataLen; ++i)
+    {
+        out << fmt::format("  [{:02d}] {:#06x}\n", i, rawShortData[i]);
+    }
+
+    return out.str();
 }
 
 inline std::array<u64, McpdParamCount> get_parameter_values(const DataPacket &packet)
