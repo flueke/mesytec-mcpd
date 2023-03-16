@@ -2178,7 +2178,7 @@ int main(int argc, char *argv[])
 
     if (showVersion)
     {
-        std::cout << fmt::format("mcpd-cli {}\nCopyright (c) 2021-22 mesytec GmbH & Co. KG\nLicense: Boost Software License - Version 1.0 - August 17th, 2003",
+        std::cout << fmt::format("mcpd-cli {}\nCopyright (c) 2021-23 mesytec GmbH & Co. KG\nLicense: Boost Software License - Version 1.0 - August 17th, 2003",
                                  library_version()) << std::endl;
         return 0;
     }
