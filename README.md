@@ -1,6 +1,20 @@
 **mesytec-mcpd - User space driver library for the
  [Mesytec PSD+ system](https://mesytec.com/products/neutron-scattering/MCPD-8.html).**
 
+- [Installation](#installation)
+- [Initial MCPD-8\_v1 setup](#initial-mcpd-8_v1-setup)
+  - [Setup steps](#setup-steps)
+- [Using the C++ interface](#using-the-c-interface)
+  - [Quickstart](#quickstart)
+    - [CMakeLists.txt](#cmakeliststxt)
+    - [mcpd-example.cc](#mcpd-examplecc)
+  - [Library Usage](#library-usage)
+- [Using the mcpd-cli command line tool](#using-the-mcpd-cli-command-line-tool)
+  - [Minimal DAQ setup using one MCPD-8 with two MPSD-8+ modules](#minimal-daq-setup-using-one-mcpd-8-with-two-mpsd-8-modules)
+    - [Initialization](#initialization)
+    - [Readout Process and DAQ controls](#readout-process-and-daq-controls)
+    - [Listfile replay](#listfile-replay)
+
 # Installation
 
 The libraries source code is available on github: https://github.com/flueke/mesytec-mcpd
@@ -94,72 +108,6 @@ modules using their newly assigned IP-addresses. The changes made are permanentl
 stored in the flash memory of each module. Defaults can be restored by pressing
 the reset button on the CPU board inside the MCPD NIM housing.
 
-
-# Using the mcpd-cli command line tool
-
-It is possible to setup and run a DAQ using only the ``mcpd-cli`` tool without
-having to write any custom code. The CLI tool allows to initialze MCPD-8 and
-connected MPSD-8+ modules, start a DAQ run and write the readout data to a
-listfile. If ROOT support is enabled histograms for amplitudes, positions and
-times can be automatically created and filled by the readout process.
-
-``mcpd-cli`` uses the following enviroment variables if defined:
-
-* ``MCPD_ADDRESS`` is the ip-address/hostname of the MCPD to connect to (e.g. ``192.168.168.121``.
-* ``MCPD_ID`` is the ID assigned in the setup step.
-
-These values are used as the ``--address`` and ``--id`` parameters of
-``mcpd-cli`` if not explicitly specified.
-
-## Minimal DAQ setup using one MCPD-8 with two MPSD-8+ modules
-
-### Initialization
-
-    # Set the runId for the next DAQ run
-    mcpd-cli --address=10.11.12.100 --id=0 runid 1
-
-    # Set thresholds for MPSDs on bus 0 and 1 to 0
-    mcpd-cli --address=10.11.12.100 --id=0 mpsd_set_threshold 0 0
-    mcpd-cli --address=10.11.12.100 --id=0 mpsd_set_threshold 1 0
-
-    # enable pulser, mpsd=0, channel=0, pos=2 (middle), amplitude=128, state=on
-    mcpd-cli --address=10.11.12.100 --id=0 mpsd_set_pulser 0 0 2 128 on
-
-    # enable pulser, mpsd=1, channel=0, pos=1 (right), amplitude=64, state=on
-    mcpd-cli --address=10.11.12.100 --id=0 mpsd_set_pulser 1 0 1 64 on
-
-### Readout Process and DAQ controls
-
-In a second terminal start the readout process:::
-
-    mcpd-cli --address=10.11.12.100 --id=0 readout --duration=60 --listfile=mcpd-run1.mcpdlst
-
-This process will run for 60 seconds or until canceled via ``ctrl-c``. If ROOT support is enabled you can use::
-
-    mcpd-cli --address=10.11.12.100 --id=0 readout --duration=60 --listfile=mcpd-run1.mcpdlst --root-histo-file=mcpd-run1-histos.root
-
-to write out ROOT histograms.
-
-In the first terminal tell the MCPD-8 to start the DAQ:::
-
-    mcpd-cli --address=10.11.12.100 --id=0 daq start
-
-Readout data should now arrive at the readout process. ``mcpd-cli readout``
-does listen on the specified data port (default is 54321) but accepts packets
-from all sources. This means the readout process can handle data coming from
-multiple MCPD-8 modules as long as they have unique IDs set.
-
-### Listfile replay
-
-To replay data from listfile use:::
-
-    mcpd-cli replay --listfile=mcpd-run1.mcpdlst
-
-The replay command can also generate root histograms:::
-
-    mcpd-cli replay --listfile=mcpd-run1.mcpdlst --root-histo-file=mcpd-replay1-histos.root
-
-
 # Using the C++ interface
 
 ## Quickstart
@@ -167,7 +115,7 @@ The replay command can also generate root histograms:::
 A minimal CMake example project can be found under ``extras/cmake-example``.
 This can serve as the basis for custom code. The example should work as long as
 cmake is able to locate the installed mesytec-mcpd library. If using a
-non-standard installation path you have to tell CMake about it:::
+non-standard installation path you have to tell CMake about it:
 
     export CMAKE_PREFIX_PATH=$HOME/local/mesytec-mcpd
 
@@ -224,7 +172,7 @@ and FPGA version information.
         return 0;
     }
 
-### Library Design
+## Library Usage
 
 The main header to include is ``mesytec-mcpd.h``. This pulls in the other
 required headers. All objects live in the ``mesytec::mcpd`` namespace.
@@ -300,3 +248,67 @@ repeatedly:
     }
 
 Also see the mcpd-cli source code under ``extras/mcpd-cli/mcpd-cli.cc``.
+
+# Using the mcpd-cli command line tool
+
+It is possible to setup and run a DAQ using only the ``mcpd-cli`` tool without
+having to write any custom code. The CLI tool allows to initialze MCPD-8 and
+connected MPSD-8+ modules, start a DAQ run and write the readout data to a
+listfile. If ROOT support is enabled histograms for amplitudes, positions and
+times can be automatically created and filled by the readout process.
+
+``mcpd-cli`` uses the following enviroment variables if defined:
+
+* ``MCPD_ADDRESS`` is the ip-address/hostname of the MCPD to connect to (e.g. ``192.168.168.121``.
+* ``MCPD_ID`` is the ID assigned in the setup step.
+
+These values are used as the ``--address`` and ``--id`` parameters of
+``mcpd-cli`` if not explicitly specified.
+
+## Minimal DAQ setup using one MCPD-8 with two MPSD-8+ modules
+
+### Initialization
+
+    # Set the runId for the next DAQ run
+    mcpd-cli --address=10.11.12.100 --id=0 runid 1
+
+    # Set thresholds for MPSDs on bus 0 and 1 to 0
+    mcpd-cli --address=10.11.12.100 --id=0 mpsd_set_threshold 0 0
+    mcpd-cli --address=10.11.12.100 --id=0 mpsd_set_threshold 1 0
+
+    # enable pulser, mpsd=0, channel=0, pos=2 (middle), amplitude=128, state=on
+    mcpd-cli --address=10.11.12.100 --id=0 mpsd_set_pulser 0 0 2 128 on
+
+    # enable pulser, mpsd=1, channel=0, pos=1 (right), amplitude=64, state=on
+    mcpd-cli --address=10.11.12.100 --id=0 mpsd_set_pulser 1 0 1 64 on
+
+### Readout Process and DAQ controls
+
+In a second terminal start the readout process:
+
+    mcpd-cli --address=10.11.12.100 --id=0 readout --duration=60 --listfile=mcpd-run1.mcpdlst
+
+This process will run for 60 seconds or until canceled via ``ctrl-c``. If ROOT support is enabled you can use::
+
+    mcpd-cli --address=10.11.12.100 --id=0 readout --duration=60 --listfile=mcpd-run1.mcpdlst --root-histo-file=mcpd-run1-histos.root
+
+to write out ROOT histograms.
+
+In the first terminal tell the MCPD-8 to start the DAQ:
+
+    mcpd-cli --address=10.11.12.100 --id=0 daq start
+
+Readout data should now arrive at the readout process. ``mcpd-cli readout``
+does listen on the specified data port (default is 54321) but accepts packets
+from all sources. This means the readout process can handle data coming from
+multiple MCPD-8 modules as long as they have unique IDs set.
+
+### Listfile replay
+
+To replay data from listfile use:
+
+    mcpd-cli replay --listfile=mcpd-run1.mcpdlst
+
+The replay command can also generate root histograms:
+
+    mcpd-cli replay --listfile=mcpd-run1.mcpdlst --root-histo-file=mcpd-replay1-histos.root
