@@ -120,57 +120,59 @@ non-standard installation path you have to tell CMake about it:
     export CMAKE_PREFIX_PATH=$HOME/local/mesytec-mcpd
 
 ### CMakeLists.txt
+```cmake
+cmake_minimum_required(VERSION 3.12)
+project(mesytec-mcpd-cmake-example)
 
-    cmake_minimum_required(VERSION 3.12)
-    project(mesytec-mcpd-cmake-example)
+find_package(mesytec-mcpd REQUIRED)
 
-    find_package(mesytec-mcpd REQUIRED)
-
-    add_executable(mcpd-example mcpd-example.cc)
-    target_link_libraries(mcpd-example PRIVATE mesytec-mcpd::mesytec-mcpd)
+add_executable(mcpd-example mcpd-example.cc)
+target_link_libraries(mcpd-example PRIVATE mesytec-mcpd::mesytec-mcpd)
+```
 
 ### mcpd-example.cc
 
 The example program below connects to a MCPD and attempts to read out the CPU
 and FPGA version information.
+```cpp
+#include <iostream>
+#include <mesytec-mcpd/mesytec-mcpd.h>
 
-    #include <iostream>
-    #include <mesytec-mcpd/mesytec-mcpd.h>
+using namespace mesytec::mcpd;
+using std::cout;
+using std::cerr;
+using std::endl;
 
-    using namespace mesytec::mcpd;
-    using std::cout;
-    using std::cerr;
-    using std::endl;
+int main(int argc, char *argv[])
+{
+    std::error_code ec = {};
 
-    int main(int argc, char *argv[])
+    int mcpdCommandSocket = connect_udp_socket("192.168.168.121", McpdDefaultPort, &ec);
+
+    if (ec)
     {
-        std::error_code ec = {};
-
-        int mcpdCommandSocket = connect_udp_socket("192.168.168.121", McpdDefaultPort, &ec);
-
-        if (ec)
-        {
-            cerr << "Error connecting to mcpd: " << ec.message() << std::endl;
-            return 1;
-        }
-
-        unsigned mcpdId = 0u;
-
-        McpdVersionInfo vi = {};
-
-        ec = mcpd_get_version(mcpdCommandSocket, mcpdId, vi);
-
-        if (ec)
-        {
-            cerr << "Error reading MCPD version info: " << ec.message() << std::endl;
-            return 1;
-        }
-
-        cout << "MCPD version info: CPU=" << vi.cpu[0] << "." << vi.cpu[1]
-            << ", FPGA=" << vi.fpga[0] << "." << vi.fpga[1] << endl;
-
-        return 0;
+        cerr << "Error connecting to mcpd: " << ec.message() << std::endl;
+        return 1;
     }
+
+    unsigned mcpdId = 0u;
+
+    McpdVersionInfo vi = {};
+
+    ec = mcpd_get_version(mcpdCommandSocket, mcpdId, vi);
+
+    if (ec)
+    {
+        cerr << "Error reading MCPD version info: " << ec.message() << std::endl;
+        return 1;
+    }
+
+    cout << "MCPD version info: CPU=" << vi.cpu[0] << "." << vi.cpu[1]
+        << ", FPGA=" << vi.fpga[0] << "." << vi.fpga[1] << endl;
+
+    return 0;
+}
+```
 
 ## Library Usage
 
@@ -201,51 +203,52 @@ protocol errors and retries.
 Currently no dedicated readout functions are implemented. Instead create a
 socket listening on the data port and call ``receive_one_packet()``
 repeatedly:
+```cpp
+std::error_code ec = {};
+DataPacket dataPacket = {};
+size_t timeouts = 0;
+// Socket bound to local port 54321 on all interfaces.
+int dataSock = bind_udp_socket(54321, &ec);
 
-    std::error_code ec = {};
-    DataPacket dataPacket = {};
-    size_t timeouts = 0;
-    // Socket bound to local port 54322 on all interfaces.
-    int dataSock = bind_udp_socket(54322, &ec);
+if (ec) return 1;
 
-    if (ec) return 1;
+while (true)
+{
+   size_t bytesTransferred = 0u;
 
-    while (true)
-    {
-       size_t bytesTransferred = 0u;
+   ec = receive_one_packet(
+       dataSock,
+       reinterpret_cast<u8 *>(&dataPacket), sizeof(dataPacket),
+       bytesTransferred, DefaultReadTimeout_ms);
 
-       ec = receive_one_packet(
-           dataSock,
-           reinterpret_cast<u8 *>(&dataPacket), sizeof(dataPacket),
-           bytesTransferred, DefaultReadTimeout_ms);
+   if (ec)
+   {
+       if (ec == std::errc::interrupted)
+           break;
 
-       if (ec)
+       if (ec != SocketErrorType::Timeout)
        {
-           if (ec == std::errc::interrupted)
-               break;
-
-           if (ec != SocketErrorType::Timeout)
-           {
-               spdlog::error("readout: error reading from network: {} ({}, {})",
-                             ec.message(), ec.value(), ec.category().name());
-               return 1;
-           }
-           else
-               ++timeouts;
+           spdlog::error("readout: error reading from network: {} ({}, {})",
+                         ec.message(), ec.value(), ec.category().name());
+           return 1;
        }
+       else
+           ++timeouts;
+   }
 
-       if (bytesTransferred)
-       {
-          const auto eventCount = get_event_count(dataPacket);
+   if (bytesTransferred)
+   {
+      const auto eventCount = get_event_count(dataPacket);
 
-          // Decode and print each incoming event
-          for(size_t ei=0; ei<eventCount; ++ei)
-          {
-             auto event = decode_event(dataPacket, ei);
-             spdlog::info("{}", to_string(event));
-          }
-       }
-    }
+      // Decode and print each incoming event
+      for(size_t ei=0; ei<eventCount; ++ei)
+      {
+         auto event = decode_event(dataPacket, ei);
+         spdlog::info("{}", to_string(event));
+      }
+   }
+}
+```
 
 Also see the mcpd-cli source code under ``extras/mcpd-cli/mcpd-cli.cc``.
 
@@ -268,19 +271,20 @@ These values are used as the ``--address`` and ``--id`` parameters of
 ## Minimal DAQ setup using one MCPD-8 with two MPSD-8+ modules
 
 ### Initialization
+```shell
+# Set the runId for the next DAQ run
+mcpd-cli --address=10.11.12.100 --id=0 runid 1
 
-    # Set the runId for the next DAQ run
-    mcpd-cli --address=10.11.12.100 --id=0 runid 1
+# Set thresholds for MPSDs on bus 0 and 1 to 0
+mcpd-cli --address=10.11.12.100 --id=0 mpsd_set_threshold 0 0
+mcpd-cli --address=10.11.12.100 --id=0 mpsd_set_threshold 1 0
 
-    # Set thresholds for MPSDs on bus 0 and 1 to 0
-    mcpd-cli --address=10.11.12.100 --id=0 mpsd_set_threshold 0 0
-    mcpd-cli --address=10.11.12.100 --id=0 mpsd_set_threshold 1 0
+# enable pulser, mpsd=0, channel=0, pos=2 (middle), amplitude=128, state=on
+mcpd-cli --address=10.11.12.100 --id=0 mpsd_set_pulser 0 0 2 128 on
 
-    # enable pulser, mpsd=0, channel=0, pos=2 (middle), amplitude=128, state=on
-    mcpd-cli --address=10.11.12.100 --id=0 mpsd_set_pulser 0 0 2 128 on
-
-    # enable pulser, mpsd=1, channel=0, pos=1 (right), amplitude=64, state=on
-    mcpd-cli --address=10.11.12.100 --id=0 mpsd_set_pulser 1 0 1 64 on
+# enable pulser, mpsd=1, channel=0, pos=1 (right), amplitude=64, state=on
+mcpd-cli --address=10.11.12.100 --id=0 mpsd_set_pulser 1 0 1 64 on
+```
 
 ### Readout Process and DAQ controls
 
