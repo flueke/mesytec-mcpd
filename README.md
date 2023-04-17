@@ -5,9 +5,9 @@
 - [Initial MCPD-8\_v1 setup](#initial-mcpd-8_v1-setup)
   - [Setup steps](#setup-steps)
 - [Using the C++ interface](#using-the-c-interface)
-  - [Quickstart](#quickstart)
-    - [CMakeLists.txt](#cmakeliststxt)
-    - [mcpd-example.cc](#mcpd-examplecc)
+  - [CMakeLists.txt](#cmakeliststxt)
+  - [mcpd-example.cc](#mcpd-examplecc)
+  - [Non-CMake library usage](#non-cmake-library-usage)
   - [Library Usage](#library-usage)
 - [Using the mcpd-cli command line tool](#using-the-mcpd-cli-command-line-tool)
   - [Minimal DAQ setup using one MCPD-8 with two MPSD-8+ modules](#minimal-daq-setup-using-one-mcpd-8-with-two-mpsd-8-modules)
@@ -27,19 +27,21 @@ The only (optional) external dependency is the ROOT framework. If ROOT is found
 received readout data.
 
 Build steps:
-
+```shell
      git clone https://github.com/flueke/mesytec-mcpd
      mkdir mesytec-mcpd/build
      cd mesytec-mcpd/build
      cmake -DCMAKE_BUILD_TYPE=Release ..
      make install
+```
 
 The above commands will build and install both the mesytec-mcpd library and the
 mcpd-cli command line tool. You can add
 ``-DCMAKE_INSTALL_PREFIX=$HOME/local/mesytec-mcpd`` to the cmake command line
 to change the installation path. Then use:
-
+```shell
      export CMAKE_PREFIX_PATH=$HOME/local/mesytec-mcpd
+```
 
 so that cmake will be able to locate the installed library.
 
@@ -65,8 +67,9 @@ your machines IP-address in the local network is ``10.11.12.1``.
    - ``mcpd-cli version`` should be able to connect and read the CPU and FPGA firmware versions.
 
 4. Use ``mcpd-cli`` to set a new IP-address and ID for the MCPD-8:
-
+```shell
         mcpd-cli setup 10.11.12.100 0
+```
 
    The command sets the address to ``10.11.12.100`` and the MCPD-ID to ``0``.
 
@@ -76,22 +79,27 @@ your machines IP-address in the local network is ``10.11.12.1``.
 5. Repeat the above steps for any additional MCPD-8 modules you want to use
    (connect the modules one by one). Choose unique IP-addresses and IDs for
    each module, e.g.:
-
+```shell
        mcpd-cli setup 10.11.12.101 1
        mcpd-cli setup 10.11.12.102 2
+```
 
 6. Change your network card back to your local network: ``10.11.12.1/255.255.255.0``.
 
    You should now be able to reach the MCPD using the address set in step 4:
 
+```shell
         ping 10.11.12.100
+```
 
 7. After moving the MCPD from its default network to your local network the
    data destination IP address has to be set once more as the MCPD still has
    the previous data destination *MAC-Address* stored. Use the following to
    update the data destination MAC address:
 
+```shell
         mcpd-cli --address=10.11.12.100 setup 10.11.12.100 0
+```
 
    This leaves the MCPD address and ID unchanged and sets the data destination
    address to the source computers address.
@@ -110,16 +118,16 @@ the reset button on the CPU board inside the MCPD NIM housing.
 
 # Using the C++ interface
 
-## Quickstart
-
 A minimal CMake example project can be found under ``extras/cmake-example``.
 This can serve as the basis for custom code. The example should work as long as
-cmake is able to locate the installed mesytec-mcpd library. If using a
+CMake is able to locate the installed mesytec-mcpd library. If using a
 non-standard installation path you have to tell CMake about it:
 
-    export CMAKE_PREFIX_PATH=$HOME/local/mesytec-mcpd
+```shell
+export CMAKE_PREFIX_PATH=$HOME/local/mesytec-mcpd
+```
 
-### CMakeLists.txt
+## CMakeLists.txt
 ```cmake
 cmake_minimum_required(VERSION 3.12)
 project(mesytec-mcpd-cmake-example)
@@ -130,7 +138,7 @@ add_executable(mcpd-example mcpd-example.cc)
 target_link_libraries(mcpd-example PRIVATE mesytec-mcpd::mesytec-mcpd)
 ```
 
-### mcpd-example.cc
+## mcpd-example.cc
 
 The example program below connects to a MCPD and attempts to read out the CPU
 and FPGA version information.
@@ -174,28 +182,36 @@ int main(int argc, char *argv[])
 }
 ```
 
+## Non-CMake library usage
+Alternatively the classic approach of passing compiler and linker flags can be used:
+```shell
+g++ -I/usr/local/mesytec-mcpd/include -L/usr/local/mesytec-mcpd/lib -lmesytec-mcpd mytool.cpp -o mytool
+```
+
 ## Library Usage
 
-The main header to include is ``mesytec-mcpd.h``. This pulls in the other
+The main header to include is ``<mesytec-mcpd/mesytec-mcpd.h>``. This pulls in the other
 required headers. All objects live in the ``mesytec::mcpd`` namespace.
 
-Constants and core data structures can be found in ``mcpd_core.h``:
+Constants and core data structures can be found in [mcpd_core.h](https://github.com/flueke/mesytec-mcpd/blob/main/src/mesytec-mcpd/mcpd_core.h):
 
 - ``CommandPacket`` is used for direct request/response communication.
 
 - ``DataPacket`` carries DAQ readout data. Use ``get_event_count()`` to get the
-  number of events contained in a DataPacket. Then call ``get_event()`` to
-  extract the specified ``DecodedEvent`` event from a data packet.
+number of events contained in a DataPacket. Then call ``decode_event()`` to
+extract the specified ``DecodedEvent`` structure from the data packet.
 
-Socket abstractions can be found in ``util/udp_sockets.h``. To create a command
-socket for the MCPD use ``connect_udp_socket()``. To create a listening socket
-for DAQ data call ``bind_udp_socket()``.
+Socket abstractions can be found in
+[util/udp_sockets.h](https://github.com/flueke/mesytec-mcpd/blob/main/src/mesytec-mcpd/util/udp_sockets.h).
+To create a command socket for the MCPD use ``connect_udp_socket()``. To create
+a listening socket for DAQ data use ``bind_udp_socket()``.
 
-MCPD and MPSD related functions are contained in ``mcpd_functions.h``. Most
-commands are implemented by a specific function, e.g ``mcpd_start_daq()``. These
-functions take a MCPD command socket as their first argument and an MCPD ID value as
-their second argument. Possible other arguments are used to fill the outgoing
-request ``CommandPacket``.
+MCPD and MPSD related functions are contained in
+[mcpd_functions.h](https://github.com/flueke/mesytec-mcpd/blob/main/src/mesytec-mcpd/mcpd_functions.h).
+Most commands are implemented by a specific function, e.g ``mcpd_start_daq()``.
+These functions take a MCPD command socket as their first argument and an MCPD
+ID value as their second argument. Possible other arguments are used to fill the
+outgoing request ``CommandPacket``.
 
 Internally the command functions call ``command_transaction()`` which handles
 protocol errors and retries.
@@ -207,8 +223,7 @@ repeatedly:
 std::error_code ec = {};
 DataPacket dataPacket = {};
 size_t timeouts = 0;
-// Socket bound to local port 54321 on all interfaces.
-int dataSock = bind_udp_socket(54321, &ec);
+int dataSock = bind_udp_socket(54321, &ec); // Socket bound to local port 54321 on all interfaces.
 
 if (ec) return 1;
 
@@ -250,7 +265,8 @@ while (true)
 }
 ```
 
-Also see the mcpd-cli source code under ``extras/mcpd-cli/mcpd-cli.cc``.
+Also see the mcpd-cli source code under
+[extras/mcpd-cli/mcpd-cli.cc](https://github.com/flueke/mesytec-mcpd/blob/main/extras/mcpd-cli/mcpd-cli.cc).
 
 # Using the mcpd-cli command line tool
 
@@ -290,17 +306,23 @@ mcpd-cli --address=10.11.12.100 --id=0 mpsd_set_pulser 1 0 1 64 on
 
 In a second terminal start the readout process:
 
-    mcpd-cli --address=10.11.12.100 --id=0 readout --duration=60 --listfile=mcpd-run1.mcpdlst
+```shell
+mcpd-cli --address=10.11.12.100 --id=0 readout --duration=60 --listfile=mcpd-run1.mcpdlst
+```
 
 This process will run for 60 seconds or until canceled via ``ctrl-c``. If ROOT support is enabled you can use::
 
-    mcpd-cli --address=10.11.12.100 --id=0 readout --duration=60 --listfile=mcpd-run1.mcpdlst --root-histo-file=mcpd-run1-histos.root
+```shell
+mcpd-cli --address=10.11.12.100 --id=0 readout --duration=60 --listfile=mcpd-run1.mcpdlst --root-histo-file=mcpd-run1-histos.root
+```
 
 to write out ROOT histograms.
 
 In the first terminal tell the MCPD-8 to start the DAQ:
 
-    mcpd-cli --address=10.11.12.100 --id=0 daq start
+```shell
+mcpd-cli --address=10.11.12.100 --id=0 daq start
+```
 
 Readout data should now arrive at the readout process. ``mcpd-cli readout``
 does listen on the specified data port (default is 54321) but accepts packets
@@ -311,8 +333,12 @@ multiple MCPD-8 modules as long as they have unique IDs set.
 
 To replay data from listfile use:
 
-    mcpd-cli replay --listfile=mcpd-run1.mcpdlst
+```shell
+mcpd-cli replay --listfile=mcpd-run1.mcpdlst
+```
 
 The replay command can also generate root histograms:
 
-    mcpd-cli replay --listfile=mcpd-run1.mcpdlst --root-histo-file=mcpd-replay1-histos.root
+```shell
+mcpd-cli replay --listfile=mcpd-run1.mcpdlst --root-histo-file=mcpd-replay1-histos.root
+```
