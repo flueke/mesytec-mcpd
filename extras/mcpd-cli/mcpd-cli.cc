@@ -1427,7 +1427,7 @@ struct ReadoutCommand: public BaseCommand
                 {
                     spdlog::info(
                         "packet#{}: bufferType=0x{:04x}, bufferNumber={}, runId={}, "
-                        "devStatus=0x{:04x}, devId={}, timestamp={}",
+                        "devStatus=0x{:04x}, deviceId={}, timestamp={}",
                         counters.packets, dataPacket.bufferType, dataPacket.bufferNumber,
                         dataPacket.runId, dataPacket.deviceStatus, dataPacket.deviceId,
                         get_header_timestamp(dataPacket));
@@ -1626,7 +1626,7 @@ struct ReplayCommand: public BaseCommand
             {
                 spdlog::info(
                     "packet#{}: bufferType=0x{:04x}, bufferNumber={}, runId={}, "
-                    "devStatus={}, devId={}, timestamp={}",
+                    "devStatus={}, deviceId={}, timestamp={}",
                     counters.packets, dataPacket.bufferType, dataPacket.bufferNumber,
                     dataPacket.runId, dataPacket.deviceStatus, dataPacket.deviceId,
                     get_header_timestamp(dataPacket));

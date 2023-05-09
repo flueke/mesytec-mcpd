@@ -581,6 +581,7 @@ struct DecodedEvent
         u32 value;      // 32 bit data value
     };
 
+    u8 deviceId;        // id value of the MCPD (or other device) as transmitted in the event packet header
     EventType type;
 
     union
@@ -589,8 +590,8 @@ struct DecodedEvent
         Trigger trigger;
     };
 
-    u64 timestamp;  // The full event timestamp calculated by adding up the 48 bit
-                    // packet header timestamp and the 19 bit event timestamp.
+    u64 timestamp;      // The full event timestamp calculated by adding up the 48 bit
+                        // packet header timestamp and the 19 bit event timestamp.
 };
 
 inline DecodedEvent decode_event(const DataPacket &packet, size_t eventNum)
@@ -601,6 +602,7 @@ inline DecodedEvent decode_event(const DataPacket &packet, size_t eventNum)
 
     DecodedEvent result = {};
 
+    result.deviceId = packet.deviceId;
     result.type = static_cast<EventType>((event >> ec::IdShift) & ec::IdMask);
 
     switch (result.type)
@@ -635,6 +637,7 @@ Out &format(Out &out, const DecodedEvent &event)
     {
         case EventType::Neutron:
             out << fmt::format("type={}", to_string(event.type));
+            out << fmt::format(", mcpdId={}", event.deviceId);
             out << fmt::format(", mpsdId={}", event.neutron.mpsdId);
             out << fmt::format(", channel={}", event.neutron.channel);
             out << fmt::format(", amplitude={}", event.neutron.amplitude);
@@ -643,6 +646,7 @@ Out &format(Out &out, const DecodedEvent &event)
 
         case EventType::Trigger:
             out << fmt::format("type={}", to_string(event.type));
+            out << fmt::format(", mcpdId={}", event.deviceId);
             out << fmt::format(", triggerId={}", event.trigger.triggerId);
             out << fmt::format(", dataId={}", event.trigger.dataId);
             out << fmt::format(", value={}", event.trigger.value);
