@@ -2,9 +2,12 @@
  [Mesytec PSD+ system](https://mesytec.com/products/neutron-scattering/MCPD-8.html).**
 
 - [Installation](#installation)
-- [Initial MCPD-8\_v1 setup](#initial-mcpd-8_v1-setup)
+- [MCPD-8\_v1 setup](#mcpd-8_v1-setup)
   - [Setup steps](#setup-steps)
-- [Using the C++ interface](#using-the-c-interface)
+- [MCPD-8\_v2 setup](#mcpd-8_v2-setup)
+  - [DHCP](#dhcp)
+  - [Manual ARP entry setup](#manual-arp-entry-setup)
+- [Using the libraries C++ interface](#using-the-libraries-c-interface)
   - [CMakeLists.txt](#cmakeliststxt)
   - [mcpd-example.cc](#mcpd-examplecc)
   - [Non-CMake library usage](#non-cmake-library-usage)
@@ -45,7 +48,11 @@ to change the installation path. Then use:
 
 so that cmake will be able to locate the installed library.
 
-# Initial MCPD-8_v1 setup
+# MCPD-8_v1 setup
+
+**Note**
+MCPD-8_v1 modules are the older variant released before 2022. The Ethernet
+connector is located on the front panel of the module.
 
 Each MCPD-8_v1 in a setup needs a unique IP-address and ID. The default
 IP-address is ``192.168.168.121``, the default ID is ``0``. These defaults can
@@ -116,7 +123,67 @@ modules using their newly assigned IP-addresses. The changes made are permanentl
 stored in the flash memory of each module. Defaults can be restored by pressing
 the reset button on the CPU board inside the MCPD NIM housing.
 
-# Using the C++ interface
+# MCPD-8_v2 setup
+
+**Note**
+MCPD-8_v2 modules are the newer variant released in 2022. The Ethernet
+connector is located on the back panel of the module.
+
+The MCPD-8_v2 internals are very different from the older version: there is no
+flash to permanently store networking settings. Instead the DHCP protocol is
+used to automatically configure the IP-address and setup a hostname for the
+module. Alternatively, if DHCP is not available, a static ARP entry can be used
+to establish communication with the module.
+
+## DHCP
+
+MCPD-8_v2 will request an IPv4-Address and a hostname via DHCP after powerup.
+The requested hostname is based on the serial number of the module: `mcpd-NNNN`
+where `NNNN` is the serial number displayed near the Ethernet port of the MCPD-8.
+
+After the DHCP phase the MCPD-8 should be reachable via its hostname:
+`ping mcpd-0012` should receive a reply for MCPD-8_v2 via serial 0012.
+
+## Manual ARP entry setup
+
+
+In case DHCP with hostname assignment should not or cannot be used an
+alternative approach is to manually associate the MAC-address of the MCPD-8 with
+an IP-address.
+
+The MAC address is shown near the Ethernet port of the MCPD-8. It has the form
+`04:85:46:d4:NN:NN` where `NNNN` is the last part of the modules serial number.
+
+With the MAC-address at hand an IPv4-address to MAC-address mapping in the
+operating systems ARP table can be created. This step is specific to the
+operating system and will require root/admin permissions. The below examples
+associate the IP-address `192.168.100.42` with the controllers MAC-address. You
+have to change the IP-address to match your local network setup, otherwise the
+operating system does not know how to reach the controller.
+
+* Linux
+  ```shell
+  arp -s 192.168.100.42 04:85:46:d4:00:12
+  ```
+
+  To make the entry permanent (at least on debian and ubuntu systems) the file
+  /etc/ethers can be used. Add a line like this to the file:
+
+    ``04:85:46:d4:00:12 192.168.100.42``
+
+* Windows
+
+  Open a `cmd.exe` prompt with **Administrator** permissions and use the
+  following command to create the ARP entry:
+
+  ```shell
+  arp -s 192.168.100.42 04-85-46-d4-00-12
+  ```
+
+To verify connectivity the `mcpd-cli` tool can be used: `mcpd-cli --address 192.168.100.42 version`
+prints the firmware revision of the MCPD-8.
+
+# Using the libraries C++ interface
 
 A minimal CMake example project can be found under ``extras/cmake-example``.
 This can serve as the basis for custom code. The example should work as long as
@@ -183,7 +250,7 @@ int main(int argc, char *argv[])
 ```
 
 ## Non-CMake library usage
-Alternatively the classic approach of passing compiler and linker flags can be used:
+Alternatively the classic approach of manually passing compiler and linker flags can be used:
 ```shell
 g++ -I/usr/local/mesytec-mcpd/include -L/usr/local/mesytec-mcpd/lib -lmesytec-mcpd mytool.cpp -o mytool
 ```
