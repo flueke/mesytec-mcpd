@@ -24,7 +24,8 @@ RootHistoContext create_histo_context(const std::string &outputFilename)
     if (result.histoOutFile->IsZombie() || !result.histoOutFile->IsOpen())
     {
         throw std::runtime_error(fmt::format(
-                "Error opening histo output file: {}",
+                "Error opening histo output file '{}': {}",
+                outputFilename.c_str(),
                 strerror(result.histoOutFile->GetErrno())));
     }
 
