@@ -90,7 +90,7 @@ struct SetupCommand: public BaseCommand
             .add_argument(
                 lyra::arg(newAddress_, "newAddress")
                 .required()
-                .help("new mcpd ip-address/hostame")
+                .help("new mcpd ip-address (0.0.0.0 to keep current setting)")
                 )
 
             .add_argument(
@@ -100,15 +100,15 @@ struct SetupCommand: public BaseCommand
                 )
 
             .add_argument(
-                lyra::arg(dataDestAddress_, "dataDestAddress")
+                lyra::arg(dataDestAddress_, "[dataDestAddress]")
                 .optional()
-                .help("new mcpd data destination ip-address/hostname")
+                .help("new mcpd data destination ip-address (0.0.0.0 to use this computers address)")
                 )
 
             .add_argument(
-                lyra::arg(dataPort_, "dataPort")
+                lyra::arg(dataPort_, "[dataPort]")
                 .optional()
-                .help("mcpd data destination port")
+                .help("mcpd data destination port (default=54321)")
                 )
             );
     }
