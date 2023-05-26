@@ -1,0 +1,24 @@
+# syntax=docker/dockerfile:1.5
+# vim:ft=dockerfile
+
+# Dockerfile for building the mesytec-mcpd library and tools under fedora:35.
+# Attempts to verify the build by starting the mcpd-cli tool.
+#
+# No build artifacts are currently copied back to the docker host! This file is
+# purely for testing dependency installation and the build process.
+#
+# Example docker build invocation from the root of the source tree:
+#   DOCKER_BUILDKIT=1 docker build  -f ./Dockerfile.fedora-35 .
+
+FROM fedora:35
+
+RUN yum install -y cmake ninja-build g++
+
+COPY . /mesytec-mcpd-source
+WORKDIR /mesytec-mcpd-build
+
+RUN cmake -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/mesytec-mcpd-install /mesytec-mcpd-source \
+    && ninja && ninja install
+
+# Try to start the mcpd-cli binary
+RUN /mesytec-mcpd-install/bin/mcpd-cli --version
