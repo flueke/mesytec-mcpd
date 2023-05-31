@@ -12,7 +12,7 @@
 
 FROM fedora:35
 
-RUN yum install -y cmake ninja-build g++
+RUN yum install -y git cmake ninja-build g++
 
 COPY . /mesytec-mcpd-source
 WORKDIR /mesytec-mcpd-build
