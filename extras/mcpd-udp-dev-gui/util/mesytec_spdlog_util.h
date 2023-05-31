@@ -5,7 +5,9 @@
 #include <spdlog/details/log_msg.h>
 #include <spdlog/sinks/sink.h>
 
-namespace mesytec::spdlog_util
+namespace mesytec
+{
+namespace spdlog_util
 {
 
 // Slight modification of spdlog::sinks::qt_sink. Passes the messages log_level
@@ -45,6 +47,7 @@ private:
 
 using QtSink_mt = QtSink<std::mutex>;
 
+}
 }
 
 #endif /* __MESYTEC_SPDLOG_UTIL_H__ */
