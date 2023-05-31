@@ -208,10 +208,10 @@ struct TimingCommand: public BaseCommand
                 )
 
             .add_argument(
-                lyra::arg(extSync_, "external sync")
+                lyra::arg(extSync_, "[external sync]")
                 .optional()
                 .choices("on", "off", "1", "0")
-                .help("extSync=on|off|1|0")
+                .help("extSync=on|off|1|0 (default=off)")
                 )
             );
     }
