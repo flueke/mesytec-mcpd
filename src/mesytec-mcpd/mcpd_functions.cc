@@ -92,8 +92,8 @@ std::error_code command_transaction_(
                 continue;
             }
 
-            if (!ignoreProtoError && get_error_code(response))
-                return make_error_code(std::errc::protocol_error);
+            if (!ignoreProtoError && has_error(response))
+                return make_error_code(static_cast<CommandError>(get_error_value(response)));
 
             // success
             return {};

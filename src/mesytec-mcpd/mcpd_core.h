@@ -13,6 +13,7 @@ namespace mesytec
 namespace mcpd
 {
 
+// Constants for the CommandPacket::cmd value.
 static const u16 CommandNumberMask = 0x00FFu;
 static const u16 CommandErrorMask = 0xFF00u;
 static const u16 CommandErrorShift = 8u;
@@ -38,7 +39,7 @@ struct PacketBase
 
 struct CommandPacket: public PacketBase
 {
-    u16 cmd;
+    u16 cmd;        // combined command id and response error code values
     u8 deviceStatus;
     u8 deviceId;
     u16 time[3];
@@ -99,7 +100,7 @@ enum class CommandType: u16
     SetFastTxMode = 25,
     SetMstdGain = 26,
 
-    ReadIds = 36, // FIXME: not in docs, scans the busses for MPSD-8 modules
+    ReadIds = 36,
 
     GetVersion = 51,
 
@@ -406,9 +407,14 @@ inline int get_data_length(const PacketType &packet)
     return dataLen;
 }
 
-inline u8 get_error_code(const CommandPacket &packet)
+inline u8 get_error_value(const CommandPacket &packet)
 {
     return (packet.cmd & CommandErrorMask) >> CommandErrorShift;
+}
+
+inline bool has_error(const CommandPacket &packet)
+{
+    return get_error_value(packet) != 0u;
 }
 
 inline u64 to_48bit_value(u16 v0, u16 v1, u16 v2)
@@ -665,7 +671,20 @@ inline std::string to_string(const DecodedEvent &event)
     return ss.str();
 }
 
+enum class CommandError: u16
+{
+    NoError = 0,
+    IdMismatch = 128,
+};
+
+std::error_code make_error_code(CommandError error);
+
 }
+}
+
+namespace std
+{
+    template<> struct is_error_code_enum<mesytec::mcpd::CommandError>: true_type {};
 }
 
 #endif /* __MESYTEC_MCPD_CORE_H__ */
