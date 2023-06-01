@@ -16,6 +16,11 @@ target_link_libraries(mcpd-cli
     #PRIVATE gnuplot_iostream
     )
 
+if (WIN32)
+    target_link_libraries(mcpd-cli PRIVATE ws2_32 winmm)
+    target_compile_options(mcpd-cli PRIVATE -Wno-format)
+endif(WIN32)
+
 # LYRA_DEBUG enables very verbose output from the lyra cli parser
 #target_compile_definitions(mcpd-cli PRIVATE -DLYRA_DEBUG)
 

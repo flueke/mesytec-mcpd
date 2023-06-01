@@ -493,9 +493,17 @@ std::error_code receive_one_packet(int sockfd, u8 *dest, size_t size,
     if (sres == SOCKET_ERROR)
         return SocketErrorCode::GenericSocketError;
 
-    socklen_t addrlen = sizeof(sockaddr_in);
+    // Not sure why but windows returns EFAULT (10014) when passing the the
+    // src_addr pointer directly to recvfrom(). Using a local sockaddr_in
+    // structure works.
+    struct sockaddr_in srcAddr;
+    int srcAddrSize = sizeof(srcAddr);
+
     ssize_t res = ::recvfrom(sockfd, reinterpret_cast<char *>(dest), size, 0,
-        reinterpret_cast<sockaddr *>(src_addr), &addrlen);
+        reinterpret_cast<struct sockaddr *>(&srcAddr), &srcAddrSize);
+
+    if (src_addr)
+        std::memcpy(src_addr, &srcAddr, std::min(srcAddrSize, static_cast<int>(sizeof(*src_addr))));
 
     if (res == SOCKET_ERROR)
     {

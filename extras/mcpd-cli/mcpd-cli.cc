@@ -1,4 +1,3 @@
-#include <arpa/inet.h>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -11,6 +10,12 @@
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
 #include "mcpd_root_histos.h"
+#endif
+
+#ifdef __WIN32
+#include <ws2tcpip.h>
+#else
+#include <arpa/inet.h>
 #endif
 
 using namespace mesytec::mcpd;
