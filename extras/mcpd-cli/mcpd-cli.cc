@@ -1,3 +1,4 @@
+#include <arpa/inet.h>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -1380,11 +1381,12 @@ struct ReadoutCommand: public BaseCommand
         while (!g_interrupted)
         {
             size_t bytesTransferred = 0u;
+            sockaddr_in srcAddr = {};
 
             auto ec = receive_one_packet(
                 dataSock,
                 reinterpret_cast<u8 *>(&dataPacket), sizeof(dataPacket),
-                bytesTransferred, DefaultReadTimeout_ms);
+                bytesTransferred, DefaultReadTimeout_ms, &srcAddr);
 
             if (ec)
             {
@@ -1425,12 +1427,16 @@ struct ReadoutCommand: public BaseCommand
 
                 if (printPacketSummary_)
                 {
+                    char srcAddrBuf[16];
+
+                    inet_ntop(AF_INET, &srcAddr.sin_addr, srcAddrBuf, sizeof(srcAddrBuf));
+
                     spdlog::info(
                         "packet#{}: bufferType=0x{:04x}, bufferNumber={}, runId={}, "
-                        "devStatus=0x{:04x}, deviceId={}, timestamp={}",
+                        "devStatus=0x{:04x}, deviceId={}, timestamp={}, srcAddr={}",
                         counters.packets, dataPacket.bufferType, dataPacket.bufferNumber,
                         dataPacket.runId, dataPacket.deviceStatus, dataPacket.deviceId,
-                        get_header_timestamp(dataPacket));
+                        get_header_timestamp(dataPacket), srcAddrBuf);
 
                     spdlog::info("  parameters: 0x{:012x}, {}, {}, {}",
                                  to_48bit_value(dataPacket.param[0]),
