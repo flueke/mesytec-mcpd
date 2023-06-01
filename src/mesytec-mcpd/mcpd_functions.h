@@ -201,6 +201,14 @@ std::error_code write_peripheral_register(
 // MPSD specific
 //
 
+// Constants to be used with read/write_peripheral_register()
+struct MpsdRegisters
+{
+    static const u16 TxCapabilities_Read = 0;
+    static const u16 TxFormat_Write = 1;
+    static const u16 FirmwareRevision_Read = 2;
+};
+
 std::error_code mpsd_set_gain(
     int sock, u8 mcpdId,
     u8 mpsdId, u8 channel, u8 gain);
