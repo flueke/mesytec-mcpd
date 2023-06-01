@@ -475,7 +475,7 @@ std::error_code write_to_socket(
 
 #ifdef __WIN32
 std::error_code receive_one_packet(int sockfd, u8 *dest, size_t size,
-                                   size_t &bytesTransferred, int timeout_ms)
+    size_t &bytesTransferred, int timeout_ms, sockaddr_in *src_addr)
 {
     init_socket_system();
 
@@ -493,7 +493,9 @@ std::error_code receive_one_packet(int sockfd, u8 *dest, size_t size,
     if (sres == SOCKET_ERROR)
         return SocketErrorCode::GenericSocketError;
 
-    ssize_t res = ::recv(sockfd, reinterpret_cast<char *>(dest), size, 0);
+    socklen_t addrlen = sizeof(sockaddr_in);
+    ssize_t res = ::recvfrom(sockfd, reinterpret_cast<char *>(dest), size, 0,
+        reinterpret_cast<sockaddr *>(src_addr), &addrlen);
 
     if (res == SOCKET_ERROR)
     {
@@ -511,12 +513,14 @@ std::error_code receive_one_packet(int sockfd, u8 *dest, size_t size,
 }
 #else
 std::error_code receive_one_packet(int sockfd, u8 *dest, size_t size,
-                                   size_t &bytesTransferred, int)
+    size_t &bytesTransferred, int /*timeout_ms*/, sockaddr_in *src_addr)
 {
     bytesTransferred = 0u;
 
     // FIXME (maybe): check for EINTR (happening e.g. when running in a linux terminal on window resize)
-    ssize_t res = ::recv(sockfd, reinterpret_cast<char *>(dest), size, 0);
+    socklen_t addrlen = sizeof(sockaddr_in);
+    ssize_t res = ::recvfrom(sockfd, reinterpret_cast<char *>(dest), size, 0,
+        reinterpret_cast<sockaddr *>(src_addr), &addrlen);
 
     if (res < 0)
     {

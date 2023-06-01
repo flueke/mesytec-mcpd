@@ -54,8 +54,11 @@ std::error_code close_socket(int sock);
 std::error_code write_to_socket(
     int socket, const u8 *buffer, size_t size, size_t &bytesTransferred);
 
+// Note: timeout_ms currently only applies under windows. Use
+// set_socket_write/read_timeout() under linux.
 std::error_code receive_one_packet(
-    int sockfd, u8 *dest, size_t size, size_t &bytesTransferred, int timeout_ms);
+    int sockfd, u8 *dest, size_t maxSize, size_t &bytesTransferred,
+    int timeout_ms, sockaddr_in *src_addr = nullptr);
 
 inline std::string format_ipv4(u32 a)
 {
