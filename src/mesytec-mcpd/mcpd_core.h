@@ -299,6 +299,14 @@ struct MpsdParameters
     u16 firmwareRevision;
 };
 
+// Constants to be used with read/write_peripheral_register()
+struct MpsdRegisters
+{
+    static const u16 TxCapabilities_Read = 0;
+    static const u16 TxFormat_Write = 1;
+    static const u16 FirmwareRevision_Read = 2;
+};
+
 enum class EventType
 {
     Neutron,
