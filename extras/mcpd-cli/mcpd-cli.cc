@@ -2169,6 +2169,7 @@ int main(int argc, char *argv[])
     std::vector<std::unique_ptr<BaseCommand>> commands;
 
     // MCPD/MDLL core commands
+    commands.emplace_back(std::make_unique<VersionCommand>(cli));
     commands.emplace_back(std::make_unique<McpdFindIdCommand>(cli));
     commands.emplace_back(std::make_unique<SetupCommand>(cli));
     commands.emplace_back(std::make_unique<SetIdCommand>(cli));
@@ -2178,7 +2179,6 @@ int main(int argc, char *argv[])
     commands.emplace_back(std::make_unique<TimerCommand>(cli));
     commands.emplace_back(std::make_unique<ParamSourceCommand>(cli));
     commands.emplace_back(std::make_unique<GetParametersCommand>(cli));
-    commands.emplace_back(std::make_unique<VersionCommand>(cli));
     commands.emplace_back(std::make_unique<DacSetupCommand>(cli));
     commands.emplace_back(std::make_unique<ScanBussesCommand>(cli));
     commands.emplace_back(std::make_unique<GetBusCapabilitiesCommand>(cli));
