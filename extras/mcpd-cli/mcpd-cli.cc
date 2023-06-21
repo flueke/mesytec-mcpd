@@ -528,6 +528,48 @@ struct VersionCommand: public BaseCommand
     }
 };
 
+struct McpdFindIdCommand: public BaseCommand
+{
+    McpdFindIdCommand(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "find_id",
+                 [this] (const lyra::group &) { this->run_ = true; }
+                )
+            .help("Find the 'id' value of MCPD-8_v1 (older) modules.")
+            );
+    }
+
+    int runCommand(CliContext &ctx) override
+    {
+        spdlog::debug("{}", __PRETTY_FUNCTION__);
+
+        for (u8 id=0; id<=std::numeric_limits<u8>::max(); ++id)
+        {
+            McpdVersionInfo vi = {};
+            auto ec = mcpd_get_version(ctx.cmdSock, id, vi);
+
+            if (!ec)
+            {
+                if (vi.cpu[0] >= 10)
+                    spdlog::warn("Detected MCPD-8_v2 which mirrors the given id value!");
+                spdlog::info("Found mcpd_id={}", id);
+                return 0;
+            }
+
+            if (ec != make_error_code(CommandError::IdMismatch))
+            {
+                spdlog::error("find_id: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+                return 1;
+            }
+        }
+
+        spdlog::error("Unknown error while finding the mcpd_id value");
+        return 1;
+    }
+};
+
 struct DacSetupCommand: public BaseCommand
 {
     u16 dac0_ = 0u;
@@ -2127,6 +2169,7 @@ int main(int argc, char *argv[])
     std::vector<std::unique_ptr<BaseCommand>> commands;
 
     // MCPD/MDLL core commands
+    commands.emplace_back(std::make_unique<McpdFindIdCommand>(cli));
     commands.emplace_back(std::make_unique<SetupCommand>(cli));
     commands.emplace_back(std::make_unique<SetIdCommand>(cli));
     commands.emplace_back(std::make_unique<TimingCommand>(cli));
@@ -2170,7 +2213,6 @@ int main(int argc, char *argv[])
     commands.emplace_back(std::make_unique<DaqCommand>(cli));
     commands.emplace_back(std::make_unique<ReadoutCommand>(cli));
     commands.emplace_back(std::make_unique<ReplayCommand>(cli));
-
 
     auto parsed = cli.parse({argc, argv});
 
