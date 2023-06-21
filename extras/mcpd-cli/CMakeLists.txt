@@ -1,9 +1,15 @@
-list(APPEND CMAKE_PREFIX_PATH $ENV{ROOTSYS})
-find_package(ROOT COMPONENTS Core RIO Tree Hist)
+option(MCPD_CLI_WITH_ROOT "Enable support for writing ROOT histograms in mcpd-cli" off)
 
-if (ROOT_FOUND)
-    message("-- Using ROOT installation from ${ROOT_USE_FILE}")
-    include(${ROOT_USE_FILE})
+if(MCPD_CLI_WITH_ROOT)
+    list(APPEND CMAKE_PREFIX_PATH $ENV{ROOTSYS})
+    find_package(ROOT COMPONENTS Core RIO Tree Hist)
+
+    if (ROOT_FOUND)
+        message("-- Using ROOT installation from ${ROOT_USE_FILE}")
+        include(${ROOT_USE_FILE})
+    else()
+        message(WARNING "Could not find ROOT. Disabling ROOT support in mcpd-cli")
+    endif()
 endif()
 
 
@@ -24,12 +30,10 @@ endif(WIN32)
 # LYRA_DEBUG enables very verbose output from the lyra cli parser
 #target_compile_definitions(mcpd-cli PRIVATE -DLYRA_DEBUG)
 
-if (ROOT_FOUND)
+if (MCPD_CLI_WITH_ROOT AND ROOT_FOUND)
     target_compile_definitions(mcpd-cli PRIVATE -DMESYTEC_MCPD_ENABLE_ROOT)
     target_sources(mcpd-cli PRIVATE mcpd_root_histos.cc)
-    target_link_libraries(mcpd-cli
-        PRIVATE ${ROOT_LIBRARIES}
-        )
+    target_link_libraries(mcpd-cli PRIVATE ${ROOT_LIBRARIES})
 endif()
 
 install(TARGETS
