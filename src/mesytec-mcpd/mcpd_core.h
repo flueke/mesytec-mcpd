@@ -121,56 +121,12 @@ enum class CommandType: u16
     ReadRegister = 81,
 };
 
-inline const char *to_string(const CommandType &cmd)
-{
-    switch (cmd)
-    {
-        case CommandType::Reset: return "Reset";
-        case CommandType::StartDAQ: return "StartDAQ";
-        case CommandType::StopDAQ: return "StopDAQ";
-        case CommandType::ContinueDAQ: return "ContinueDAQ";
-        case CommandType::SetId: return "SetId";
-        case CommandType::SetProtoParams: return "SetProtoParams";
-        case CommandType::SetTiming: return "SetTiming";
-        case CommandType::SetClock: return "SetClock";
-        case CommandType::SetRunId: return "SetRunId";
-        case CommandType::SetCell: return "SetCell";
-        case CommandType::SetAuxTimer: return "SetAuxTimer";
-        case CommandType::SetParam: return "SetParam";
-        case CommandType::GetParams: return "GetParams";
-        case CommandType::SetGain: return "SetGain";
-        case CommandType::SetThreshold: return "SetThreshold";
-        case CommandType::SetPulser: return "SetPulser";
-        case CommandType::SetMpsdMode: return "SetMpsdMode";
-        case CommandType::SetDAC: return "SetDAC";
-        case CommandType::SendSerial: return "SendSerial";
-        case CommandType::ReadSerial: return "ReadSerial";
-        case CommandType::SetTTLOutputs: return "SetTTLOutputs";
-        case CommandType::GetBusCapabilities: return "GetBusCapabilities";
-        case CommandType::SetBusCapabilities: return "SetBusCapabilities";
-        case CommandType::GetMpsdParams: return "GetMpsdParams";
-        case CommandType::SetFastTxMode: return "SetFastTxMode";
-        case CommandType::SetMstdGain: return "SetMstdGain";
-        case CommandType::ReadIds: return "ReadIds";
-        case CommandType::GetVersion: return "GetVersion";
+// CommandType enum value to string conversion.
+const char *to_string(const CommandType &cmd);
 
-        case CommandType::ReadPeripheralRegister: return "ReadPeripheralRegister";
-        case CommandType::WritePeripheralRegister: return "WritePeripheralRegister";
-
-        case CommandType::MdllSetTresholds: return "MdllSetTresholds";
-        case CommandType::MdllSetSpectrum: return "MdllSetSpectrum";
-        case CommandType::MdllSetPulser: return "MdllSetPulser";
-        case CommandType::MdllSetTxDataSet: return "MdllSetTxDataSet";
-        case CommandType::MdllSetTimingWindow: return "MdllSetTimingWindow";
-        case CommandType::MdllSetEnergyWindow: return "MdllSetEnergyWindow";
-
-        case CommandType::WriteRegister: return "WriteRegister";
-        case CommandType::ReadRegister: return "ReadRegister";
-    }
-
-    return "<unknown CommandType>";
-}
-
+// Same as above but takes a u16 value as returned in the MCPD responses which
+// may contain extra error information. To extract error information use the
+// get_error_value() functions below.
 inline const char *mcpd_cmd_to_string(u16 cmd)
 {
     return to_string(static_cast<CommandType>(cmd & ~CommandErrorMask));
@@ -415,15 +371,32 @@ inline int get_data_length(const PacketType &packet)
     return dataLen;
 }
 
+inline u8 get_error_value(const u16 cmd)
+{
+    return (cmd & CommandErrorMask) >> CommandErrorShift;
+}
+
 inline u8 get_error_value(const CommandPacket &packet)
 {
-    return (packet.cmd & CommandErrorMask) >> CommandErrorShift;
+    return get_error_value(packet.cmd);
+}
+
+inline bool has_error(u16 cmd)
+{
+    return get_error_value(cmd) != 0u;
 }
 
 inline bool has_error(const CommandPacket &packet)
 {
-    return get_error_value(packet) != 0u;
+    return has_error(packet.cmd);
 }
+
+// Known error values contained in the cmd field of response packets.
+enum class CommandError: u16
+{
+    NoError = 0,
+    IdMismatch = 128,
+};
 
 inline u64 to_48bit_value(u16 v0, u16 v1, u16 v2)
 {
@@ -678,12 +651,6 @@ inline std::string to_string(const DecodedEvent &event)
     format(ss, event);
     return ss.str();
 }
-
-enum class CommandError: u16
-{
-    NoError = 0,
-    IdMismatch = 128,
-};
 
 std::error_code make_error_code(CommandError error);
 
