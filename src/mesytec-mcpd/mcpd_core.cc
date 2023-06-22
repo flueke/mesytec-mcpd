@@ -70,7 +70,7 @@ const char *to_string(const CommandType &cmd)
         case CommandType::GetBusCapabilities: return "GetBusCapabilities";
         case CommandType::SetBusCapabilities: return "SetBusCapabilities";
         case CommandType::GetMpsdParams: return "GetMpsdParams";
-        case CommandType::SetFastTxMode: return "SetFastTxMode";
+        case CommandType::SetMpsdTxFormat: return "SetMpsdTxFormat";
         case CommandType::SetMstdGain: return "SetMstdGain";
         case CommandType::ReadIds: return "ReadIds";
         case CommandType::GetVersion: return "GetVersion";

@@ -97,7 +97,7 @@ enum class CommandType: u16
     GetBusCapabilities = 22,
     SetBusCapabilities = 23,
     GetMpsdParams = 24,
-    SetFastTxMode = 25,
+    SetMpsdTxFormat = 25,
     SetMstdGain = 26,
 
     ReadIds = 36,
