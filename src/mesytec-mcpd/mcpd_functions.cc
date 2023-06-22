@@ -824,6 +824,26 @@ std::error_code mpsd_set_mode(
     return {};
 }
 
+std::error_code mpsd_set_tx_format(
+    int sock, u8 mcpdId,
+    u8 mpsdId,
+    u16 txFormat)
+{
+    std::array<u16, 2> data =
+    {
+        static_cast<u16>(mpsdId),
+        static_cast<u16>(txFormat),
+    };
+
+    auto request = make_command_packet(CommandType::SetMpsdTxFormat, mcpdId, data.data(), data.size());
+    CommandPacket response = {};
+
+    if (auto ec = command_transaction(sock, request, response))
+        return ec;
+
+    return {};
+}
+
 std::error_code mpsd_get_params(
     int sock, u8 mcpdId,
     u8 mpsdId,

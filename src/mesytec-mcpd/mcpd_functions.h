@@ -221,6 +221,11 @@ std::error_code mpsd_set_mode(
     u8 mpsdId,
     const MpsdMode &mode);
 
+std::error_code mpsd_set_tx_format(
+    int sock, u8 mcpdId,
+    u8 mpsdId,
+    u16 txFormat);
+
 std::error_code mpsd_get_params(
     int sock, u8 mcpdId,
     u8 mpsdId,
