@@ -896,7 +896,7 @@ struct WritePeripheralRegisterCommand: public BaseCommand
                 "write_peripheral_register",
                 [this] (const lyra::group &) { this->run_ = true; }
                 )
-            .help("write peripheral module (MCPD/MSTD) register")
+            .help("write peripheral module (MPSD/MSTD) register")
 
             .add_argument(
                 lyra::arg(mpsdId_, "mpsdId")
@@ -934,6 +934,103 @@ struct WritePeripheralRegisterCommand: public BaseCommand
 
         spdlog::info("write_peripheral_register: mpsdId={0:}, register={1:}, value=0x{2:04X} ({2:} decimal)",
             mpsdId_, registerNumber_, registerValue_);
+
+        return 0;
+    }
+};
+
+struct MpsdSetMode: public BaseCommand
+{
+    u16 mpsdId_ = 0u;
+    std::string mode_ = "position";
+
+    MpsdSetMode(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "mpsd_set_mode",
+                [this] (const lyra::group &) { this->run_ = true; }
+                )
+            .help("set mpsd mode")
+
+            .add_argument(
+                lyra::arg(mpsdId_, "mpsdid")
+                .required()
+                .help("mpsd id")
+                )
+
+            .add_argument(
+                lyra::arg(mode_, "mode")
+                .required()
+                .choices("0", "pos", "position", "1", "amp", "amplitude")
+                .help("mode: 0|pos|position|1|amp|amplitude")
+                )
+            );
+    }
+
+    int runCommand(CliContext &ctx)
+    {
+        spdlog::debug("{} mpsdId={}, mode={}", __PRETTY_FUNCTION__, mpsdId_, mode_);
+
+        MpsdMode mode{};
+
+        if (mode_ == "0" || mode_ == "pos" || mode_ == "position")
+            mode = MpsdMode::Position;
+
+        if (mode_ == "1" || mode_ == "amp" || mode_ == "amplitude")
+            mode = MpsdMode::Amplitude;
+
+        auto ec = mpsd_set_mode(ctx.cmdSock, ctx.mcpdId, mpsdId_, mode);
+
+        if (ec)
+        {
+            spdlog::error("mpsd_set_mode: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            return 1;
+        }
+
+        return 0;
+    }
+};
+
+struct MpsdSetTxFormat: public BaseCommand
+{
+    u16 mpsdId_ = 0u;
+    unsigned txFormat_ = 0u;
+
+    MpsdSetTxFormat(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "mpsd_set_tx_format",
+                [this] (const lyra::group &) { this->run_ = true; }
+                )
+            .help("set mpsd bus tx format")
+
+            .add_argument(
+                lyra::arg(mpsdId_, "mpsdid")
+                .required()
+                .help("mpsd id")
+                )
+
+            .add_argument(
+                lyra::arg(txFormat_, "txFormat")
+                .required()
+                .help("bus transmit format (1|2|4)")
+                )
+            );
+    }
+
+    int runCommand(CliContext &ctx)
+    {
+        spdlog::debug("{} mpsdId={}, txFormat={}", __PRETTY_FUNCTION__, mpsdId_, txFormat_);
+
+        auto ec = mpsd_set_tx_format(ctx.cmdSock, ctx.mcpdId, mpsdId_, txFormat_);
+
+        if (ec)
+        {
+            spdlog::error("mpsd_set_tx_format: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            return 1;
+        }
 
         return 0;
     }
@@ -2192,6 +2289,8 @@ int main(int argc, char *argv[])
     commands.emplace_back(std::make_unique<ReadRegisterCommand>(cli));
 
     // MPSD
+    commands.emplace_back(std::make_unique<MpsdSetTxFormat>(cli));
+    commands.emplace_back(std::make_unique<MpsdSetMode>(cli));
     commands.emplace_back(std::make_unique<MpsdSetGainCommand>(cli));
     commands.emplace_back(std::make_unique<MpsdSetTresholdCommand>(cli));
     commands.emplace_back(std::make_unique<MpsdSetPulserCommand>(cli));
