@@ -251,7 +251,7 @@ struct MpsdParameters
 {
     u8 mpsdId;
     u16 busTxCaps;
-    u16 fastTxFormat;
+    u16 txFormat;
     u16 firmwareRevision;
 };
 

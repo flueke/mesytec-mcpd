@@ -862,7 +862,7 @@ std::error_code mpsd_get_params(
 
     dest.mpsdId = response.data[0];
     dest.busTxCaps = response.data[1];
-    dest.fastTxFormat = response.data[2];
+    dest.txFormat = response.data[2];
     dest.firmwareRevision = response.data[3];
 
     return {};

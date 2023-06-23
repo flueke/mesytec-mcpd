@@ -1241,7 +1241,7 @@ struct MpsdGetParametersCommand: public BaseCommand
 
         spdlog::info("MPSD{} parameters:", params.mpsdId);
         spdlog::info("  busTxCapabilities={}", params.busTxCaps);
-        spdlog::info("  fastTxFormat={}", params.fastTxFormat);
+        spdlog::info("  txFormat={}", params.txFormat);
         spdlog::info("  firmwareRevision={}", params.firmwareRevision);
 
         return 0;
