@@ -76,11 +76,20 @@ enum class CommandType: u16
     StartDAQ = 1,
     StopDAQ = 2,
     ContinueDAQ = 3,
+
+    // Set the 'id' value of MCPD-8_v1 modules. The newer MCPD-8_v2 will accept
+    // any id value in incoming requests and mirror it back, SetId does not have
+    // an effect.
     SetId = 4,
+
     SetProtoParams = 5,
     SetTiming = 6,
     SetClock = 7,
+
+    // Set the 'runid' value for the next DAQ run. Outgoing data packets carry
+    // this information.
     SetRunId = 8,
+
     SetCell = 9,
     SetAuxTimer = 10,
     SetParam = 11,
@@ -100,6 +109,7 @@ enum class CommandType: u16
     SetMpsdTxFormat = 25,
     SetMstdGain = 26,
 
+    // 'scan_busses' command. Returns the id values of connected devices.
     ReadIds = 36,
 
     GetVersion = 51,
@@ -241,6 +251,11 @@ enum class PulserState
     On
 };
 
+// Can be used for bus formats T and TP where no amplitude is transmitted by
+// default. If mode is set to 'Amplitude' the position value in data packets
+// will be replaced by the amplitude value.
+// Note: this can not be automatically detected in incoming data packets so the
+// decode_event() function will still show the value as 'position'.
 enum class MpsdMode
 {
     Position,
