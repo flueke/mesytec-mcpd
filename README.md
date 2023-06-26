@@ -141,8 +141,13 @@ MCPD-8_v2 will request an IPv4-Address and a hostname via DHCP after powerup.
 The requested hostname is based on the serial number of the module: `mcpd-NNNN`
 where `NNNN` is the serial number displayed near the Ethernet port of the MCPD-8.
 
-After the DHCP phase the MCPD-8 should be reachable via its hostname:
-`ping mcpd-0012` should receive a reply for MCPD-8_v2 via serial 0012.
+After the DHCP phase the module should be reachable via its hostname using
+the `mcpd-cli` command line tool: `mcpd-cli --address mcpd-0012 version`
+attempts to connect to MCPD-8_v2 with serial `0012` and read out the firmware
+version.
+
+The `hostname` and `nslookup` tools can also be used to verify that your DHCP
+server created the DNS entry as expected.
 
 ## Manual ARP entry setup
 
