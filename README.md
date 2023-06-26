@@ -146,8 +146,8 @@ the `mcpd-cli` command line tool: `mcpd-cli --address mcpd-0012 version`
 attempts to connect to MCPD-8_v2 with serial `0012` and read out the firmware
 version.
 
-The `hostname` and `nslookup` tools can also be used to verify that your DHCP
-server created the DNS entry as expected.
+The `hostname`/`nslookup` and `ping` tools can also be used to verify that DHCP
+is working and the module can be reached.
 
 ## Manual ARP entry setup
 
