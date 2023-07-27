@@ -408,6 +408,43 @@ struct TimerCommand: public BaseCommand
     }
 };
 
+struct SetMasterClockCommand: public BaseCommand
+{
+    u64 clockValue_;
+
+    SetMasterClockCommand(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "set_master_clock",
+                [this] (const lyra::group &) { this->run_ = true; }
+            )
+            .help("Set master clock value")
+
+            .add_argument(
+                lyra::arg(clockValue_, "clockValue")
+                .required()
+                .help("clock value (48 bit unsigned)")
+            )
+        );
+    }
+
+    int runCommand(CliContext &ctx) override
+    {
+        spdlog::debug("{}, clockValue={}", __PRETTY_FUNCTION__, clockValue_);
+
+        auto ec = mcpd_set_master_clock_value(ctx.cmdSock, ctx.mcpdId, clockValue_);
+
+        if (ec)
+        {
+            spdlog::error("set_master_clock: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            return 1;
+        }
+
+        return 0;
+    }
+};
+
 struct ParamSourceCommand: public BaseCommand
 {
     u16 param_ = 0u;
@@ -2274,6 +2311,7 @@ int main(int argc, char *argv[])
     commands.emplace_back(std::make_unique<RunIdCommand>(cli));
     commands.emplace_back(std::make_unique<CellCommand>(cli));
     commands.emplace_back(std::make_unique<TimerCommand>(cli));
+    commands.emplace_back(std::make_unique<SetMasterClockCommand>(cli));
     commands.emplace_back(std::make_unique<ParamSourceCommand>(cli));
     commands.emplace_back(std::make_unique<GetParametersCommand>(cli));
     commands.emplace_back(std::make_unique<DacSetupCommand>(cli));
