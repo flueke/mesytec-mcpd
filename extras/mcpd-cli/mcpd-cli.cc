@@ -27,6 +27,7 @@ static std::atomic<bool> g_interrupted(false);
 
 void signal_handler(int signum)
 {
+    spdlog::trace("signal_handler invoked with signal={}", signum);
     g_interrupted = true;
 }
 
@@ -1554,7 +1555,7 @@ struct ReadoutCommand: public BaseCommand
         ReadoutCounters counters = {};
         DataPacket dataPacket = {};
 
-        spdlog::info("readout: entering readout loop");
+        spdlog::info("readout: entering readout loop, press ctrl-c to quit");
 
         auto tStart = std::chrono::steady_clock::now();
         auto tReport = tStart;
@@ -1573,9 +1574,9 @@ struct ReadoutCommand: public BaseCommand
             {
                 if (ec == std::errc::interrupted)
                 {
-                    spdlog::debug("readout: interrupted while reading from network: {}",
+                    spdlog::trace("readout: interrupted while reading from network: {}",
                                   ec.message());
-                    break;
+                    continue;
                 }
 
                 if (ec != SocketErrorType::Timeout)
