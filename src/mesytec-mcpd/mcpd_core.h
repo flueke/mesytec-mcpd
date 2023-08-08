@@ -476,7 +476,7 @@ inline std::string raw_data_to_string(const CommandPacket &packet)
     const u16 dataLen = get_data_length(packet);
     const auto rawShortData = reinterpret_cast<const u16 *>(&packet);
     const auto rawShortSize = sizeof(CommandPacket) / sizeof(u16) - CommandPacketMaxDataWords + dataLen;
-    assert(rawShortSize < sizeof(CommandPacket));
+    assert(rawShortSize < sizeof(CommandPacket)); (void) rawShortSize;
 
     std::stringstream out;
     out << "raw packet header (including header checksum):\n";
