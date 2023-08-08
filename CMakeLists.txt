@@ -1,8 +1,5 @@
 cmake_minimum_required(VERSION 3.12)
 
-project(mesytec-mcpd
-    DESCRIPTION "User space driver library for the Mesytec PSD+ system")
-
 # Check if mesytec-mcpd is being used directly or via add_subdirectory
 set(MESYTEC_MCPD_MASTER_PROJECT OFF)
 if (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
@@ -33,9 +30,12 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/tools/cmake")
 include(GetGitRevisionDescription)
 get_git_head_revision(GIT_REFSPEC GIT_SHA1)
 git_describe(GIT_VERSION "--always")
-string(REGEX REPLACE "^v" "" GIT_VERSION ${GIT_VERSION})
-string(REGEX MATCH "^[0-9.]+(-beta[0-9]*|-rc[0-9]*|-dev[0-9]*)?(-[0-9]+)?" GIT_VERSION_SHORT ${GIT_VERSION})
-string(REGEX MATCH "^[0-9.]+" GIT_VERSION_TAG ${GIT_VERSION})
+
+if(GIT_VERSION MATCHES v[^-]*-)
+    string(REGEX REPLACE "v([^-]*)-([0-9]+)-.*" "\\1.\\2"  GIT_VERSION_SHORT ${GIT_VERSION})
+else()
+    string(REGEX REPLACE "v(.*)" "\\1" GIT_VERSION_SHORT ${GIT_VERSION})
+endif()
 
 execute_process(
     COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
@@ -45,8 +45,16 @@ execute_process(
 
 message("-- GIT_VERSION=${GIT_VERSION}")
 message("-- GIT_VERSION_SHORT=${GIT_VERSION_SHORT}")
-message("-- GIT_VERSION_TAG=${GIT_VERSION_TAG}")
 message("-- GIT_BRANCH=${GIT_BRANCH}")
+
+project(mesytec-mcpd
+    DESCRIPTION "User space driver library for the Mesytec PSD+ system" VERSION ${GIT_VERSION_SHORT})
+
+if (NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose Release or Debug")
+endif()
+
+message("-- CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} (mvme)")
 
 ## Optional tests
 #option(MCPD_BUILD_TESTS "Build test binaries" ${MESYTEC_MCPD_MASTER_PROJECT})
@@ -103,3 +111,73 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_subdirectory(extras)
 add_subdirectory(src)
+
+if ("${CMAKE_SIZEOF_VOID_P}" EQUAL "8")
+    set(PACKAGE_ARCH_STRING "x64")
+else()
+    set(PACKAGE_ARCH_STRING "x32")
+endif()
+
+# Note: To produce stand-alone packages additional files need to be deployed to
+# the target system: shared objects, Qt plugins, Qt configuration, shell
+# scripts, etc.
+#
+# Under windows These files are handled using an external deploy directory
+# which is added via the install() command.
+#
+# Under linux the `linuxdeployqt` tool and a custom cmake script for the cpack
+# `External` generator are used.
+
+set(CPACK_PACKAGE_VERSION ${VERSION})
+set(CPACK_PACKAGE_VENDOR "mesytec")
+set(CPACK_PACKAGE_EXECUTABLES mcpd-cli;mcpd-cli)
+set(CPACK_THREADS 0)
+
+if (WIN32)
+    # Note: CPack NSIS does automatically use the cmake/NSIS.template.in file!
+    # This is important because currently not all standard settings are used in
+    # the custom script, e.g. CPACK_NSIS_MUI_FINISHPAGE_RUN
+
+    option(MVME_CPACK_INSTALL_DEPLOY_FILES
+        "Install additional library files from a special deploy directory." OFF)
+
+    set(MVME_CPACK_DEPLOY_DIR "c:/src/mvme2-deploy/windows/mvme-${PACKAGE_ARCH_STRING}-libusb-0.1-Release"
+        CACHE PATH "Directory containing additional files to be deployed."
+    )
+
+    if (MVME_CPACK_INSTALL_DEPLOY_FILES)
+        install(DIRECTORY "${MVME_CPACK_DEPLOY_DIR}/" DESTINATION . USE_SOURCE_PERMISSIONS)
+    endif()
+
+    set(CPACK_GENERATOR "ZIP")
+    set(CPACK_SOURCE_GENERATOR "ZIP")
+else()
+    option(MVME_CPACK_USE_LINUXDEPLOYQT
+        "Use 'linuxdeployqt' to create universal binary packages." OFF)
+
+    set(CPACK_SOURCE_GENERATOR "TBZ2")
+
+    if (MVME_CPACK_USE_LINUXDEPLOYQT)
+        # Find linuxdeployqt here to error out early in case it's missing.
+        find_program(LINUXDEPLOYQT_EXECUTABLE linuxdeployqt REQUIRED)
+        set(CPACK_GENERATOR "External")
+        set(CPACK_EXTERNAL_PACKAGE_SCRIPT "${CMAKE_SOURCE_DIR}/tools/cmake/CPackExternal_linuxdeployqt.cmake")
+        set(CPACK_EXTERNAL_ENABLE_STAGING ON)
+    else()
+        set(CPACK_GENERATOR "TBZ2")
+    endif()
+endif()
+
+message("-- PROJECT_NAME=${PROJECT_NAME}, PROJECT_BINARY_DIR=${PROJECT_BINARY_DIR}, PROJECT_IS_TOP_LEVEL=${PROJECT_IS_TOP_LEVEL}")
+
+# CPACK_PROJECT_CONFIG_FILE
+# File included at cpack time, once per generator after setting CPACK_GENERATOR
+# to the actual generator being used; allows per-generator setting of CPACK_*
+# variables at cpack time.
+# Default: ${PROJECT_BINARY_DIR}/CPackOptions.cmake
+configure_file("CPackOptions.cmake.in" "${PROJECT_BINARY_DIR}/CPackOptions.cmake" @ONLY)
+set(CPACK_PROJECT_CONFIG_FILE "${PROJECT_BINARY_DIR}/CPackOptions.cmake")
+
+include(CPack)
+
+# vim:tw=0
