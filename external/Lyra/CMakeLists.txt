@@ -42,37 +42,34 @@ target_include_directories(
 add_library( bfg::lyra ALIAS lyra )
 
 ## Installation Code
-include(GNUInstallDirs)
-
-include(CMakePackageConfigHelpers)
-configure_package_config_file(
-  ${PROJECT_SOURCE_DIR}/data/cmake/lyraConfig.cmake.in
-  ${PROJECT_BINARY_DIR}/lyraConfig.cmake
-  INSTALL_DESTINATION ${CMAKE_INSTALL_DATADIR}/lyra
-  )
-
-install(
-  TARGETS lyra
-  EXPORT lyraTarget
-  )
-
-install(
-  EXPORT lyraTarget
-  FILE  lyraTarget.cmake
-  NAMESPACE bfg::
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/lyra/cmake
-  )
-
-install(
-  DIRECTORY ${PROJECT_SOURCE_DIR}/include
-  DESTINATION  ${CMAKE_INSTALL_PREFIX}
-  )
-
-install(
-  FILES
-  ${PROJECT_BINARY_DIR}/lyraConfig.cmake
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/lyra/cmake/
-  )
-
-
-
+#include(GNUInstallDirs)
+#
+#include(CMakePackageConfigHelpers)
+#configure_package_config_file(
+#  ${PROJECT_SOURCE_DIR}/data/cmake/lyraConfig.cmake.in
+#  ${PROJECT_BINARY_DIR}/lyraConfig.cmake
+#  INSTALL_DESTINATION ${CMAKE_INSTALL_DATADIR}/lyra
+#  )
+#
+#install(
+#  TARGETS lyra
+#  EXPORT lyraTarget
+#  )
+#
+#install(
+#  EXPORT lyraTarget
+#  FILE  lyraTarget.cmake
+#  NAMESPACE bfg::
+#  DESTINATION ${CMAKE_INSTALL_DATADIR}/lyra/cmake
+#  )
+#
+#install(
+#  DIRECTORY ${PROJECT_SOURCE_DIR}/include
+#  DESTINATION  ${CMAKE_INSTALL_PREFIX}
+#  )
+#
+#install(
+#  FILES
+#  ${PROJECT_BINARY_DIR}/lyraConfig.cmake
+#  DESTINATION ${CMAKE_INSTALL_DATADIR}/lyra/cmake/
+#  )
