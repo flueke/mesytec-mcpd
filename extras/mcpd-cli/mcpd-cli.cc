@@ -184,7 +184,7 @@ struct SetIdCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("Error setting mcpdId: {} ({}, {})",
+            spdlog::error("Error setting mcpdId: {} (code={}, category={})",
                           ec.message(), ec.value(), ec.category().name());
             return 1;
         }
@@ -271,7 +271,7 @@ struct TimingCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("Error setting timing options: {} ({}, {})",
+            spdlog::error("Error setting timing options: {} (code={}, category={})",
                           ec.message(), ec.value(), ec.category().name());
             return 1;
         }
@@ -309,7 +309,7 @@ struct RunIdCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("Error setting runid: {} ({}, {})",
+            spdlog::error("Error setting runid: {} (code={}, category={})",
                           ec.message(), ec.value(), ec.category().name());
             return 1;
         }
@@ -365,7 +365,7 @@ struct CellCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("cell: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("cell: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
@@ -410,7 +410,7 @@ struct TimerCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("cell: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("cell: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
@@ -447,7 +447,7 @@ struct SetMasterClockCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("set_master_clock: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("set_master_clock: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
@@ -493,7 +493,7 @@ struct ParamSourceCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("param_source: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("param_source: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
@@ -524,7 +524,7 @@ struct GetParametersCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("get_parameters: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("get_parameters: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
@@ -565,7 +565,7 @@ struct VersionCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("version: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("version: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
@@ -607,7 +607,7 @@ struct McpdFindIdCommand: public BaseCommand
 
             if (ec != make_error_code(CommandError::IdMismatch))
             {
-                spdlog::error("find_id: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+                spdlog::error("find_id: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
                 return 1;
             }
         }
@@ -653,7 +653,7 @@ struct DacSetupCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("dac_setup: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("dac_setup: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
@@ -683,7 +683,7 @@ struct ScanBussesCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("scan_busses: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("scan_busses: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
@@ -718,7 +718,7 @@ struct GetBusCapabilitiesCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mcpd_get_bus_capabilities: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mcpd_get_bus_capabilities: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
@@ -762,7 +762,7 @@ struct SetBusCapabilitiesCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mcpd_set_bus_capabilities: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mcpd_set_bus_capabilities: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
@@ -831,7 +831,7 @@ struct WriteRegisterCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mcpd_write_register: {} ({}, {})",
+            spdlog::error("mcpd_write_register: {} (code={}, category={})",
                           ec.message(), ec.value(), ec.category().name());
             return 1;
         }
@@ -869,7 +869,7 @@ struct ReadRegisterCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mcpd_read_register: {} ({}, {})",
+            spdlog::error("mcpd_read_register: {} (code={}, category={})",
                           ec.message(), ec.value(), ec.category().name());
             return 1;
         }
@@ -918,7 +918,7 @@ struct ReadPeripheralRegisterCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("Error reading peripheral register: {} ({}, {})",
+            spdlog::error("Error reading peripheral register: {} (code={}, category={})",
                 ec.message(), ec.value(), ec.category().name());
             return 1;
         }
@@ -974,7 +974,7 @@ struct WritePeripheralRegisterCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("Error writing peripheral register: {} ({}, {})",
+            spdlog::error("Error writing peripheral register: {} (code={}, category={})",
                 ec.message(), ec.value(), ec.category().name());
             return 1;
         }
@@ -1031,7 +1031,7 @@ struct MpsdSetMode: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mpsd_set_mode: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mpsd_set_mode: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
@@ -1075,7 +1075,7 @@ struct MpsdSetTxFormat: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mpsd_set_tx_format: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mpsd_set_tx_format: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
@@ -1127,7 +1127,7 @@ struct MpsdSetGainCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mpsd_set_gain: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mpsd_set_gain: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
@@ -1172,7 +1172,7 @@ struct MpsdSetTresholdCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mpsd_set_threshold: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mpsd_set_threshold: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
@@ -1243,7 +1243,7 @@ struct MpsdSetPulserCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mpsd_set_pulser: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mpsd_set_pulser: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
@@ -1282,7 +1282,7 @@ struct MpsdGetParametersCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mpsd_get_parameters: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mpsd_get_parameters: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
@@ -1339,7 +1339,7 @@ struct MstdSetGainCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mstd_set_gain: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mstd_set_gain: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
@@ -1386,7 +1386,7 @@ struct DaqCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("daq {}: {} ({}, {})", subCommand_, ec.message(), ec.value(), ec.category().name());
+            spdlog::error("daq {}: {} (code={}, category={})", subCommand_, ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
@@ -1511,7 +1511,7 @@ struct ReadoutCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("readout: error listening on data port {}: {} ({}, {})",
+            spdlog::error("readout: error listening on data port {}: {} (code={}, category={})",
                           dataPort_, ec.message(), ec.value(), ec.category().name());
             return 1;
         }
@@ -1590,7 +1590,7 @@ struct ReadoutCommand: public BaseCommand
 
                 if (ec != SocketErrorType::Timeout)
                 {
-                    spdlog::error("readout: error reading from network: {} ({}, {})",
+                    spdlog::error("readout: error reading from network: {} (code={}, category={})",
                                   ec.message(), ec.value(), ec.category().name());
                     return 1;
                 }
@@ -1945,7 +1945,7 @@ struct CustomCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("custom: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("custom: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
@@ -1997,7 +1997,7 @@ struct MdllSetThresholds: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mdll_set_thresholds: {} ({}, {})",
+            spdlog::error("mdll_set_thresholds: {} (code={}, category={})",
                           ec.message(), ec.value(), ec.category().name());
             return 1;
         }
@@ -2054,7 +2054,7 @@ struct MdllSetSpectrum: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mdll_set_spectrum: {} ({}, {})",
+            spdlog::error("mdll_set_spectrum: {} (code={}, category={})",
                           ec.message(), ec.value(), ec.category().name());
             return 1;
         }
@@ -2109,7 +2109,7 @@ struct MdllSetPulser: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mdll_set_pulser: {} ({}, {})",
+            spdlog::error("mdll_set_pulser: {} (code={}, category={})",
                           ec.message(), ec.value(), ec.category().name());
             return 1;
         }
@@ -2149,7 +2149,7 @@ struct MdllSetTxDataSet: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mdll_set_tx_data_set: {} ({}, {})",
+            spdlog::error("mdll_set_tx_data_set: {} (code={}, category={})",
                           ec.message(), ec.value(), ec.category().name());
             return 1;
         }
@@ -2212,7 +2212,7 @@ struct MdllSetTimingWindow: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mdll_set_timing_window: {} ({}, {})",
+            spdlog::error("mdll_set_timing_window: {} (code={}, category={})",
                           ec.message(), ec.value(), ec.category().name());
             return 1;
         }
@@ -2260,7 +2260,7 @@ struct MdllSetEnergyWindow: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mdll_set_energy_window: {} ({}, {})",
+            spdlog::error("mdll_set_energy_window: {} (code={}, category={})",
                           ec.message(), ec.value(), ec.category().name());
             return 1;
         }
@@ -2458,7 +2458,7 @@ int main(int argc, char *argv[])
 
             if (ec)
             {
-                spdlog::error("Error reading mcpd version: {} ({}, {})",
+                spdlog::error("Error reading mcpd version: {} (code={}, category={})",
                               ec.message(), ec.value(), ec.category().name());
                 return 1;
             }
