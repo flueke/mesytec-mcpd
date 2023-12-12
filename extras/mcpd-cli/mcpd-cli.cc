@@ -128,19 +128,28 @@ struct SetupCommand: public BaseCommand
         spdlog::debug("{} {} {} {} {}",
                       __PRETTY_FUNCTION__, newAddress_, newId_, dataDestAddress_, dataPort_);
 
+        // Note: setting the new mcpd id is not part of the SetProtoParams
+        // command. It was added here purely for convenience to have a single
+        // 'setup' command handling all settings for the MCPD_8-v1.
         auto ec = mcpd_set_id(ctx.cmdSock, ctx.mcpdId, newId_);
 
         if (ec)
         {
-            spdlog::error("Error setting mcpdId: {} ({}, {})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("Error setting mcpd id: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
-        // Update context with the new mcpdId and change the ip address. Ignore
-        // the error code as we might not receive a response after changing the
-        // ip address.
+        // Update context with the new mcpdId and change the ip address.
+        // Note: we might not receive a response if the mcpd ip address is
+        // changed by this call.
         ctx.mcpdId = newId_;
-        mcpd_set_ip_address_and_data_dest(ctx.cmdSock, ctx.mcpdId, newAddress_, dataDestAddress_, dataPort_);
+        ec = mcpd_set_ip_address_and_data_dest(ctx.cmdSock, ctx.mcpdId, newAddress_, dataDestAddress_, dataPort_);
+
+        if (ec && ec != std::errc::timed_out)
+        {
+            spdlog::error("Error from setup command: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
+            return 1;
+        }
 
         return 0;
     }
