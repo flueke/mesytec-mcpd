@@ -100,7 +100,7 @@ std::error_code command_transaction_(
         }
     }
 
-    return make_error_code(std::errc::protocol_error);
+    return make_error_code(std::errc::timed_out);
 }
 
 } // end anon namespace
