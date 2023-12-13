@@ -90,7 +90,7 @@ struct SetupCommand: public BaseCommand
                 "setup",
                  [this] (const lyra::group &) { this->run_ = true; }
                 )
-            .help("MCPD base setup")
+            .help("MCPD base setup (MCPD-8_v1 only, for v2 only the data dest port can be changed)")
 
             //.add_argument(lyra::help(showHelp_)) This is broken in lyra
 
@@ -155,6 +155,44 @@ struct SetupCommand: public BaseCommand
     }
 };
 
+struct SetDataDestPortCommand: public BaseCommand
+{
+    u16 dataPort_ = McpdDefaultPort;
+
+    SetDataDestPortCommand(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "set_data_port",
+                 [this] (const lyra::group &) { this->run_ = true; }
+            )
+            .help("Set the MCPD data destination port")
+
+            .add_argument(
+                lyra::arg(dataPort_, "data dest port")
+                .required()
+                .help("data destination port")
+            )
+        );
+    }
+
+    int runCommand(CliContext &ctx) override
+    {
+        spdlog::debug("{} {}", __PRETTY_FUNCTION__, dataPort_);
+
+        auto ec = mcpd_set_data_dest_port(ctx.cmdSock, ctx.mcpdId, dataPort_);
+
+        if (ec)
+        {
+            spdlog::error("Error setting data destination port: {} (code={}, category={})",
+                          ec.message(), ec.value(), ec.category().name());
+            return 1;
+        }
+
+        return 0;
+    }
+};
+
 struct SetIdCommand: public BaseCommand
 {
     u16 newId_ = 0;
@@ -166,7 +204,7 @@ struct SetIdCommand: public BaseCommand
                 "setid",
                 [this] (const lyra::group &) { this->run_ = true; }
                 )
-            .help("Set MCPD id")
+            .help("Set MCPD id (MCPD-8_v1 only, v2 mirrors the id given in command packets)")
 
             .add_argument(
                 lyra::arg(newId_, "newId")
@@ -2317,6 +2355,7 @@ int main(int argc, char *argv[])
     commands.emplace_back(std::make_unique<McpdFindIdCommand>(cli));
     commands.emplace_back(std::make_unique<SetupCommand>(cli));
     commands.emplace_back(std::make_unique<SetIdCommand>(cli));
+    commands.emplace_back(std::make_unique<SetDataDestPortCommand>(cli));
     commands.emplace_back(std::make_unique<TimingCommand>(cli));
     commands.emplace_back(std::make_unique<RunIdCommand>(cli));
     commands.emplace_back(std::make_unique<CellCommand>(cli));
