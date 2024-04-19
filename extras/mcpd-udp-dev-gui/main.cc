@@ -160,7 +160,7 @@ std::pair<McpdSockets, std::error_code> make_sockets(const ConnectionInfo &conIn
     sockets.cmdSock = connect_udp_socket(conInfo.cmdHost.toStdString(), conInfo.cmdPort, &ec);
 
     if (!ec)
-        sockets.dataSock = bind_udp_socket(conInfo.dataPort, &ec);
+        sockets.dataSock = create_bound_udp_socket(conInfo.dataPort, &ec);
 
     return std::make_pair(sockets, ec);
 }

@@ -1545,7 +1545,7 @@ struct ReadoutCommand: public BaseCommand
 
         std::error_code ec;
         // Creates an unconnected UDP socket listening on the dataPort.
-        int dataSock = bind_udp_socket(dataPort_, &ec);
+        int dataSock = create_bound_udp_socket(dataPort_, &ec);
 
         if (ec)
         {
