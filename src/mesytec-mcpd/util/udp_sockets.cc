@@ -224,7 +224,7 @@ int connect_udp_socket(const std::string &host, u16 port, std::error_code *ecp)
         return -1;
     }
 
-    if (ec = bind_udp_socket(sock))
+    if ((ec = bind_udp_socket(sock)))
     {
         close_socket(sock);
         return -1;
@@ -270,7 +270,7 @@ int create_bound_udp_socket(u16 localPort, std::error_code *ecp)
         return -1;
     }
 
-    if (ec = bind_udp_socket(sock, localPort))
+    if ((ec = bind_udp_socket(sock, localPort)))
     {
         close_socket(sock);
         return -1;
