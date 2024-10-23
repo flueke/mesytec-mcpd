@@ -4,6 +4,7 @@
 #include <array>
 #include <cassert>
 #include <spdlog/spdlog.h>
+#include <tuple>
 
 #include "util/int_types.h"
 #include "util/udp_sockets.h"
@@ -429,6 +430,13 @@ inline u64 to_48bit_value(const std::array<u16, 3> &v)
 inline u64 to_48bit_value(const u16 v[3])
 {
     return to_48bit_value(v[0], v[1], v[2]);
+}
+
+inline std::tuple<u16, u16, u16> from_48bit_value(u64 v)
+{
+    return std::make_tuple(static_cast<u16>((v >>  0) & 0xFFFF),
+                           static_cast<u16>((v >> 16) & 0xFFFF),
+                           static_cast<u16>((v >> 32) & 0xFFFF));
 }
 
 template<typename Out>
