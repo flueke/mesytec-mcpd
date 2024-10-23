@@ -517,7 +517,7 @@ struct ParamSourceCommand: public BaseCommand
                 lyra::arg(source_, "paramSource")
                 .required()
                 .help("0-3: Monitor0-3, 4/5: Digital Input 1/2, 6: All digital and ADC inputs, "
-                      "7: event counter, 8: master clock")
+                      "7: event counter (not for V5 models), 8: master clock")
                 )
             );
     }
@@ -913,6 +913,49 @@ struct ReadRegisterCommand: public BaseCommand
         }
 
         spdlog::info("mcdp_read_register: 0x{0:04X} = 0x{1:08X} ({1} decimal)", address_, dest);
+
+        return 0;
+    }
+};
+
+struct DecodeAllInputsParameter: public BaseCommand
+{
+    u64 value_;
+
+    DecodeAllInputsParameter(lyra::cli &cli)
+    {
+        cli.add_argument(
+            lyra::command(
+                "decode_all_inputs_parameter",
+                 [this] (const lyra::group &) { this->run_ = true; }
+                 )
+            .help("decode a param_source=6 (All digital inputs+ADCs) parameter value")
+
+            .add_argument(
+                lyra::arg([&] (const std::string &str) { return parse_unsigned_value(value_, str); }, "value")
+                .required()
+                )
+            );
+    }
+
+    int runCommand(CliContext &ctx) override
+    {
+        spdlog::debug("{}: value=0x{:012x}", __PRETTY_FUNCTION__, value_);
+
+        auto [lo, mid, hi] = from_48bit_value(value_);
+        spdlog::info("param=0x{:012x}, lo=0x{:04x}, mid=0x{:04x}, hi=0x{:04x}", value_, lo, mid, hi);
+
+        // lo contains the 4 monitor/chopper input status bits
+        // parameter_Lo             = xb00,xxxxxxxx,11,m/c[3:0]
+        const u16 LoMatchMask       = 0b00'00000000'11'0000;
+        const u16 LoExctractMask    = 0b00'00000000'00'1111;
+
+        if ((lo & LoMatchMask) !=  LoMatchMask)
+            spdlog::warn("lo does not match execpted bitmask! garbage in -> garbage out");
+
+        const u16 inputsStatus = lo & LoExctractMask;
+        spdlog::info("lo=0x{:04x} -> inputsStatus={:#04x} -> {:#06b}", lo, inputsStatus, inputsStatus);
+
 
         return 0;
     }
@@ -1440,12 +1483,68 @@ struct ReadoutCounters
     size_t events = 0u;
 };
 
+struct CountersReportInfo
+{
+    enum Flags
+    {
+        ReportValues = 1u << 0,
+        ReportDeltas = 1u << 1,
+        ReportRates  = 1u << 2,
+        All = ReportValues | ReportDeltas | ReportRates,
+    };
+    ReadoutCounters counters;
+    ReadoutCounters prevCounters;
+    std::chrono::microseconds dt;
+    u32 flags = ReportValues; // same behavior as the old report_counters()
+};
+
+void report_counters(const CountersReportInfo &info, const std::string &title = "readout")
+{
+    auto &counters = info.counters;
+    auto &prevCounters = info.prevCounters;
+
+    if (info.flags & CountersReportInfo::ReportValues)
+    {
+        spdlog::info("{}: counters: packets={}, bytes={}, timeouts={}, events={}",
+                    title, counters.packets, counters.bytes, counters.timeouts,
+                    counters.events
+                    );
+    }
+
+    ReadoutCounters deltas;
+    deltas.packets = counters.packets - prevCounters.packets;
+    deltas.bytes = counters.bytes - prevCounters.bytes;
+    deltas.timeouts = counters.timeouts - prevCounters.timeouts;
+    deltas.events = counters.events - prevCounters.events;
+
+    if (info.flags & CountersReportInfo::ReportDeltas)
+    {
+        spdlog::info("{}: deltas: packets={}, bytes={}, timeouts={}, events={}",
+                    title, deltas.packets, deltas.bytes, deltas.timeouts,
+                    deltas.events
+                    );
+    }
+
+    auto dt_s = std::chrono::duration<double>(info.dt).count();
+
+    if (dt_s > 0)
+    {
+        spdlog::info("{}: rates: packets/s={:.2f}, MiB/s={:.2f}, events/s={:.0f}",
+                     title,
+                     deltas.packets / dt_s,
+                     deltas.bytes / dt_s / (1u << 20),
+                     deltas.events / dt_s
+                    );
+    }
+
+}
+
+// TODO: get rid of this and only use the one above instead
 void report_counters(const ReadoutCounters &counters, const std::string &title = "readout")
 {
-    spdlog::info("{}: packets={}, bytes={}, timeouts={}, events={}",
-                 title, counters.packets, counters.bytes, counters.timeouts,
-                 counters.events
-                );
+    CountersReportInfo info;
+    info.counters = counters;
+    report_counters(info, title);
 }
 
 
@@ -1600,6 +1699,7 @@ struct ReadoutCommand: public BaseCommand
 #endif
 
         ReadoutCounters counters = {};
+        ReadoutCounters prevCounters = {};
         DataPacket dataPacket = {};
 
         spdlog::info("readout: entering readout loop, press ctrl-c to quit");
@@ -1716,8 +1816,14 @@ struct ReadoutCommand: public BaseCommand
 
                 if (elapsed >= std::chrono::milliseconds(reportInterval_ms_))
                 {
-                    report_counters(counters);
+                    CountersReportInfo info;
+                    info.counters = counters;
+                    info.prevCounters = prevCounters;
+                    info.dt = std::chrono::duration_cast<std::chrono::microseconds>(elapsed);
+                    info.flags = CountersReportInfo::ReportValues | CountersReportInfo::ReportRates;
+                    report_counters(info); fmt::print("\n");
                     tReport = now;
+                    prevCounters = counters;
                 }
             }
         }
@@ -2374,6 +2480,9 @@ int main(int argc, char *argv[])
     // extension for the modern FPGA based MCPD/MDLL versions
     commands.emplace_back(std::make_unique<WriteRegisterCommand>(cli));
     commands.emplace_back(std::make_unique<ReadRegisterCommand>(cli));
+
+    // utility for decoding param_source=6 data
+    commands.emplace_back(std::make_unique<DecodeAllInputsParameter>(cli));
 
     // MPSD
     commands.emplace_back(std::make_unique<MpsdSetTxFormat>(cli));
