@@ -282,7 +282,8 @@ struct MpsdRegisters
 enum class EventType
 {
     Neutron,
-    Trigger
+    Trigger,
+    MdllNeutron
 };
 
 enum class MdllChannelPosition
@@ -306,6 +307,8 @@ inline const char *to_string(const EventType &et)
             return "Neutron";
         case EventType::Trigger:
             return "Trigger";
+        case EventType::MdllNeutron:
+            return "MdllNeutron";
     }
 
     return "<unknown EventType>";
@@ -362,6 +365,21 @@ namespace event_constants
         static const std::size_t DataBits = 21u;
         static const std::size_t DataShift = 19u;
         static const std::size_t DataMask = (1u << DataBits) - 1;
+    }
+
+    namespace mdll_neutron
+    {
+        static const std::size_t AmplitudeBits = 8u;
+        static const std::size_t AmplitudeShift = 39u;
+        static const std::size_t AmplitudeMask = (1u << AmplitudeBits) -1;
+
+        static const std::size_t xPosBits = 10u;
+        static const std::size_t xPosShift = 29u;
+        static const std::size_t xPosMask = (1u << xPosBits) - 1;
+
+        static const std::size_t yPosBits = 10u;
+        static const std::size_t yPosShift = 19u;
+        static const std::size_t yPosMask = (1u << yPosBits) -1;
     }
 
     static const std::size_t TimestampBits = 19u;
@@ -591,6 +609,13 @@ struct DecodedEvent
         u32 value;      // 32 bit data value
     };
 
+    struct MdllNeutron
+    {
+        u8 amplitude; // 8 bit amplitude
+        u16 yPos; // 10 bit y position
+        u16 xPos; // 10 bit x position
+    };
+
     u8 deviceId;        // id value of the MCPD (or other device) as transmitted in the event packet header
     EventType type;
 
@@ -598,6 +623,7 @@ struct DecodedEvent
     {
         Neutron neutron;
         Trigger trigger;
+        MdllNeutron mdllNeutron;
     };
 
     u64 timestamp;      // The full event timestamp calculated by adding up the 48 bit
@@ -613,7 +639,16 @@ inline DecodedEvent decode_event(const DataPacket &packet, size_t eventNum)
     DecodedEvent result = {};
 
     result.deviceId = packet.deviceId;
+
     result.type = static_cast<EventType>((event >> ec::IdShift) & ec::IdMask);
+
+    // MDLL has its own format for neutron event data. Its type bit is 0, the
+    // same as for mcpd/mpsd neutron events but the outer packet buffer type is
+    // different.
+    if (result.type == EventType::Neutron && packet.bufferType == MdllDataBufferType)
+    {
+        result.type = EventType::MdllNeutron;
+    }
 
     switch (result.type)
     {
@@ -628,6 +663,12 @@ inline DecodedEvent decode_event(const DataPacket &packet, size_t eventNum)
             result.trigger.triggerId = (event >> ec::trigger::TriggerIdShift) &  ec::trigger::TriggerIdMask;
             result.trigger.dataId = (event >> ec::trigger::DataIdShift) &  ec::trigger::DataIdMask;
             result.trigger.value = (event >> ec::trigger::DataShift) &  ec::trigger::DataMask;
+            break;
+
+        case EventType::MdllNeutron:
+            result.mdllNeutron.amplitude = (event >> ec::mdll_neutron::AmplitudeShift) & ec::mdll_neutron::AmplitudeMask;
+            result.mdllNeutron.xPos = (event >> ec::mdll_neutron::xPosShift) & ec::mdll_neutron::xPosMask;
+            result.mdllNeutron.yPos = (event >> ec::mdll_neutron::yPosShift) & ec::mdll_neutron::yPosMask;
             break;
     }
 
@@ -660,6 +701,13 @@ Out &format(Out &out, const DecodedEvent &event)
             out << fmt::format(", triggerId={}", event.trigger.triggerId);
             out << fmt::format(", dataId={}", event.trigger.dataId);
             out << fmt::format(", value={}", event.trigger.value);
+            break;
+
+        case EventType::MdllNeutron:
+            out << fmt::format("type={}", to_string(event.type));
+            out << fmt::format(", amplitude={}", event.mdllNeutron.amplitude);
+            out << fmt::format(", xPos={}", event.mdllNeutron.xPos);
+            out << fmt::format(", yPos={}", event.mdllNeutron.yPos);
             break;
     }
 
