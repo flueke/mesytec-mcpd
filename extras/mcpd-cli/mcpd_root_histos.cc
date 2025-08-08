@@ -11,8 +11,8 @@ RootHistoContext::~RootHistoContext()
     if (histoOutFile && histoOutFile->IsOpen())
     {
         spdlog::debug("Closing histo file {}", histoOutFile->GetName());
-        histoOutFile->Write();
-        }
+        histoOutFile->Write("", TObject::kOverwrite);
+    }
 }
 
 RootHistoContext create_histo_context(const std::string &outputFilename)
@@ -28,6 +28,22 @@ RootHistoContext create_histo_context(const std::string &outputFilename)
                 outputFilename.c_str(),
                 strerror(result.histoOutFile->GetErrno())));
     }
+
+    namespace mn = event_constants::mdll_neutron;
+
+    result.mdll_amplitudes = new TH1D("mdll_amplitudes", "MDLL Amplitudes",
+        1u << mn::AmplitudeBits, 0, (1u << mn::AmplitudeBits) + 1.0);
+
+
+    result.mdll_xPositions = new TH1D("mdll_xPositions", "MDLL X Positions",
+        1u << mn::xPosBits, 0, (1u << mn::xPosBits) + 1.0);
+
+    result.mdll_yPositions = new TH1D("mdll_yPositions", "MDLL Y Positions",
+        1u << mn::yPosBits, 0, (1u << mn::yPosBits) + 1.0);
+
+    result.mdll_xyPositions = new TH2D("mdll_xyPositions", "MDLL XY Positions",
+        1u << mn::xPosBits, 0, (1u << mn::xPosBits) + 1.0,
+        1u << mn::yPosBits, 0, (1u << mn::yPosBits) + 1.0);
 
     return result;
 }
@@ -118,6 +134,17 @@ void root_histos_process_packet(RootHistoContext &ctx, const DataPacket &packet)
 
             if (histoTimestamp)
                 histoTimestamp->Fill(event.timestamp);
+        }
+        else if (event.type == EventType::MdllNeutron)
+        {
+            if (ctx.mdll_amplitudes)
+                ctx.mdll_amplitudes->Fill(event.mdllNeutron.amplitude);
+            if (ctx.mdll_xPositions)
+                ctx.mdll_xPositions->Fill(event.mdllNeutron.xPos);
+            if (ctx.mdll_yPositions)
+                ctx.mdll_yPositions->Fill(event.mdllNeutron.yPos);
+            if (ctx.mdll_xyPositions)
+                ctx.mdll_xyPositions->Fill(event.mdllNeutron.xPos, event.mdllNeutron.yPos);
         }
     }
 }

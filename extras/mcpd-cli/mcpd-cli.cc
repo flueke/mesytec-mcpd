@@ -1557,10 +1557,12 @@ struct ReadoutCommand: public BaseCommand
     size_t reportInterval_ms_ = 1000u;
     bool printPacketSummary_ = false;
     bool printEventData_ = false;
+    bool overWriteListfile_ = false;
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
     RootHistoContext rootHistoContext_ = {};
     std::string rootHistoPath_;
+    size_t rootFlushInterval_ms_ = 500u;
 #endif
 
     ReadoutCommand(lyra::cli &cli)
@@ -1577,6 +1579,13 @@ struct ReadoutCommand: public BaseCommand
                 ["--listfile"]
                 .optional()
                 .help("Path to the output listfile")
+                )
+
+            .add_argument(
+                lyra::opt([this] (const bool &b) { overWriteListfile_ = b; })
+                ["--overwrite-listfile"]
+                .optional()
+                .help("Overwrite the output listfile if it already exists")
                 )
 
             .add_argument(
@@ -1628,6 +1637,13 @@ struct ReadoutCommand: public BaseCommand
                 .optional()
                 .help("ROOT histo output file path")
                 )
+
+            .add_argument(
+                lyra::opt(rootFlushInterval_ms_, "flushInterval [ms]")
+                ["--root-flush-interval"]
+                .optional()
+                .help("ROOT file flush interval in ms")
+                )
 #endif
             );
     }
@@ -1663,7 +1679,7 @@ struct ReadoutCommand: public BaseCommand
 
         if (!noListfile_)
         {
-            if (file_exists(listfilePath_.c_str()))
+            if (!overWriteListfile_ && file_exists(listfilePath_.c_str()))
             {
                 spdlog::error("readout: Output listfile '{}' already exists",
                               listfilePath_);
@@ -1706,6 +1722,9 @@ struct ReadoutCommand: public BaseCommand
 
         auto tStart = std::chrono::steady_clock::now();
         auto tReport = tStart;
+#ifdef MESYTEC_MCPD_ENABLE_ROOT
+        auto tRootFlush = tStart;
+#endif
 
         while (!g_interrupted)
         {
@@ -1798,6 +1817,20 @@ struct ReadoutCommand: public BaseCommand
             }
 
             const auto now = std::chrono::steady_clock::now();
+
+#ifdef MESYTEC_MCPD_ENABLE_ROOT
+            if (rootHistoContext_.histoOutFile && rootFlushInterval_ms_ > 0)
+            {
+                auto elapsed = now - tRootFlush;
+
+                if (elapsed >= std::chrono::milliseconds(rootFlushInterval_ms_))
+                {
+                    rootHistoContext_.histoOutFile->Write("", TObject::kOverwrite);
+                    spdlog::info("readout: flushed ROOT histograms to file");
+                    tRootFlush = now;
+                }
+            }
+#endif
 
             if (duration_s_ > 0)
             {

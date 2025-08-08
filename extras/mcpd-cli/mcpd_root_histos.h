@@ -3,6 +3,7 @@
 
 #include <TFile.h>
 #include <TH1D.h>
+#include <TH2D.h>
 #include <mesytec-mcpd/mesytec-mcpd.h>
 
 namespace mesytec
@@ -28,12 +29,17 @@ struct RootHistoContext
     std::vector<TH1D *> positions;
     std::vector<TH1D *> timestamps;
 
+    TH1D *mdll_amplitudes;
+    TH1D *mdll_xPositions;
+    TH1D *mdll_yPositions;
+    TH2D *mdll_xyPositions;
+
     RootHistoContext(RootHistoContext &&) = default;
     RootHistoContext &operator=(RootHistoContext &&) = default;
     ~RootHistoContext();
 };
 
-RootHistoContext create_histo_context(const std::string &outputFilename); 
+RootHistoContext create_histo_context(const std::string &outputFilename);
 void root_histos_process_packet(RootHistoContext &rootContext, const DataPacket &packet);
 
 inline size_t linear_address(unsigned mcpdId, unsigned mpsdId, unsigned channel)
