@@ -34,7 +34,7 @@ struct PacketBase
                         // up to and including the last data word.
     u16 bufferType;     // Type of the buffer (CommandPacketBufferType).
     u16 headerLength;   // Length of the packet header (up to and including the headerChecksum
-                        // field) in 16 bits words (=> constant value of 10).
+                        // or param field) in 16 bits words.
     u16 bufferNumber;   // 16 bit buffer number allowing to detect packet loss
 };
 

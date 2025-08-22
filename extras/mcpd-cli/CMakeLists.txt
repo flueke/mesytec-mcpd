@@ -41,3 +41,9 @@ install(TARGETS
     LIBRARY DESTINATION lib
     RUNTIME DESTINATION bin
     )
+
+add_executable(mdat2mcpdlst mdat2mcpdlst.cc)
+target_link_libraries(mdat2mcpdlst
+    PRIVATE mesytec-mcpd
+    PRIVATE spdlog::spdlog
+    )
