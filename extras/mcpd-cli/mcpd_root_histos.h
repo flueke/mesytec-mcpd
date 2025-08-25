@@ -6,9 +6,7 @@
 #include <TH2D.h>
 #include <mesytec-mcpd/mesytec-mcpd.h>
 
-namespace mesytec
-{
-namespace mcpd
+namespace mesytec::mcpd
 {
 
 struct RootHistoContext
@@ -25,14 +23,22 @@ struct RootHistoContext
     // any event:     [mcpdId][mpsdId][channel]["timestamp"]
     // bits             8       3       5        19
 
+    // These use a linear index consisting of mcpd, mpsd and channel ids. See
+    // get_histo(), etc below.
     std::vector<TH1D *> amplitudes;
     std::vector<TH1D *> positions;
     std::vector<TH1D *> timestamps;
 
-    TH1D *mdll_amplitudes;
-    TH1D *mdll_xPositions;
-    TH1D *mdll_yPositions;
-    TH2D *mdll_xyPositions;
+    struct MdllHistos
+    {
+        TH1D *amplitudes = nullptr;
+        TH1D *xPositions = nullptr;
+        TH1D *yPositions = nullptr;
+        TH2D *xyPositions = nullptr;
+    };
+
+    // For MDLL data. Indexed by MDLL device id.
+    std::vector<MdllHistos> mdllHistos;
 
     RootHistoContext(RootHistoContext &&) = default;
     RootHistoContext &operator=(RootHistoContext &&) = default;
@@ -71,7 +77,6 @@ inline TH1D *get_timestamp_histo(RootHistoContext &ctx, unsigned mcpdId, unsigne
     return get_histo(ctx.timestamps, mcpdId, mpsdId, channel);
 }
 
-}
 }
 
 #endif /* __MCPD_ROOT_HISTOS_H__ */
