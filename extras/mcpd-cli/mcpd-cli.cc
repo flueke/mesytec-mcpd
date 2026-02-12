@@ -57,12 +57,37 @@ void setup_signal_handlers()
 #endif
 }
 
+#ifdef MESYTEC_MCPD_ENABLE_PYTHON
+#include <pybind11/embed.h>
+namespace py = pybind11;
+
+struct PyCliContext
+{
+    py::scoped_interpreter guard;
+    py::module_ mcpdPy;
+    py::module_ userCode;
+    py::object startCallback;
+    py::object packetCallback;
+    py::object eventCallback;
+    py::object stopCallback;
+
+    PyCliContext()
+    {
+        mcpdPy = py::module_::import("mesytec_mcpd_py");
+    }
+};
+#endif
+
 struct CliContext
 {
     std::string mcpdAddress;
     u16 mcpdPort = McpdDefaultPort;
     int mcpdId = -1;
     int cmdSock = -1;
+
+#ifdef MESYTEC_MCPD_ENABLE_PYTHON
+    PyCliContext pyContext;
+#endif
 };
 
 struct BaseCommand
@@ -1565,87 +1590,93 @@ struct ReadoutCommand: public BaseCommand
     size_t rootFlushInterval_ms_ = 500u;
 #endif
 
+#ifdef MESYTEC_MCPD_ENABLE_PYTHON
+    std::string pythonScriptPath_;
+#endif
+
     ReadoutCommand(lyra::cli &cli)
     {
         cli.add_argument(
             lyra::command(
                 "readout",
-                [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("DAQ readout to listfile")
+                [this](const lyra::group &)
+                { this->run_ = true; })
+                .help("DAQ readout to listfile")
 
-            .add_argument(
-                lyra::opt(listfilePath_, "listfilePath")
-                ["--listfile"]
-                .optional()
-                .help("Path to the output listfile")
-                )
+                .add_argument(
+                    lyra::opt(listfilePath_, "listfilePath")
+                        ["--listfile"]
+                            .optional()
+                            .help("Path to the output listfile"))
 
-            .add_argument(
-                lyra::opt([this] (const bool &b) { overWriteListfile_ = b; })
-                ["--overwrite-listfile"]
-                .optional()
-                .help("Overwrite the output listfile if it already exists")
-                )
+                .add_argument(
+                    lyra::opt([this](const bool &b)
+                              { overWriteListfile_ = b; })
+                        ["--overwrite-listfile"]
+                            .optional()
+                            .help("Overwrite the output listfile if it already exists"))
 
-            .add_argument(
-                lyra::opt([this] (const bool &b) { noListfile_ = b; })
-                ["--no-listfile"]
-                .optional()
-                .help("Do not write an output listfile.")
-                )
+                .add_argument(
+                    lyra::opt([this](const bool &b)
+                              { noListfile_ = b; })
+                        ["--no-listfile"]
+                            .optional()
+                            .help("Do not write an output listfile."))
 
-            .add_argument(
-                lyra::opt(duration_s_, "duration [s]")
-                ["--duration"]
-                .optional()
-                .help("DAQ run duration in seconds. Runs forever if not specified or 0.")
-                )
+                .add_argument(
+                    lyra::opt(duration_s_, "duration [s]")
+                        ["--duration"]
+                            .optional()
+                            .help("DAQ run duration in seconds. Runs forever if not specified or 0."))
 
-            .add_argument(
-                lyra::opt(dataPort_, "dataPort")
-                ["--dataport"]
-                .optional()
-                .help("mcpd data port (also the local listening port)")
-                )
+                .add_argument(
+                    lyra::opt(dataPort_, "dataPort")
+                        ["--dataport"]
+                            .optional()
+                            .help("mcpd data port (also the local listening port)"))
 
-            .add_argument(
-                lyra::opt(reportInterval_ms_, "interval [ms]")
-                ["--report-interval"]
-                .optional()
-                .help("Time in ms between logging readout stats")
-                )
+                .add_argument(
+                    lyra::opt(reportInterval_ms_, "interval [ms]")
+                        ["--report-interval"]
+                            .optional()
+                            .help("Time in ms between logging readout stats"))
 
-            .add_argument(
-                lyra::opt([this] (const bool &b) { printPacketSummary_ = b; })
-                ["--print-packet-summary"]
-                .optional()
-                .help("Print readout packet summaries")
-                )
+                .add_argument(
+                    lyra::opt([this](const bool &b)
+                              { printPacketSummary_ = b; })
+                        ["--print-packet-summary"]
+                            .optional()
+                            .help("Print readout packet summaries"))
 
-            .add_argument(
-                lyra::opt([this] (const bool &b) { printEventData_ = b; })
-                ["--print-event-data"]
-                .optional()
-                .help("Print readout event data")
-                )
+                .add_argument(
+                    lyra::opt([this](const bool &b)
+                              { printEventData_ = b; })
+                        ["--print-event-data"]
+                            .optional()
+                            .help("Print readout event data"))
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
-            .add_argument(
-                lyra::opt(rootHistoPath_, "rootfile")
-                ["--root-histo-file"]
-                .optional()
-                .help("ROOT histo output file path")
-                )
+                .add_argument(
+                    lyra::opt(rootHistoPath_, "rootfile")
+                        ["--root-histo-file"]
+                            .optional()
+                            .help("ROOT histo output file path"))
 
-            .add_argument(
-                lyra::opt(rootFlushInterval_ms_, "flushInterval [ms]")
-                ["--root-flush-interval"]
-                .optional()
-                .help("ROOT file flush interval in ms")
-                )
+                .add_argument(
+                    lyra::opt(rootFlushInterval_ms_, "flushInterval [ms]")
+                        ["--root-flush-interval"]
+                            .optional()
+                            .help("ROOT file flush interval in ms"))
 #endif
-            );
+
+#ifdef MESYTEC_MCPD_ENABLE_PYTHON
+                .add_argument(
+                    lyra::opt(pythonScriptPath_, "python file")
+                        ["--python-script"]
+                            .optional()
+                            .help("Path to a Python script to execute for each event."))
+#endif
+        );
     }
 
     int runCommand(CliContext &ctx) override
@@ -1709,6 +1740,52 @@ struct ReadoutCommand: public BaseCommand
             catch (const std::runtime_error &e)
             {
                 spdlog::error("{}", e.what());
+                return 1;
+            }
+        }
+#endif
+
+#ifdef MESYTEC_MCPD_ENABLE_PYTHON
+        if (!pythonScriptPath_.empty())
+        {
+            try
+            {
+                auto &pyCtx = ctx.pyContext;
+                auto pyImportLib = py::module_::import("importlib");
+                auto spec = pyImportLib.attr("util").attr("spec_from_file_location")("user_script", pythonScriptPath_);
+                pyCtx.userCode = pyImportLib.attr("util").attr("module_from_spec")(spec);
+                spec.attr("loader").attr("exec_module")(pyCtx.userCode);
+
+                if (py::hasattr(pyCtx.userCode, "start"))
+                    pyCtx.startCallback = pyCtx.userCode.attr("start");
+
+                if (py::hasattr(pyCtx.userCode, "process_packet"))
+                    pyCtx.packetCallback = pyCtx.userCode.attr("process_packet");
+
+                if (py::hasattr(pyCtx.userCode, "process_event"))
+                    pyCtx.eventCallback = pyCtx.userCode.attr("process_event");
+
+                if (py::hasattr(pyCtx.userCode, "stop"))
+                    pyCtx.stopCallback = pyCtx.userCode.attr("stop");
+
+                if (!(pyCtx.packetCallback || pyCtx.eventCallback))
+                {
+                    spdlog::error("readout: Python script '{}' defines neither 'process_packet' nor 'process_event'", pythonScriptPath_);
+                    return 1;
+                }
+
+                spdlog::info("readout: successfully loaded Python script '{}'", pythonScriptPath_);
+
+                if (pyCtx.startCallback)
+                {
+                    spdlog::debug("readout: calling Python start() callback");
+                    pyCtx.startCallback();
+                }
+            }
+            catch (const std::exception &e)
+            {
+                spdlog::error("readout: Error loading Python script '{}': {}",
+                              pythonScriptPath_, e.what());
                 return 1;
             }
         }
@@ -1811,6 +1888,38 @@ struct ReadoutCommand: public BaseCommand
                     root_histos_process_packet(rootHistoContext_, dataPacket);
 #endif
 
+#ifdef MESYTEC_MCPD_ENABLE_PYTHON
+                if (ctx.pyContext.packetCallback)
+                {
+                    try
+                    {
+                        ctx.pyContext.packetCallback(dataPacket);
+                    }
+                    catch (const std::exception &e)
+                    {
+                        spdlog::error("readout: Error in Python packet callback: {}", e.what());
+                        return 1;
+                    }
+                }
+
+                if (ctx.pyContext.eventCallback)
+                {
+                    for (size_t ei = 0; ei < eventCount; ++ei)
+                    {
+                        auto event = decode_event(dataPacket, ei);
+                        try
+                        {
+                            ctx.pyContext.eventCallback(event);
+                        }
+                        catch (const std::exception &e)
+                        {
+                            spdlog::error("readout: Error in Python event callback: {}", e.what());
+                            return 1;
+                        }
+                    }
+                }
+#endif
+
                 ++counters.packets;
                 counters.bytes += bytesTransferred;
                 counters.events += eventCount;
@@ -1826,7 +1935,7 @@ struct ReadoutCommand: public BaseCommand
                 if (elapsed >= std::chrono::milliseconds(rootFlushInterval_ms_))
                 {
                     rootHistoContext_.histoOutFile->Write("", TObject::kOverwrite);
-                    spdlog::info("readout: flushed ROOT histograms to file");
+                    spdlog::debug("readout: flushed ROOT histograms to file");
                     tRootFlush = now;
                 }
             }
@@ -1861,6 +1970,22 @@ struct ReadoutCommand: public BaseCommand
             }
         }
 
+#ifdef MESYTEC_MCPD_ENABLE_ROOT
+        if (rootHistoContext_.histoOutFile)
+        {
+            rootHistoContext_.histoOutFile->Write("", TObject::kOverwrite);
+            spdlog::debug("readout: flushed ROOT histograms to file");
+        }
+#endif
+
+#ifdef MESYTEC_MCPD_ENABLE_PYTHON
+        if (ctx.pyContext.stopCallback)
+        {
+            spdlog::debug("readout: calling Python stop() callback");
+            ctx.pyContext.stopCallback();
+        }
+#endif
+
         report_counters(counters);
 
         return 0;
@@ -1877,6 +2002,10 @@ struct ReplayCommand: public BaseCommand
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
     RootHistoContext rootHistoContext_ = {};
     std::string rootHistoPath_;
+#endif
+
+#ifdef MESYTEC_MCPD_ENABLE_PYTHON
+    std::string pythonScriptPath_;
 #endif
 
     ReplayCommand(lyra::cli &cli)
@@ -1927,6 +2056,13 @@ struct ReplayCommand: public BaseCommand
                 )
 #endif
 
+#ifdef MESYTEC_MCPD_ENABLE_PYTHON
+                .add_argument(
+                    lyra::opt(pythonScriptPath_, "python file")
+                        ["--python-script"]
+                            .optional()
+                            .help("Path to a Python script to execute for each event."))
+#endif
             );
     }
 
