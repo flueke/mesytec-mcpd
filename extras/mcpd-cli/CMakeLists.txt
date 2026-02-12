@@ -12,7 +12,6 @@ if(MCPD_CLI_WITH_ROOT)
     endif()
 endif()
 
-
 add_executable(mcpd-cli mcpd-cli.cc)
 
 target_link_libraries(mcpd-cli
@@ -36,11 +35,7 @@ if (MCPD_CLI_WITH_ROOT AND ROOT_FOUND)
     target_link_libraries(mcpd-cli PRIVATE ${ROOT_LIBRARIES})
 endif()
 
-install(TARGETS
-    mcpd-cli
-    LIBRARY DESTINATION lib
-    RUNTIME DESTINATION bin
-    )
+install(TARGETS mcpd-cli LIBRARY DESTINATION lib RUNTIME DESTINATION bin)
 
 add_executable(mdat2mcpdlst mdat2mcpdlst.cc)
 target_link_libraries(mdat2mcpdlst

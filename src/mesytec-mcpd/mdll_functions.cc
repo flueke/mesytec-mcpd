@@ -7,12 +7,14 @@ namespace mcpd
 
 std::error_code mdll_set_thresholds(
     int sock,
+    u8 mdllId,
     u8 thresholdX,
     u8 thresholdY,
     u8 thresholdAnode)
 {
     auto request = make_command_packet(
         CommandType::MdllSetTresholds,
+        mdllId,
         {
             static_cast<u16>(thresholdX),
             static_cast<u16>(thresholdY),
@@ -29,6 +31,7 @@ std::error_code mdll_set_thresholds(
 
 std::error_code mdll_set_spectrum(
     int sock,
+    u8 mdllId,
     u8 shiftX,
     u8 shiftY,
     u8 scaleX,
@@ -36,6 +39,7 @@ std::error_code mdll_set_spectrum(
 {
     auto request = make_command_packet(
         CommandType::MdllSetSpectrum,
+        mdllId,
         {
             static_cast<u16>(shiftX),
             static_cast<u16>(shiftY),
@@ -53,12 +57,14 @@ std::error_code mdll_set_spectrum(
 
 std::error_code mdll_set_pulser(
     int sock,
+    u8 mdllId,
     bool enable,
     u16 amplitude,
     const MdllChannelPosition &pos)
 {
     auto request = make_command_packet(
         CommandType::MdllSetPulser,
+        mdllId,
         {
             static_cast<u16>(enable),
             static_cast<u16>(amplitude),
@@ -75,10 +81,12 @@ std::error_code mdll_set_pulser(
 
 std::error_code mdll_set_tx_data_set(
     int sock,
+    u8 mdllId,
     const MdllTxDataSet &ds)
 {
     auto request = make_command_packet(
         CommandType::MdllSetTxDataSet,
+        mdllId,
         std::vector<u16>
         {
             static_cast<u16>(ds),
@@ -94,6 +102,7 @@ std::error_code mdll_set_tx_data_set(
 
 std::error_code mdll_set_timing_window(
     int sock,
+    u8 mdllId,
     unsigned tSumLimitXLow,
     unsigned tSumLimitXHigh,
     unsigned tSumLimitYLow,
@@ -101,6 +110,7 @@ std::error_code mdll_set_timing_window(
 {
     auto request = make_command_packet(
         CommandType::MdllSetTimingWindow,
+        mdllId,
         {
             static_cast<u16>(0), // not used
             static_cast<u16>(0), // not used
@@ -120,11 +130,13 @@ std::error_code mdll_set_timing_window(
 
 std::error_code mdll_set_energy_window(
     int sock,
+    u8 mdllId,
     u8 lowerThreshold,
     u8 upperThreshold)
 {
     auto request = make_command_packet(
         CommandType::MdllSetEnergyWindow,
+        mdllId,
         {
             static_cast<u16>(lowerThreshold),
             static_cast<u16>(upperThreshold),

@@ -6,3 +6,6 @@ set_target_properties(spdlog PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # Lyra command line parser
 add_subdirectory(Lyra)
+
+set(PYBIND11_FINDPYTHON ON)
+add_subdirectory(pybind11-3.0.1)

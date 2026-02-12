@@ -1570,82 +1570,76 @@ struct ReadoutCommand: public BaseCommand
         cli.add_argument(
             lyra::command(
                 "readout",
-                [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("DAQ readout to listfile")
+                [this](const lyra::group &)
+                { this->run_ = true; })
+                .help("DAQ readout to listfile")
 
-            .add_argument(
-                lyra::opt(listfilePath_, "listfilePath")
-                ["--listfile"]
-                .optional()
-                .help("Path to the output listfile")
-                )
+                .add_argument(
+                    lyra::opt(listfilePath_, "listfilePath")
+                        ["--listfile"]
+                            .optional()
+                            .help("Path to the output listfile"))
 
-            .add_argument(
-                lyra::opt([this] (const bool &b) { overWriteListfile_ = b; })
-                ["--overwrite-listfile"]
-                .optional()
-                .help("Overwrite the output listfile if it already exists")
-                )
+                .add_argument(
+                    lyra::opt([this](const bool &b)
+                              { overWriteListfile_ = b; })
+                        ["--overwrite-listfile"]
+                            .optional()
+                            .help("Overwrite the output listfile if it already exists"))
 
-            .add_argument(
-                lyra::opt([this] (const bool &b) { noListfile_ = b; })
-                ["--no-listfile"]
-                .optional()
-                .help("Do not write an output listfile.")
-                )
+                .add_argument(
+                    lyra::opt([this](const bool &b)
+                              { noListfile_ = b; })
+                        ["--no-listfile"]
+                            .optional()
+                            .help("Do not write an output listfile."))
 
-            .add_argument(
-                lyra::opt(duration_s_, "duration [s]")
-                ["--duration"]
-                .optional()
-                .help("DAQ run duration in seconds. Runs forever if not specified or 0.")
-                )
+                .add_argument(
+                    lyra::opt(duration_s_, "duration [s]")
+                        ["--duration"]
+                            .optional()
+                            .help("DAQ run duration in seconds. Runs forever if not specified or 0."))
 
-            .add_argument(
-                lyra::opt(dataPort_, "dataPort")
-                ["--dataport"]
-                .optional()
-                .help("mcpd data port (also the local listening port)")
-                )
+                .add_argument(
+                    lyra::opt(dataPort_, "dataPort")
+                        ["--dataport"]
+                            .optional()
+                            .help("mcpd data port (also the local listening port)"))
 
-            .add_argument(
-                lyra::opt(reportInterval_ms_, "interval [ms]")
-                ["--report-interval"]
-                .optional()
-                .help("Time in ms between logging readout stats")
-                )
+                .add_argument(
+                    lyra::opt(reportInterval_ms_, "interval [ms]")
+                        ["--report-interval"]
+                            .optional()
+                            .help("Time in ms between logging readout stats"))
 
-            .add_argument(
-                lyra::opt([this] (const bool &b) { printPacketSummary_ = b; })
-                ["--print-packet-summary"]
-                .optional()
-                .help("Print readout packet summaries")
-                )
+                .add_argument(
+                    lyra::opt([this](const bool &b)
+                              { printPacketSummary_ = b; })
+                        ["--print-packet-summary"]
+                            .optional()
+                            .help("Print readout packet summaries"))
 
-            .add_argument(
-                lyra::opt([this] (const bool &b) { printEventData_ = b; })
-                ["--print-event-data"]
-                .optional()
-                .help("Print readout event data")
-                )
+                .add_argument(
+                    lyra::opt([this](const bool &b)
+                              { printEventData_ = b; })
+                        ["--print-event-data"]
+                            .optional()
+                            .help("Print readout event data"))
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
-            .add_argument(
-                lyra::opt(rootHistoPath_, "rootfile")
-                ["--root-histo-file"]
-                .optional()
-                .help("ROOT histo output file path")
-                )
+                .add_argument(
+                    lyra::opt(rootHistoPath_, "rootfile")
+                        ["--root-histo-file"]
+                            .optional()
+                            .help("ROOT histo output file path"))
 
-            .add_argument(
-                lyra::opt(rootFlushInterval_ms_, "flushInterval [ms]")
-                ["--root-flush-interval"]
-                .optional()
-                .help("ROOT file flush interval in ms")
-                )
+                .add_argument(
+                    lyra::opt(rootFlushInterval_ms_, "flushInterval [ms]")
+                        ["--root-flush-interval"]
+                            .optional()
+                            .help("ROOT file flush interval in ms"))
 #endif
-            );
+        );
     }
 
     int runCommand(CliContext &ctx) override
@@ -1826,7 +1820,7 @@ struct ReadoutCommand: public BaseCommand
                 if (elapsed >= std::chrono::milliseconds(rootFlushInterval_ms_))
                 {
                     rootHistoContext_.histoOutFile->Write("", TObject::kOverwrite);
-                    spdlog::info("readout: flushed ROOT histograms to file");
+                    spdlog::debug("readout: flushed ROOT histograms to file");
                     tRootFlush = now;
                 }
             }
@@ -1860,6 +1854,14 @@ struct ReadoutCommand: public BaseCommand
                 }
             }
         }
+
+#ifdef MESYTEC_MCPD_ENABLE_ROOT
+        if (rootHistoContext_.histoOutFile)
+        {
+            rootHistoContext_.histoOutFile->Write("", TObject::kOverwrite);
+            spdlog::debug("readout: flushed ROOT histograms to file");
+        }
+#endif
 
         report_counters(counters);
 
@@ -1926,7 +1928,6 @@ struct ReplayCommand: public BaseCommand
                 .help("ROOT histo output file path")
                 )
 #endif
-
             );
     }
 
@@ -2170,7 +2171,7 @@ struct MdllSetThresholds: public BaseCommand
                       __PRETTY_FUNCTION__, thresholdX_, thresholdY_, thresholdAnode_);
 
         auto ec = mdll_set_thresholds(
-            ctx.cmdSock, thresholdX_, thresholdY_, thresholdAnode_);
+            ctx.cmdSock, ctx.mcpdId, thresholdX_, thresholdY_, thresholdAnode_);
 
         if (ec)
         {
@@ -2227,7 +2228,7 @@ struct MdllSetSpectrum: public BaseCommand
                       __PRETTY_FUNCTION__, shiftX_, shiftY_, scaleX_, scaleY_);
 
         auto ec = mdll_set_spectrum(
-            ctx.cmdSock, shiftX_, shiftY_, scaleX_, scaleY_);
+            ctx.cmdSock, ctx.mcpdId, shiftX_, shiftY_, scaleX_, scaleY_);
 
         if (ec)
         {
@@ -2281,7 +2282,7 @@ struct MdllSetPulser: public BaseCommand
                       __PRETTY_FUNCTION__, enable_, amplitude_, position_);
 
         auto ec = mdll_set_pulser(
-            ctx.cmdSock, enable_, amplitude_,
+            ctx.cmdSock, ctx.mcpdId, enable_, amplitude_,
             static_cast<MdllChannelPosition>(position_));
 
         if (ec)
@@ -2322,7 +2323,7 @@ struct MdllSetTxDataSet: public BaseCommand
         spdlog::debug("{}: ds={} ", __PRETTY_FUNCTION__, ds_);
 
         auto ec = mdll_set_tx_data_set(
-            ctx.cmdSock, static_cast<MdllTxDataSet>(ds_));
+            ctx.cmdSock, ctx.mcpdId, static_cast<MdllTxDataSet>(ds_));
 
         if (ec)
         {
@@ -2382,6 +2383,7 @@ struct MdllSetTimingWindow: public BaseCommand
 
         auto ec = mdll_set_timing_window(
             ctx.cmdSock,
+            ctx.mcpdId,
             tSumLimitXLow_,
             tSumLimitXHigh_,
             tSumLimitYLow_,
@@ -2432,6 +2434,7 @@ struct MdllSetEnergyWindow: public BaseCommand
 
         auto ec = mdll_set_energy_window(
             ctx.cmdSock,
+            ctx.mcpdId,
             lowerThreshold_,
             upperThreshold_);
 
