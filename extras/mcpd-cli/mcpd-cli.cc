@@ -1668,6 +1668,7 @@ struct ReadoutCommand: public BaseCommand
                             .optional()
                             .help("ROOT file flush interval in ms"))
 #endif
+<<<<<<< HEAD
 
 #ifdef MESYTEC_MCPD_ENABLE_PYTHON
                 .add_argument(
@@ -1676,6 +1677,10 @@ struct ReadoutCommand: public BaseCommand
                             .optional()
                             .help("Path to a Python script to execute for each event."))
 #endif
+||||||| parent of 0ab31d1 (First implementation of python bindings for mcpd packet decoding.)
+            );
+=======
+>>>>>>> 0ab31d1 (First implementation of python bindings for mcpd packet decoding.)
         );
     }
 
@@ -1986,6 +1991,7 @@ struct ReadoutCommand: public BaseCommand
         }
 #endif
 
+<<<<<<< HEAD
 #ifdef MESYTEC_MCPD_ENABLE_PYTHON
         if (ctx.pyContext.stopCallback)
         {
@@ -1994,6 +2000,9 @@ struct ReadoutCommand: public BaseCommand
         }
 #endif
 
+||||||| parent of 0ab31d1 (First implementation of python bindings for mcpd packet decoding.)
+=======
+>>>>>>> 0ab31d1 (First implementation of python bindings for mcpd packet decoding.)
         report_counters(counters);
 
         return 0;
@@ -2063,6 +2072,7 @@ struct ReplayCommand: public BaseCommand
                 .help("ROOT histo output file path")
                 )
 #endif
+<<<<<<< HEAD
 
 #ifdef MESYTEC_MCPD_ENABLE_PYTHON
                 .add_argument(
@@ -2071,6 +2081,10 @@ struct ReplayCommand: public BaseCommand
                             .optional()
                             .help("Path to a Python script to execute for each event."))
 #endif
+||||||| parent of 0ab31d1 (First implementation of python bindings for mcpd packet decoding.)
+
+=======
+>>>>>>> 0ab31d1 (First implementation of python bindings for mcpd packet decoding.)
             );
     }
 
