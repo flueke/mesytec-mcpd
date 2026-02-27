@@ -1,0 +1,83 @@
+#include "logging.h"
+#include <spdlog/sinks/stdout_color_sinks.h>
+
+std::mutex g_mutex;
+
+namespace mesytec::mcpd
+{
+
+std::shared_ptr<spdlog::logger>
+    create_logger(const std::string &name, const std::vector<spdlog::sink_ptr> &sinks)
+{
+    std::unique_lock<std::mutex> lock(g_mutex);
+    auto logger = spdlog::get(name);
+
+    //fmt::print(stderr, "mvlc::create_logger: name={}, logger={}\n", name, fmt::ptr(logger.get()));
+
+    if (!logger)
+    {
+        if (!sinks.empty())
+        {
+            logger = std::make_shared<spdlog::logger>(name, std::begin(sinks), std::end(sinks));
+        }
+        else
+        {
+            logger = spdlog::stdout_color_mt(name);
+        }
+
+        if (logger)
+        {
+            try
+            {
+                spdlog::register_logger(logger);
+            }
+            catch (const std::exception &e)
+            { }
+        }
+    }
+
+    return logger;
+}
+
+std::shared_ptr<spdlog::logger>
+    get_logger(const std::string &name)
+{
+    std::unique_lock<std::mutex> lock(g_mutex);
+    auto logger = spdlog::get(name);
+    lock.unlock();
+
+    if (!logger)
+        logger = create_logger(name);
+
+    return logger;
+}
+
+std::shared_ptr<spdlog::logger> default_logger()
+{
+    return spdlog::default_logger();
+}
+
+void set_default_logger(std::shared_ptr<spdlog::logger> logger)
+{
+    spdlog::set_default_logger(logger);
+}
+
+void set_global_log_level(spdlog::level::level_enum level)
+{
+    spdlog::set_level(level);
+}
+
+std::optional<spdlog::level::level_enum>
+    log_level_from_string(const std::string &levelName)
+{
+    if (auto result = spdlog::level::from_str(levelName); result != spdlog::level::off)
+        return result;
+    return {};
+}
+
+std::string log_level_to_string(const spdlog::level::level_enum &level)
+{
+    return spdlog::level::to_string_view(level).data();
+}
+
+}

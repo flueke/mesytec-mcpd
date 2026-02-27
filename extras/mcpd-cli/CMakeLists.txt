@@ -1,5 +1,4 @@
 option(MCPD_CLI_WITH_ROOT "Enable support for writing ROOT histograms in mcpd-cli" off)
-option(MCPD_CLI_WITH_PYTHON "Enable support for python scripts in mcpd-cli" off)
 
 if(MCPD_CLI_WITH_ROOT)
     list(APPEND CMAKE_PREFIX_PATH $ENV{ROOTSYS})
@@ -45,8 +44,9 @@ if (MCPD_CLI_WITH_ROOT AND ROOT_FOUND)
 endif()
 
 if (MCPD_CLI_WITH_PYTHON AND pybind11_FOUND)
-    target_compile_definitions(mcpd-cli PRIVATE -DMESYTEC_MCPD_ENABLE_PYTHON)
-    target_link_libraries(mcpd-cli PRIVATE pybind11::embed)
+    #target_compile_definitions(mcpd-cli PRIVATE -DMESYTEC_MCPD_ENABLE_PYTHON)
+    #target_sources(mcpd-cli PRIVATE mesytec_mcpd_py.cc)
+    #target_link_libraries(mcpd-cli PRIVATE pybind11::embed)
 endif()
 
 install(TARGETS

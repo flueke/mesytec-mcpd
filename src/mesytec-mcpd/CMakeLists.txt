@@ -1,3 +1,5 @@
+option(MCPD_ENABLE_PYTHON "Build mesytec-mcpd with python bindings" OFF)
+
 find_package(Threads)
 
 configure_file("git_version.cc.in" "git_version.cc" @ONLY)
@@ -7,6 +9,7 @@ add_library(mesytec-mcpd SHARED
     mcpd_core.cc
     mcpd_functions.cc
     mdll_functions.cc
+    util/logging.cc
     util/udp_sockets.cc
     )
 
@@ -17,7 +20,7 @@ target_include_directories(mesytec-mcpd
     )
 
 target_link_libraries(mesytec-mcpd
-    PRIVATE spdlog::spdlog
+    PUBLIC spdlog::spdlog
     PUBLIC Threads::Threads
     )
 
@@ -31,6 +34,25 @@ endif(WIN32)
 
 include(GenerateExportHeader)
 generate_export_header(mesytec-mcpd)
+
+if (MCPD_ENABLE_PYTHON)
+    if (pybind11_FOUND)
+        message("-- Found pybind11: ${pybind11_DIR}")
+    else()
+        message(WARNING "Could not find pybind11. Disabling Python support in mesytec-mcpd")
+    endif()
+endif()
+
+if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
+    pybind11_add_module(mesytec_mcpd_py mesytec_mcpd_py.cc)
+    target_link_libraries(mesytec_mcpd_py PRIVATE mesytec-mcpd)
+    set_target_properties(mesytec_mcpd_py PROPERTIES OUTPUT_NAME mesytec_mcpd)
+    install(TARGETS mesytec_mcpd_py
+        LIBRARY DESTINATION lib
+        RUNTIME DESTINATION bin
+        ARCHIVE DESTINATION lib
+        )
+endif()
 
 # Export and installation
 include(CMakePackageConfigHelpers)
@@ -81,9 +103,3 @@ if (MCPD_BUILD_TESTS)
         add_test(NAME ${exe_name} COMMAND $<TARGET_FILE:${exe_name}>)
     endfunction(add_gtest)
 endif(MCPD_BUILD_TESTS)
-
-if (pybind11_FOUND)
-    pybind11_add_module(mesytec_mcpd_py mesytec_mcpd_py.cc)
-    target_link_libraries(mesytec_mcpd_py PRIVATE mesytec-mcpd spdlog::spdlog)
-    install(TARGETS mesytec_mcpd_py LIBRARY DESTINATION lib RUNTIME DESTINATION bin)
-endif()

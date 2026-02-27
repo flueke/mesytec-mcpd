@@ -73,7 +73,7 @@ struct PyCliContext
 
     PyCliContext()
     {
-        mcpdPy = py::module_::import("mesytec_mcpd_py");
+        //mcpdPy = py::module_::import("mesytec_mcpd_py");
     }
 };
 #endif
@@ -1751,22 +1751,30 @@ struct ReadoutCommand: public BaseCommand
             try
             {
                 auto &pyCtx = ctx.pyContext;
-                auto pyImportLib = py::module_::import("importlib");
-                auto spec = pyImportLib.attr("util").attr("spec_from_file_location")("user_script", pythonScriptPath_);
-                pyCtx.userCode = pyImportLib.attr("util").attr("module_from_spec")(spec);
-                spec.attr("loader").attr("exec_module")(pyCtx.userCode);
 
-                if (py::hasattr(pyCtx.userCode, "start"))
-                    pyCtx.startCallback = pyCtx.userCode.attr("start");
+                try
+                {
+                    auto scope = py::module_::import("__main__").attr("__dict__");
+                    py::eval_file(pythonScriptPath_, scope);
+                    //py::exec(pythonScriptPath_, scope);
 
-                if (py::hasattr(pyCtx.userCode, "process_packet"))
-                    pyCtx.packetCallback = pyCtx.userCode.attr("process_packet");
+                    spdlog::warn("After py::eval_file!");
 
-                if (py::hasattr(pyCtx.userCode, "process_event"))
-                    pyCtx.eventCallback = pyCtx.userCode.attr("process_event");
-
-                if (py::hasattr(pyCtx.userCode, "stop"))
-                    pyCtx.stopCallback = pyCtx.userCode.attr("stop");
+                    if (scope.contains("start"))
+                        pyCtx.startCallback = scope["start"];
+                    if (scope.contains("process_packet"))
+                        pyCtx.packetCallback = scope["process_packet"];
+                    if (scope.contains("process_event"))
+                        pyCtx.eventCallback = scope["process_event"];
+                    if (scope.contains("stop"))
+                        pyCtx.stopCallback = scope["stop"];
+                }
+                catch (const std::exception &e)
+                {
+                    spdlog::error("readout: Error executing Python script '{}': {}",
+                                  pythonScriptPath_, e.what());
+                    return 1;
+                }
 
                 if (!(pyCtx.packetCallback || pyCtx.eventCallback))
                 {
