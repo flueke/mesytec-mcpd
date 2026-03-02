@@ -2314,7 +2314,7 @@ struct MdllSetThresholds: public BaseCommand
                       __PRETTY_FUNCTION__, thresholdX_, thresholdY_, thresholdAnode_);
 
         auto ec = mdll_set_thresholds(
-            ctx.cmdSock, thresholdX_, thresholdY_, thresholdAnode_);
+            ctx.cmdSock, ctx.mcpdId, thresholdX_, thresholdY_, thresholdAnode_);
 
         if (ec)
         {
@@ -2371,7 +2371,7 @@ struct MdllSetSpectrum: public BaseCommand
                       __PRETTY_FUNCTION__, shiftX_, shiftY_, scaleX_, scaleY_);
 
         auto ec = mdll_set_spectrum(
-            ctx.cmdSock, shiftX_, shiftY_, scaleX_, scaleY_);
+            ctx.cmdSock, ctx.mcpdId, shiftX_, shiftY_, scaleX_, scaleY_);
 
         if (ec)
         {
@@ -2425,7 +2425,7 @@ struct MdllSetPulser: public BaseCommand
                       __PRETTY_FUNCTION__, enable_, amplitude_, position_);
 
         auto ec = mdll_set_pulser(
-            ctx.cmdSock, enable_, amplitude_,
+            ctx.cmdSock, ctx.mcpdId, enable_, amplitude_,
             static_cast<MdllChannelPosition>(position_));
 
         if (ec)
@@ -2466,7 +2466,7 @@ struct MdllSetTxDataSet: public BaseCommand
         spdlog::debug("{}: ds={} ", __PRETTY_FUNCTION__, ds_);
 
         auto ec = mdll_set_tx_data_set(
-            ctx.cmdSock, static_cast<MdllTxDataSet>(ds_));
+            ctx.cmdSock, ctx.mcpdId, static_cast<MdllTxDataSet>(ds_));
 
         if (ec)
         {
@@ -2526,6 +2526,7 @@ struct MdllSetTimingWindow: public BaseCommand
 
         auto ec = mdll_set_timing_window(
             ctx.cmdSock,
+            ctx.mcpdId,
             tSumLimitXLow_,
             tSumLimitXHigh_,
             tSumLimitYLow_,
@@ -2576,6 +2577,7 @@ struct MdllSetEnergyWindow: public BaseCommand
 
         auto ec = mdll_set_energy_window(
             ctx.cmdSock,
+            ctx.mcpdId,
             lowerThreshold_,
             upperThreshold_);
 
