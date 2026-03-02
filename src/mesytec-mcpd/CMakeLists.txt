@@ -44,7 +44,7 @@ if (MCPD_ENABLE_PYTHON)
 endif()
 
 if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
-    pybind11_add_module(mesytec_mcpd_py mesytec_mcpd_py.cc)
+    pybind11_add_module(mesytec_mcpd_py mesytec_mcpd_py.cc mcpd_py_lib.cc)
     target_link_libraries(mesytec_mcpd_py PRIVATE mesytec-mcpd)
     set_target_properties(mesytec_mcpd_py PROPERTIES OUTPUT_NAME mesytec_mcpd)
     install(TARGETS mesytec_mcpd_py
@@ -102,4 +102,6 @@ if (MCPD_BUILD_TESTS)
 
         add_test(NAME ${exe_name} COMMAND $<TARGET_FILE:${exe_name}>)
     endfunction(add_gtest)
+
+    add_gtest(test_mcpd_py_lib mcpd_py_lib.test.cc)
 endif(MCPD_BUILD_TESTS)

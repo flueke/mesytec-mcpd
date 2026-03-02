@@ -19,6 +19,12 @@ logging.basicConfig(
 )
 
 class ReadoutWorker(QtCore.QObject):
+    """
+    Wraps the c++ mcpd.Readout object in a QObject to be used in a dedicated
+    thread.  Polls for new packets in a tight loop and emits the 'new_packets'
+    signal when new data is available. Also emits 'started' and 'stopped'
+    signals when the readout is started and stopped.
+    """
     new_packets = Signal(list)
     started = Signal()
     stopped = Signal()
@@ -37,9 +43,13 @@ class ReadoutWorker(QtCore.QObject):
         self.started.emit()
         logging.debug("ReadoutWorker: entering readout loop")
         while self.running:
+            logging.warning("ping")
+
             if self.readout.has_readout_exception():
                 logging.error(f"ReadoutWorker: exception in readout thread, stopping readout (e={self.readout.get_readout_exception()})")
                 break
+            else:
+                logging.debug("ReadoutWorker: no exception in readout thread")
 
             packets = self.readout.get_packets()
 
@@ -49,6 +59,7 @@ class ReadoutWorker(QtCore.QObject):
             else:
                 logging.debug("ReadoutWorker: no packets received, sleeping briefly")
                 QtCore.QThread.msleep(10)
+
         logging.debug("ReadoutWorker: left loop, stopping readout")
         self.readout.stop()
         logging.debug("ReadoutWorker: readout stopped, emitting stopped signal")
@@ -217,7 +228,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
 if __name__ == "__main__":
     mcpd.init()
-    mcpd.set_log_level("err")
+    mcpd.set_log_level("trace")
 
     app = QtWidgets.QApplication([])
     mainwin = MainWindow(mcpd.Readout())
