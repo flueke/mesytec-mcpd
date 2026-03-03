@@ -3,15 +3,12 @@
 
 #include <array>
 #include <cassert>
-#include <spdlog/spdlog.h>
 #include <tuple>
 
 #include "util/int_types.h"
 #include "util/udp_sockets.h"
 
-namespace mesytec
-{
-namespace mcpd
+namespace mesytec::mcpd
 {
 
 // Constants for the CommandPacket::cmd value.
@@ -457,67 +454,11 @@ inline std::tuple<u16, u16, u16> from_48bit_value(u64 v)
                            static_cast<u16>((v >> 32) & 0xFFFF));
 }
 
-template<typename Out>
-Out &format(Out &out, const CommandPacket &packet, bool logData = true)
-{
-    out << "CommandPacket:" << std::endl;
-    out << fmt::format("  bufferLength={}", packet.bufferLength) << std::endl;
-    out << fmt::format("  bufferType=0x{:04X}", packet.bufferType) << std::endl;
-    out << fmt::format("  headerLength={}", packet.headerLength) << std::endl;
-    out << fmt::format("  bufferNumber={}", packet.bufferNumber) << std::endl;
-    u16 cmd = (packet.cmd & CommandNumberMask);
-    u16 cmdError = (packet.cmd & CommandErrorMask) >> CommandErrorShift;
-    out << fmt::format("  cmd={}/0x{:04X}/{}, err={}, cmd={}",
-                       packet.cmd,
-                       packet.cmd,
-                       mcpd_cmd_to_string(packet.cmd),
-                       cmdError, cmd
-                      )
-        << std::endl;
-    out << fmt::format("  deviceStatus=0x{:02X}", packet.deviceStatus) << std::endl;
-    out << fmt::format("  deviceId=0x{:02X}", packet.deviceId) << std::endl;
-    out << fmt::format("  time={}, {}, {}", packet.time[0], packet.time[1], packet.time[2]) << std::endl;
-    out << fmt::format("  headerChecksum=0x{:04X}", packet.headerChecksum) << std::endl;
 
-    const u16 dataLen = get_data_length(packet);
+std::string to_string(const CommandPacket &packet);
+std::string raw_data_to_string(const CommandPacket &packet);
 
-    out << fmt::format("  calculated data length={}", dataLen) << std::endl;
-
-    if (logData)
-        for (unsigned i=0; i<dataLen; ++i)
-            out << fmt::format("    data[{}] = 0x{:04X}", i, packet.data[i]) << std::endl;
-
-    return out;
-}
-
-inline std::string to_string(const CommandPacket &packet)
-{
-    std::stringstream ss;
-    format(ss, packet);
-    return ss.str();
-}
-
-inline std::string raw_data_to_string(const CommandPacket &packet)
-{
-    const u16 dataLen = get_data_length(packet);
-    const auto rawShortData = reinterpret_cast<const u16 *>(&packet);
-    const auto rawShortSize = sizeof(CommandPacket) / sizeof(u16) - CommandPacketMaxDataWords + dataLen;
-    assert(rawShortSize < sizeof(CommandPacket)); (void) rawShortSize;
-
-    std::stringstream out;
-    out << "raw packet header (including header checksum):\n";
-    for (size_t i = 0; i < packet.headerLength; ++i)
-        out << fmt::format("  [{:02d}] {:#06x}\n", i, rawShortData[i]);
-
-    out << "raw packet data:\n";
-    for (size_t i = packet.headerLength; i < packet.headerLength + dataLen; ++i)
-    {
-        out << fmt::format("  [{:02d}] {:#06x}\n", i, rawShortData[i]);
-    }
-
-    return out.str();
-}
-
+// Extracts the parameters transmitted with each MCPD/MDLL data packet.
 inline std::array<u64, McpdParamCount> get_parameter_values(const DataPacket &packet)
 {
     std::array<u64, McpdParamCount> result = {};
@@ -531,42 +472,7 @@ inline std::array<u64, McpdParamCount> get_parameter_values(const DataPacket &pa
     return result;
 }
 
-template<typename Out>
-Out &format(Out &out, const DataPacket &packet)
-{
-    out << "DataPacket:" << std::endl;
-    out << fmt::format("  bufferLength={}", packet.bufferLength) << std::endl;
-    out << fmt::format("  bufferType=0x{:04X}", packet.bufferType) << std::endl;
-    out << fmt::format("  headerLength={}", packet.headerLength) << std::endl;
-    out << fmt::format("  bufferNumber={}", packet.bufferNumber) << std::endl;
-    out << fmt::format("  runId={}", packet.runId) << std::endl;
-    out << fmt::format("  deviceStatus=0x{:02X}", packet.deviceStatus) << std::endl;
-    out << fmt::format("  deviceId=0x{:02X}", packet.deviceId) << std::endl;
-    out << fmt::format("  time={}, {}, {}", packet.time[0], packet.time[1], packet.time[2]) << std::endl;
-
-    for (size_t i=0; i<McpdParamCount; ++i)
-    {
-        auto &param = packet.param[i];
-        out << fmt::format("  param[{}]: {} {} {}",
-                           i, param[0], param[1], param[2]) << std::endl;
-    }
-
-    auto dataLen = get_data_length(packet);
-
-    out << fmt::format("  calculated data length={}", dataLen) << std::endl;
-
-    for (int i=0; i<dataLen; ++i)
-        out << fmt::format("    data[{}] = 0x{:04X}", i, packet.data[i]) << std::endl;
-
-    return out;
-}
-
-inline std::string to_string(const DataPacket &packet)
-{
-    std::stringstream ss;
-    format(ss, packet);
-    return ss.str();
-}
+std::string to_string(const DataPacket &packet);
 
 inline size_t get_event_count(const DataPacket &packet)
 {
@@ -679,53 +585,10 @@ inline DecodedEvent decode_event(const DataPacket &packet, size_t eventNum)
     return result;
 }
 
-template<typename Out>
-Out &format(Out &out, const DecodedEvent &event)
-{
-    out << "Event: ";
-
-    switch (event.type)
-    {
-        case EventType::Neutron:
-            out << fmt::format("type={}", to_string(event.type));
-            out << fmt::format(", mcpdId={}", event.deviceId);
-            out << fmt::format(", mpsdId={}", event.neutron.mpsdId);
-            out << fmt::format(", channel={}", event.neutron.channel);
-            out << fmt::format(", amplitude={}", event.neutron.amplitude);
-            out << fmt::format(", position={}", event.neutron.position);
-            break;
-
-        case EventType::Trigger:
-            out << fmt::format("type={}", to_string(event.type));
-            out << fmt::format(", mcpdId={}", event.deviceId);
-            out << fmt::format(", triggerId={}", event.trigger.triggerId);
-            out << fmt::format(", dataId={}", event.trigger.dataId);
-            out << fmt::format(", value={}", event.trigger.value);
-            break;
-
-        case EventType::MdllNeutron:
-            out << fmt::format("type={}", to_string(event.type));
-            out << fmt::format(", amplitude={}", event.mdllNeutron.amplitude);
-            out << fmt::format(", xPos={}", event.mdllNeutron.xPos);
-            out << fmt::format(", yPos={}", event.mdllNeutron.yPos);
-            break;
-    }
-
-    out << fmt::format(", full_timestamp={}", event.timestamp);
-
-    return out;
-}
-
-inline std::string to_string(const DecodedEvent &event)
-{
-    std::stringstream ss;
-    format(ss, event);
-    return ss.str();
-}
+std::string to_string(const DecodedEvent &event);
 
 std::error_code make_error_code(CommandError error);
 
-}
 }
 
 namespace std

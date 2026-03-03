@@ -20,7 +20,7 @@ target_include_directories(mesytec-mcpd
     )
 
 target_link_libraries(mesytec-mcpd
-    PUBLIC spdlog::spdlog
+    PRIVATE spdlog::spdlog
     PUBLIC Threads::Threads
     )
 
@@ -45,7 +45,7 @@ endif()
 
 if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
     pybind11_add_module(mesytec_mcpd_py mesytec_mcpd_py.cc mcpd_py_lib.cc)
-    target_link_libraries(mesytec_mcpd_py PRIVATE mesytec-mcpd)
+    target_link_libraries(mesytec_mcpd_py PRIVATE mesytec-mcpd spdlog::spdlog)
     set_target_properties(mesytec_mcpd_py PROPERTIES OUTPUT_NAME mesytec_mcpd)
     install(TARGETS mesytec_mcpd_py
         LIBRARY DESTINATION lib
@@ -64,7 +64,7 @@ configure_package_config_file(
     ${project_config}
     INSTALL_DESTINATION lib/cmake/mesytec-mcpd)
 
-set(INSTALL_TARGETS mesytec-mcpd spdlog)
+set(INSTALL_TARGETS mesytec-mcpd)
 export(TARGETS ${INSTALL_TARGETS} NAMESPACE mesytec-mcpd::
     FILE ${PROJECT_BINARY_DIR}/${targets_export_name}.cmake)
 

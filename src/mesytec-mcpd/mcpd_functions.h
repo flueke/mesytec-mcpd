@@ -2,6 +2,7 @@
 #define __MESYTEC_MCPD_FUNCTIONS_H__
 
 #include <vector>
+#include <cstring>
 
 #include "mcpd_core.h"
 
