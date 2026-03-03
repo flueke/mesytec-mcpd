@@ -13,9 +13,6 @@
 #include "util/logging.h"
 #include "util/pybind11_log.h"
 
-// TODO:
-// - maybe return a std::promise from start() and stop(). I've done this elsewhere (mvlc I think) and it works just fine.
-
 namespace py = pybind11;
 using namespace mesytec::mcpd;
 

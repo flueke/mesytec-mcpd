@@ -7,6 +7,7 @@
 #include <thread>
 
 #include <mesytec-mcpd/mesytec-mcpd.h>
+#include <mesytec-mcpd/util/logging.h>
 
 namespace mesytec::mcpd
 {
