@@ -1,0 +1,14 @@
+# Note (flueke): not tested yet. This is for later when building binaries and
+# needs some changes to cmake to work (project name, install location and maybe
+# more).
+[build-system]
+requires = ["scikit-build-core", "pybind11"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "mesytec_mcpd_py"
+version = "0.0.1"
+
+[tool.scikit-build]
+cmake.args = [ '-DMCPD_ENABLE_PYTHON=ON' ]
+build.verbose = true
