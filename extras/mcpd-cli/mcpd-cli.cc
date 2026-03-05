@@ -2028,6 +2028,8 @@ struct ReplayCommand: public BaseCommand
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
     RootHistoContext rootHistoContext_ = {};
     std::string rootHistoPath_;
+    size_t rootFlushInterval_ms_ = 500u;
+    bool rootEnableMdllGraphs_ = false;
 #endif
 
 #ifdef MESYTEC_MCPD_ENABLE_PYTHON
@@ -2080,6 +2082,19 @@ struct ReplayCommand: public BaseCommand
                 .optional()
                 .help("ROOT histo output file path")
                 )
+
+            .add_argument(
+                lyra::opt(rootFlushInterval_ms_, "flushInterval [ms]")
+                    ["--root-flush-interval"]
+                        .optional()
+                        .help("ROOT file flush interval in ms"))
+
+            .add_argument(
+                lyra::opt([this](const bool &b)
+                            { rootEnableMdllGraphs_ = b; })
+                    ["--root-enable-mdll-graphs"]
+                        .optional()
+                        .help("Create TGraphs of MDLL amplitude and position values vs time in the ROOT ouptut file. Eats lots of memory!"))
 #endif
 <<<<<<< HEAD
 
@@ -2127,6 +2142,7 @@ struct ReplayCommand: public BaseCommand
             try
             {
                 rootHistoContext_ = create_histo_context(rootHistoPath_);
+                rootHistoContext_.enableMdllGraphs = rootEnableMdllGraphs_;
                 spdlog::info("Writing ROOT histograms to {}", rootHistoPath_);
             }
             catch (const std::runtime_error &e)
@@ -2144,6 +2160,9 @@ struct ReplayCommand: public BaseCommand
 
         auto tStart = std::chrono::steady_clock::now();
         auto tReport = tStart;
+#ifdef MESYTEC_MCPD_ENABLE_ROOT
+        auto tRootFlush = tStart;
+#endif
 
         while (!listfile.eof() && !g_interrupted)
         {
@@ -2202,6 +2221,20 @@ struct ReplayCommand: public BaseCommand
 
             const auto now = std::chrono::steady_clock::now();
 
+#ifdef MESYTEC_MCPD_ENABLE_ROOT
+            if (rootHistoContext_.histoOutFile && rootFlushInterval_ms_ > 0)
+            {
+                auto elapsed = now - tRootFlush;
+
+                if (elapsed >= std::chrono::milliseconds(rootFlushInterval_ms_))
+                {
+                    rootHistoContext_.histoOutFile->Write("", TObject::kOverwrite);
+                    spdlog::debug("readout: flushed ROOT histograms to file");
+                    tRootFlush = now;
+                }
+            }
+#endif
+
             if (reportInterval_ms_ > 0)
             {
                 auto elapsed = now - tReport;
@@ -2213,6 +2246,14 @@ struct ReplayCommand: public BaseCommand
                 }
             }
         }
+
+#ifdef MESYTEC_MCPD_ENABLE_ROOT
+        if (rootHistoContext_.histoOutFile)
+        {
+            root_histos_finalize(rootHistoContext_);
+            spdlog::debug("readout: flushed ROOT histograms to file");
+        }
+#endif
 
         report_counters(counters, "replay");
 
