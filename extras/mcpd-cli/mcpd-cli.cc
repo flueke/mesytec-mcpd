@@ -1563,6 +1563,7 @@ struct ReadoutCommand: public BaseCommand
     RootHistoContext rootHistoContext_ = {};
     std::string rootHistoPath_;
     size_t rootFlushInterval_ms_ = 500u;
+    bool rootEnableMdllGraphs_ = false;
 #endif
 
     ReadoutCommand(lyra::cli &cli)
@@ -1638,6 +1639,13 @@ struct ReadoutCommand: public BaseCommand
                         ["--root-flush-interval"]
                             .optional()
                             .help("ROOT file flush interval in ms"))
+
+                .add_argument(
+                    lyra::opt([this](const bool &b)
+                              { rootEnableMdllGraphs_ = b; })
+                        ["--root-enable-mdll-graphs"]
+                            .optional()
+                            .help("Create TGraphs of MDLL amplitude and position values vs time in the ROOT ouptut file. Eats lots of memory!"))
 #endif
         );
     }
@@ -1698,6 +1706,7 @@ struct ReadoutCommand: public BaseCommand
             try
             {
                 rootHistoContext_ = create_histo_context(rootHistoPath_);
+                rootHistoContext_.enableMdllGraphs = rootEnableMdllGraphs_;
                 spdlog::info("Writing ROOT histograms to {}", rootHistoPath_);
             }
             catch (const std::runtime_error &e)
@@ -1858,7 +1867,7 @@ struct ReadoutCommand: public BaseCommand
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
         if (rootHistoContext_.histoOutFile)
         {
-            rootHistoContext_.histoOutFile->Write("", TObject::kOverwrite);
+            root_histos_finalize(rootHistoContext_);
             spdlog::debug("readout: flushed ROOT histograms to file");
         }
 #endif
