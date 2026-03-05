@@ -35,10 +35,24 @@ struct RootHistoContext
         TH1D *xPositions = nullptr;
         TH1D *yPositions = nullptr;
         TH2D *xyPositions = nullptr;
+
+        // Used to create value-over-time graphs at the end of a run.
+        // This can grow indefinitely. Makes the OOM-killer happy.
+        struct GraphStorage
+        {
+            std::vector<float> timestamps;
+            std::vector<float> amplitudes;
+            std::vector<float> xPositions;
+            std::vector<float> yPositions;
+        };
+
+        GraphStorage graphStorage;
     };
 
     // For MDLL data. Indexed by MDLL device id.
-    std::vector<MdllHistos> mdllHistos;
+    std::vector<std::unique_ptr<MdllHistos>> mdllHistos;
+
+    bool enableMdllGraphs = false;
 
     RootHistoContext(RootHistoContext &&) = default;
     RootHistoContext &operator=(RootHistoContext &&) = default;
@@ -47,6 +61,7 @@ struct RootHistoContext
 
 RootHistoContext create_histo_context(const std::string &outputFilename);
 void root_histos_process_packet(RootHistoContext &rootContext, const DataPacket &packet);
+void root_histos_finalize(RootHistoContext &rootContext);
 
 inline size_t linear_address(unsigned mcpdId, unsigned mpsdId, unsigned channel)
 {
