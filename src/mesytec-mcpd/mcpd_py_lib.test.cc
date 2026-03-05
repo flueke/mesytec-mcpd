@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <mesytec-mcpd/util/logging.h>
 #include "mcpd_py_lib.h"
 
 using namespace mesytec::mcpd;
@@ -8,6 +9,9 @@ using namespace mesytec::mcpd;
 
 TEST(mcpd_py_lib, CreateDestroyBeHappy)
 {
+    set_global_log_level(spdlog::level::trace);
+    spdlog::set_level(spdlog::level::trace);
+
     for (size_t i = 0; i < 10; ++i)
     {
         Readout readout(McpdDefaultPort + 3);
@@ -45,11 +49,21 @@ TEST(mcpd_py_lib, StartMultiple)
         Readout readout1(McpdDefaultPort + 3);
 
         readout.start();
+
         ASSERT_TRUE(readout.isRunning());
         ASSERT_FALSE(readout1.isRunning());
 
-        readout1.start();
+        ASSERT_FALSE(readout.hasReadoutException());
+        ASSERT_FALSE(readout1.hasReadoutException());
+
+        // This will throw 'address already in use'.
+        ASSERT_THROW(readout1.start(), std::system_error);
+
         ASSERT_TRUE(readout.isRunning());
         ASSERT_FALSE(readout1.isRunning());
-        ASSERT_TRUE(readout1.hasReadoutException());
+
+        // No readout exception should be set. It's only done if startup
+        // succeeded and then during readout time an error occurs.
+        ASSERT_FALSE(readout.hasReadoutException());
+        ASSERT_FALSE(readout1.hasReadoutException());
 }

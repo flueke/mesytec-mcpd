@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 from PySide6.QtGui import QCloseEvent
 import boost_histogram as bh
 import logging

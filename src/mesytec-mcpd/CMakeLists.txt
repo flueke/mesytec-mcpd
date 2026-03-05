@@ -98,10 +98,14 @@ if (MCPD_BUILD_TESTS)
             PRIVATE mesytec-mcpd
             PRIVATE gtest
             PRIVATE gtest_main
+            PRIVATE spdlog::spdlog
             )
 
         add_test(NAME ${exe_name} COMMAND $<TARGET_FILE:${exe_name}>)
     endfunction(add_gtest)
 
-    add_gtest(test_mcpd_py_lib mcpd_py_lib.test.cc)
+    if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
+        add_gtest(test_mcpd_py_lib mcpd_py_lib.test.cc)
+        target_sources(test_mcpd_py_lib PRIVATE mcpd_py_lib.cc)
+    endif()
 endif(MCPD_BUILD_TESTS)
