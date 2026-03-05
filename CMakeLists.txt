@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.15)
 
 # Check if mesytec-mcpd is being used directly or via add_subdirectory
 set(MESYTEC_MCPD_MASTER_PROJECT OFF)
@@ -47,14 +47,21 @@ message("-- GIT_VERSION=${GIT_VERSION}")
 message("-- GIT_VERSION_SHORT=${GIT_VERSION_SHORT}")
 message("-- GIT_BRANCH=${GIT_BRANCH}")
 
-project(mesytec-mcpd
-    DESCRIPTION "User space driver library for the Mesytec PSD+ system" VERSION ${GIT_VERSION_SHORT})
+if (DEFINED SKBUILD)
+set(PROJECT_NAME ${SKBUILD_PROJECT_NAME})
+else()
+set(PROJECT_NAME mesytec-mcpd)
+endif()
+
+project(${PROJECT_NAME}
+  DESCRIPTION "User space driver library for the Mesytec PSD+ system"
+  VERSION ${GIT_VERSION_SHORT})
 
 if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose Release or Debug")
 endif()
 
-message("-- CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} (mvme)")
+message("-- CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
 
 ## Optional tests
 option(MCPD_BUILD_TESTS "Build test binaries" ${MESYTEC_MCPD_MASTER_PROJECT})

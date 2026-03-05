@@ -49,7 +49,9 @@ if (MCPD_CLI_WITH_PYTHON AND pybind11_FOUND)
     target_link_libraries(mcpd-cli PRIVATE pybind11::embed)
 endif()
 
-install(TARGETS mcpd-cli LIBRARY DESTINATION lib RUNTIME DESTINATION bin)
+if (NOT DEFINED SKBUILD)
+    install(TARGETS mcpd-cli LIBRARY DESTINATION lib RUNTIME DESTINATION bin)
+endif()
 
 add_executable(mdat2mcpdlst mdat2mcpdlst.cc)
 target_link_libraries(mdat2mcpdlst
