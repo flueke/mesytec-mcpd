@@ -15,7 +15,8 @@ mesytec-mcpd-gui = "mesytec_mcpd_py.gui.main_window:main"
 [tool.scikit-build]
 cmake.args = [ '-DMCPD_ENABLE_PYTHON=ON' ]
 build.verbose = true
+metadata.version.provider = "scikit_build_core.metadata.setuptools_scm"
 
 [tool.setuptools_scm]
-version_scheme = "post-release"
+version_scheme = "python-simplified-semver"
 local_scheme = "no-local-version"
