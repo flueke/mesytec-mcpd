@@ -1,6 +1,9 @@
 #include "mcpd_py_lib.h"
 #include <memory>
 #include <mesytec-mcpd/util/logging.h>
+#include <pybind11/pybind11.h>
+
+namespace py = pybind11;
 
 namespace mesytec::mcpd
 {
@@ -14,7 +17,6 @@ Readout::Readout(int listenPort, size_t packetBufferMaxSize)
 
 Readout::~Readout()
 {
-    spdlog::debug("{}", __PRETTY_FUNCTION__);
     stop();
 }
 
@@ -36,6 +38,10 @@ bool Readout::start()
 
     std::promise<bool> promise;
     auto f = promise.get_future();
+
+    std::unique_ptr<py::gil_scoped_release> gil_release;
+    if (PyGILState_Check())
+        gil_release = std::make_unique<py::gil_scoped_release>();
 
     spdlog::debug("{}: starting readout thread", __PRETTY_FUNCTION__);
     readoutThread_ = std::thread(&Readout::readoutLoop, this, std::move(promise));
@@ -66,30 +72,28 @@ bool Readout::start()
 
 bool Readout::stop()
 {
-    spdlog::debug("{}", __PRETTY_FUNCTION__);
-
     std::unique_lock<std::mutex> lock(startStopMutex_);
 
     if (!isRunning_())
     {
-        spdlog::warn("{}: not running, cannot stop", __PRETTY_FUNCTION__);
         return false;
     }
 
-    spdlog::debug("{}: stopping readout", __PRETTY_FUNCTION__);
     keepRunning_ = false;
 
     if (readoutThread_.joinable())
     {
-        spdlog::debug("{}: joining readout thread", __PRETTY_FUNCTION__);
+        std::unique_ptr<py::gil_scoped_release> gil_release;
+        if (PyGILState_Check())
+            gil_release = std::make_unique<py::gil_scoped_release>();
+
         readoutThread_.join();
         spdlog::debug("{}: readout thread joined, returning", __PRETTY_FUNCTION__);
         return true;
     }
     else
     {
-        spdlog::error("{}: readout thread not joinable, unable to stop readout!",
-                      __PRETTY_FUNCTION__);
+        // This should not happen because we checked isRunning_() above.
         return false;
     }
 }
