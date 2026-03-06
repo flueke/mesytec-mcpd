@@ -1,11 +1,33 @@
+#include "mcpd_py_lib.h"
 #include <gtest/gtest.h>
 #include <mesytec-mcpd/util/logging.h>
-#include "mcpd_py_lib.h"
+#include <pybind11/embed.h> // for py::scoped_interpreter
+
+namespace py = pybind11;
 
 using namespace mesytec::mcpd;
 
-// Note: always using a non-default port to _not_ receive data from MCPDs that have been left running :)
-// Real programmers (!) would abstract the socket out and run with a mock socket instead I guess.
+// Note: always using a non-default port to _not_ receive data from MCPDs that have been left
+// running :) Real programmers (!) would abstract the socket out and run with a mock socket instead
+// I guess.
+
+// Global Python interpreter for all tests
+class PythonEnvironment: public ::testing::Environment
+{
+  public:
+    ~PythonEnvironment() override {}
+
+    void SetUp() override { guard = std::make_unique<py::scoped_interpreter>(); }
+
+    void TearDown() override { guard.reset(); }
+
+  private:
+    std::unique_ptr<py::scoped_interpreter> guard;
+};
+
+// Register the environment
+[[maybe_unused]] static ::testing::Environment *const python_env =
+    ::testing::AddGlobalTestEnvironment(new PythonEnvironment());
 
 TEST(mcpd_py_lib, CreateDestroyBeHappy)
 {
@@ -25,45 +47,45 @@ TEST(mcpd_py_lib, CreateDestroyBeHappy)
 
 TEST(mcpd_py_lib, StartStopRestart)
 {
-        Readout readout(McpdDefaultPort + 3);
+    Readout readout(McpdDefaultPort + 3);
 
-        for (size_t i = 0; i < 10; ++i)
-        {
-            readout.start();
-            ASSERT_TRUE(readout.isRunning());
-            ASSERT_FALSE(readout.hasReadoutException());
-            ASSERT_TRUE(readout.getPackets().empty());
-            ASSERT_EQ(readout.getCounters().packets, 0u);
+    for (size_t i = 0; i < 10; ++i)
+    {
+        readout.start();
+        ASSERT_TRUE(readout.isRunning());
+        ASSERT_FALSE(readout.hasReadoutException());
+        ASSERT_TRUE(readout.getPackets().empty());
+        ASSERT_EQ(readout.getCounters().packets, 0u);
 
-            readout.stop();
-            ASSERT_FALSE(readout.isRunning());
-            ASSERT_FALSE(readout.hasReadoutException());
-            ASSERT_TRUE(readout.getPackets().empty());
-            ASSERT_EQ(readout.getCounters().packets, 0u);
-        }
+        readout.stop();
+        ASSERT_FALSE(readout.isRunning());
+        ASSERT_FALSE(readout.hasReadoutException());
+        ASSERT_TRUE(readout.getPackets().empty());
+        ASSERT_EQ(readout.getCounters().packets, 0u);
+    }
 }
 
 TEST(mcpd_py_lib, StartMultiple)
 {
-        Readout readout(McpdDefaultPort + 3);
-        Readout readout1(McpdDefaultPort + 3);
+    Readout readout(McpdDefaultPort + 3);
+    Readout readout1(McpdDefaultPort + 3);
 
-        readout.start();
+    readout.start();
 
-        ASSERT_TRUE(readout.isRunning());
-        ASSERT_FALSE(readout1.isRunning());
+    ASSERT_TRUE(readout.isRunning());
+    ASSERT_FALSE(readout1.isRunning());
 
-        ASSERT_FALSE(readout.hasReadoutException());
-        ASSERT_FALSE(readout1.hasReadoutException());
+    ASSERT_FALSE(readout.hasReadoutException());
+    ASSERT_FALSE(readout1.hasReadoutException());
 
-        // This will throw 'address already in use'.
-        ASSERT_THROW(readout1.start(), std::system_error);
+    // This will throw 'address already in use'.
+    ASSERT_THROW(readout1.start(), std::system_error);
 
-        ASSERT_TRUE(readout.isRunning());
-        ASSERT_FALSE(readout1.isRunning());
+    ASSERT_TRUE(readout.isRunning());
+    ASSERT_FALSE(readout1.isRunning());
 
-        // No readout exception should be set. It's only done if startup
-        // succeeded and then during readout time an error occurs.
-        ASSERT_FALSE(readout.hasReadoutException());
-        ASSERT_FALSE(readout1.hasReadoutException());
+    // No readout exception should be set. It's only done if startup
+    // succeeded and then during readout time an error occurs.
+    ASSERT_FALSE(readout.hasReadoutException());
+    ASSERT_FALSE(readout1.hasReadoutException());
 }
