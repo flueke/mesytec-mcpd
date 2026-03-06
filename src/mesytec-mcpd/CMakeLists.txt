@@ -4,11 +4,7 @@ find_package(Threads)
 
 configure_file("git_version.cc.in" "git_version.cc" @ONLY)
 
-set(LIBRARY_LINKAGE SHARED)
-if (DEFINED SKBUILD)
-    set(LIBRARY_LINKAGE STATIC)
-endif()
-add_library(mesytec-mcpd ${LIBRARY_LINKAGE}
+add_library(mesytec-mcpd SHARED
     "${CMAKE_CURRENT_BINARY_DIR}/git_version.cc"
     mcpd_core.cc
     mcpd_functions.cc
@@ -16,10 +12,6 @@ add_library(mesytec-mcpd ${LIBRARY_LINKAGE}
     util/logging.cc
     util/udp_sockets.cc
     )
-
-if (DEFINED SKBUILD)
-    set_target_properties(mesytec-mcpd PROPERTIES POSITION_INDEPENDENT_CODE ON)
-endif()
 
 target_include_directories(mesytec-mcpd
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
@@ -53,17 +45,19 @@ endif()
 
 if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
     if (DEFINED SKBUILD)
-        pybind11_add_module(${SKBUILD_PROJECT_NAME} MODULE mesytec_mcpd_py.cc mcpd_py_lib.cc)
-        target_link_libraries(${SKBUILD_PROJECT_NAME} PRIVATE mesytec-mcpd spdlog::spdlog)
-        install(TARGETS ${SKBUILD_PROJECT_NAME} DESTINATION ${SKBUILD_PROJECT_NAME})
+        pybind11_add_module(_mesytec_mcpd_py MODULE mesytec_mcpd_py.cc mcpd_py_lib.cc)
+        target_link_libraries(_mesytec_mcpd_py PRIVATE mesytec-mcpd spdlog::spdlog)
+        install(TARGETS _mesytec_mcpd_py mesytec-mcpd DESTINATION ${SKBUILD_PROJECT_NAME})
+        install(FILES __init__.py DESTINATION ${SKBUILD_PROJECT_NAME})
     else()
-        pybind11_add_module(mesytec_mcpd_py MODULE mesytec_mcpd_py.cc mcpd_py_lib.cc)
-        target_link_libraries(mesytec_mcpd_py PRIVATE mesytec-mcpd spdlog::spdlog)
-        install(TARGETS mesytec_mcpd_py
-            LIBRARY DESTINATION lib
+        pybind11_add_module(_mesytec_mcpd_py MODULE mesytec_mcpd_py.cc mcpd_py_lib.cc)
+        target_link_libraries(_mesytec_mcpd_py PRIVATE mesytec-mcpd spdlog::spdlog)
+        install(TARGETS _mesytec_mcpd_py
+            LIBRARY DESTINATION lib/mesytec_mcpd_py
             RUNTIME DESTINATION bin
-            ARCHIVE DESTINATION lib
+            ARCHIVE DESTINATION lib/mesytec_mcpd_py
             )
+        install(FILES __init__.py DESTINATION lib/mesytec_mcpd_py)
     endif()
 endif()
 
@@ -80,7 +74,7 @@ if (NOT DEFINED SKBUILD)
         ${project_config}
         INSTALL_DESTINATION lib/cmake/mesytec-mcpd)
 
-    export(TARGETS ${INSTALL_TARGETS} NAMESPACE mesytec-mcpd::
+    export(TARGETS mesytec-mcpd NAMESPACE mesytec-mcpd::
         FILE ${PROJECT_BINARY_DIR}/${targets_export_name}.cmake)
 
     install(FILES ${project_config}
@@ -91,7 +85,7 @@ if (NOT DEFINED SKBUILD)
         NAMESPACE mesytec-mcpd::
         )
 
-    install(TARGETS ${INSTALL_TARGETS}
+    install(TARGETS mesytec-mcpd
         EXPORT ${targets_export_name}
         LIBRARY DESTINATION lib
         RUNTIME DESTINATION bin
