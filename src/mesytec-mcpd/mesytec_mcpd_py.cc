@@ -30,7 +30,7 @@ void init_logging()
     mesytec::mcpd::set_global_log_level(spdlog::level::trace);
 }
 
-PYBIND11_MODULE(mesytec_mcpd_py, m)
+PYBIND11_MODULE(_mesytec_mcpd_py, m)
 {
     m.doc() = "driver library for the mesytec PSD system (MCPD, MPSD, MDLL) - python bindings";
     m.attr("__version__") = library_version();
