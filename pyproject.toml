@@ -6,6 +6,11 @@ build-backend = "scikit_build_core.build"
 name = "mesytec_mcpd_py"
 dynamic = ["version"]
 
+[project.optional-dependencies]
+gui = ["pyqtgraph", "numpy", "PySide6", "boost-histogram"]
+
+[project.scripts]
+mesytec-mcpd-gui = "mesytec_mcpd_py.gui.main_window:main"
 
 [tool.scikit-build]
 cmake.args = [ '-DMCPD_ENABLE_PYTHON=ON' ]
