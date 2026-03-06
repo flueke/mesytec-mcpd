@@ -79,8 +79,11 @@ PYBIND11_MODULE(_mesytec_mcpd_py, m)
     py::class_<DataPacket>(m, "DataPacket")
         .def(py::init<>())
         .def_readonly("runId", &DataPacket::runId)
-        .def_readonly("deviceStatus", &DataPacket::deviceStatus)
-        .def_readonly("deviceId", &DataPacket::deviceId)
+        .def_readonly("device_status", &DataPacket::deviceStatus)
+        .def_readonly("device_id", &DataPacket::deviceId)
+        .def_readonly("buffer_type", &DataPacket::bufferType)
+        .def_readonly("buffer_length", &DataPacket::bufferLength)
+        .def_readonly("buffer_number", &DataPacket::bufferNumber)
         .def_property_readonly("time",
                                [](const DataPacket &packet)
                                {
