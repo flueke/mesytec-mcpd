@@ -14,6 +14,33 @@ import pyqtgraph.parametertree.parameterTypes as pTypes
 from pyqtgraph.parametertree import Parameter, ParameterTree
 
 from rich.logging import RichHandler
+from time import perf_counter
+
+# Taken from the pyqtgraph examples.utils file.
+class FrameCounter(QtCore.QObject):
+    sigFpsUpdate = QtCore.Signal(object)
+
+    def __init__(self, interval=1000):
+        super().__init__()
+        self.count = 0
+        self.last_update = 0
+        self.interval = interval
+
+    def update(self, count=1):
+        self.count += count
+
+        if self.last_update == 0:
+            self.last_update = perf_counter()
+            self.startTimer(self.interval)
+
+    def timerEvent(self, evt):
+        now = perf_counter()
+        elapsed = now - self.last_update
+        fps = self.count / elapsed
+        self.last_update = now
+        self.count = 0
+        self.sigFpsUpdate.emit(fps)
+
 
 class ReadoutWorker(QtCore.QObject):
     """
@@ -22,6 +49,7 @@ class ReadoutWorker(QtCore.QObject):
     signal when new data is available. Also emits 'started' and 'stopped'
     signals when the readout is started and stopped.
     """
+
     new_packets = Signal(list)
     started = Signal()
     stopped = Signal()
@@ -34,19 +62,20 @@ class ReadoutWorker(QtCore.QObject):
     @Slot()
     def run(self):
         self.running = True
-        logging.debug(f"ReadoutWorker: calling readout.start(), thread={QtCore.QThread.currentThread()}")
+        logging.debug(
+            f"ReadoutWorker: calling readout.start(), thread={QtCore.QThread.currentThread()}"
+        )
         self.readout.start()
-        logging.debug(f"ReadoutWorker: emitting started() signal")
         self.started.emit()
-        logging.debug("ReadoutWorker: entering readout loop")
-        while self.running:
-            logging.warning("ping")
 
+        logging.debug("ReadoutWorker: entering readout loop")
+
+        while self.running:
             if self.readout.has_readout_exception():
-                logging.error(f"ReadoutWorker: exception in readout thread, stopping readout (e={self.readout.get_readout_exception()})")
+                logging.error(
+                    f"ReadoutWorker: exception in readout thread, stopping readout (e={self.readout.get_readout_exception()})"
+                )
                 break
-            else:
-                logging.debug("ReadoutWorker: no exception in readout thread")
 
             packets = self.readout.get_packets()
 
@@ -58,8 +87,8 @@ class ReadoutWorker(QtCore.QObject):
                 QtCore.QThread.msleep(10)
 
         logging.debug("ReadoutWorker: left loop, stopping readout")
+
         self.readout.stop()
-        logging.debug("ReadoutWorker: readout stopped, emitting stopped signal")
         self.stopped.emit()
 
     @Slot()
@@ -67,13 +96,50 @@ class ReadoutWorker(QtCore.QObject):
         logging.debug("ReadoutWorker: stop requested")
         self.running = False
 
+
 class PacketProcessor(QtCore.QObject):
-    def __init__(self):
+    def __init__(self, readout_tree: ParameterTree):
         super().__init__()
+
+        self.readout_tree = readout_tree
+        self.device_params = dict() # device_id -> Parameter
+        self.packetCounter = FrameCounter()
+        self.eventCounter = FrameCounter()
+        self.packetsPerSecond = 0
+        self.eventsPerSecond = 0
+        self.totalPackets = 0
+        self.totalEvents = 0
+
+        def update_packet_counter(fps):
+            self.packetsPerSecond = fps
+
+        def update_event_counter(fps):
+            self.eventsPerSecond = fps
+
+        self.packetCounter.sigFpsUpdate.connect(update_packet_counter)
+        self.eventCounter.sigFpsUpdate.connect(update_event_counter)
 
     @Slot()
     def process_packets(self, packets: list[mcpd.DataPacket]):
+        self.packetCounter.update(len(packets))
         for packet in packets:
+            self.eventCounter.update(packet.event_count())
+
+            if packet.device_id not in self.device_params:
+                #logging.info(f"{packet.buffer_type=:#06x}, {packet.device_id=}, {packet.device_status=}")
+                device_param = None
+                if packet.buffer_type == 0x0001: # MCPD
+                    device_param = Parameter.create(name=f"MCPD {packet.device_id}", type="group")
+                    self.device_params[packet.device_id] = device_param
+                    self.readout_tree.addParameters(device_param)
+                elif packet.buffer_type == 0x0002: # MDLL
+                    device_param = Parameter.create(name=f"MDLL {packet.device_id}", type="group")
+                    self.device_params[packet.device_id] = device_param
+                    self.readout_tree.addParameters(device_param)
+
+                if device_param is not None:
+                    device_param.addChild(Parameter.create(name="Histogram", type="bool", value=False))
+
             for event in packet.get_events():
                 self.process_event(event)
 
@@ -92,12 +158,15 @@ class ReadoutControlWidget(QtWidgets.QWidget):
         self.stop_button = QtWidgets.QPushButton("Stop Readout")
         self.stop_button.setEnabled(False)
         self.label_status = QtWidgets.QLabel("Status: Stopped")
+        self.label_stats = QtWidgets.QLabel("Stats: N/A")
         layout.addWidget(self.start_button)
         layout.addWidget(self.stop_button)
         layout.addWidget(self.label_status)
+        layout.addWidget(self.label_stats)
         self.setLayout(layout)
         self.start_button.clicked.connect(self.start)
         self.stop_button.clicked.connect(self.stop)
+
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, readout: mcpd.Readout):
@@ -119,21 +188,22 @@ class MainWindow(QtWidgets.QMainWindow):
         self.resize(800, 600)
 
         self.dock_readout_control = Dock("Readout Control")
-        self.dock_readout_stats = Dock("Readout Stats")
-        self.dock_histograms = Dock("Histograms")
-        self.dock_logWindow = Dock("Log Window")
+        self.dock_readout_devices = Dock("Readout Devices")
         self.dock_plots = Dock("Plot")
 
         self.dockArea.addDock(self.dock_readout_control, "left")
-        self.dockArea.addDock(self.dock_readout_stats, "bottom")
-        self.dockArea.addDock(self.dock_histograms, "right", self.dock_readout_control)
-        self.dockArea.addDock(self.dock_logWindow, "right", self.dock_readout_stats)
+        self.dockArea.addDock(self.dock_readout_devices, "bottom", self.dock_readout_control)
         self.dockArea.addDock(self.dock_plots, "right")
 
         self.readout_control_widget = ReadoutControlWidget()
         self.dock_readout_control.addWidget(self.readout_control_widget)
         self.readout_control_widget.start.connect(self.start_readout)
         self.readout_control_widget.stop.connect(self.stop_readout)
+
+        self.readout_root = Parameter.create(name="Readout Devices", type="group", children=[])
+        self.readout_tree = ParameterTree()
+        self.readout_tree.setParameters(self.readout_root, showTop=False)
+        self.dock_readout_devices.addWidget(self.readout_tree)
 
         logging.debug(f"MainWindow thread={QtCore.QThread.currentThread()}")
 
@@ -145,9 +215,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.rate_plot = pg.PlotWidget(title="Rate Plot")
 
         # Set up histograms
-        self.amp_hist = pg.BarGraphItem(x=[], height=[], width=0.8, brush='r')
-        self.pos_hist = pg.BarGraphItem(x=[], height=[], width=0.8, brush='b')
-        self.rate_curve = self.rate_plot.plot([], [], pen='g')
+        self.amp_hist = pg.BarGraphItem(x=[], height=[], width=0.8, brush="r")
+        self.pos_hist = pg.BarGraphItem(x=[], height=[], width=0.8, brush="b")
+        self.rate_curve = self.rate_plot.plot([], [], pen="g")
 
         self.amp_plot.addItem(self.amp_hist)
         self.pos_plot.addItem(self.pos_hist)
@@ -178,7 +248,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.readout_thread.setObjectName("ReadoutThread")
         self.readout_worker.moveToThread(self.readout_thread)
         self.readout_thread.started.connect(self.readout_worker.run)
-        self.packet_processor = PacketProcessor()
+        self.packet_processor = PacketProcessor(self.readout_tree)
         self.readout_worker.new_packets.connect(self.packet_processor.process_packets)
 
         def on_readout_started():
@@ -199,10 +269,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.readout_worker.stopped.connect(on_readout_stopped)
 
     @Slot()
-    def handle_packets(self, packets: list[mcpd.DataPacket]):
-        logging.info(f"Received {len(packets)} packets")
-
-    @Slot()
     def start_readout(self):
         if not self.readout_thread.isRunning():
             self.readout_thread.start()
@@ -210,33 +276,41 @@ class MainWindow(QtWidgets.QMainWindow):
     @Slot()
     def stop_readout(self):
         if self.readout_thread.isRunning():
-            #logging.debug("MainWindow: stop_readout called. stopping readout worker")
             self.readout_worker.stop()
-            #logging.debug("MainWindow: stop_readout called. stopping readout thread")
             self.readout_thread.quit()
-            #logging.debug("MainWindow: stop_readout called. waiting for readout thread to finish")
             self.readout_thread.wait()
-            #logging.debug("MainWindow: stop_readout called. readout thread stopped")
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        logging.debug("MainWindow: closeEvent called, stopping readout thread if running")
+        logging.debug(
+            "MainWindow: closeEvent called, stopping readout thread if running"
+        )
         self.stop_readout()
         super().closeEvent(event)
+
+    @Slot(object)
+    def periodic_update(self):
+        self.readout_control_widget.label_stats.setText(
+            f"Packets/s: {self.packet_processor.packetsPerSecond:.2f}, Events/s: {self.packet_processor.eventsPerSecond:.2f}"
+        )
 
 
 def main():
     logging.basicConfig(
-        level="NOTSET",
+        level="INFO",
         format="%(name)s %(message)s",
         datefmt="[%X]",
         handlers=[RichHandler()],
     )
 
-    mcpd.set_log_level("trace")
+    mcpd.set_log_level("info")
 
     app = QtWidgets.QApplication([])
     mainwin = MainWindow(mcpd.Readout())
     mainwin.show()
+
+    update_timer = QtCore.QTimer()
+    update_timer.timeout.connect(mainwin.periodic_update)
+    update_timer.start(500)
 
     ret = app.exec()
     logging.debug(f"Qt event loop exited with code {ret}")
