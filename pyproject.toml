@@ -7,7 +7,7 @@ name = "mesytec_mcpd_py"
 dynamic = ["version"]
 
 [project.optional-dependencies]
-gui = ["pyqtgraph", "numpy", "PySide6", "boost-histogram"]
+gui = ["pyqtgraph", "numpy", "PySide6", "boost-histogram", "rich"]
 
 [project.scripts]
 mesytec-mcpd-gui = "mesytec_mcpd_py.gui.main_window:main"
