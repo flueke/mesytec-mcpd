@@ -1,14 +1,16 @@
-# Note (flueke): not tested yet. This is for later when building binaries and
-# needs some changes to cmake to work (project name, install location and maybe
-# more).
 [build-system]
-requires = ["scikit-build-core", "pybind11"]
+requires = ["scikit-build-core", "pybind11", "setuptools-scm"]
 build-backend = "scikit_build_core.build"
 
 [project]
 name = "mesytec_mcpd_py"
-version = "0.0.1"
+dynamic = ["version"]
+
 
 [tool.scikit-build]
 cmake.args = [ '-DMCPD_ENABLE_PYTHON=ON' ]
 build.verbose = true
+
+[tool.setuptools_scm]
+version_scheme = "post-release"
+local_scheme = "no-local-version"
