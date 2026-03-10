@@ -15,6 +15,8 @@ from pyqtgraph.parametertree import Parameter, ParameterTree
 
 from rich.logging import RichHandler
 from time import perf_counter
+from typing import Optional
+
 
 # Taken from the pyqtgraph examples.utils file.
 class FrameCounter(QtCore.QObject):
@@ -62,9 +64,7 @@ class ReadoutWorker(QtCore.QObject):
     @Slot()
     def run(self):
         self.running = True
-        logging.debug(
-            f"ReadoutWorker: calling readout.start(), thread={QtCore.QThread.currentThread()}"
-        )
+        logging.debug(f"ReadoutWorker: calling readout.start(), thread={QtCore.QThread.currentThread()}")
         self.readout.start()
         self.started.emit()
 
@@ -97,12 +97,104 @@ class ReadoutWorker(QtCore.QObject):
         self.running = False
 
 
+class McpdHistos:
+    def __init__(self, device_name: str):
+        pass
+
+
+class MDLLHistos(QtCore.QObject):
+    show_histogram = Signal(object)
+
+    def __init__(self, device_name: str):
+        super().__init__()
+        self.device_name = device_name
+
+        def make_axis(max_val):
+            return bh.axis.Regular(max_val, 0, max_val)
+
+        self.amp_hist = bh.Histogram(make_axis(mcpd.mdll_neutron.amplitude_max))
+        self.x_pos_hist = bh.Histogram(make_axis(mcpd.mdll_neutron.x_pos_max))
+        self.y_pos_hist = bh.Histogram(make_axis(mcpd.mdll_neutron.y_pos_max))
+        self.xy_pos_hist = bh.Histogram(
+            make_axis(mcpd.mdll_neutron.x_pos_max),
+            make_axis(mcpd.mdll_neutron.y_pos_max),
+        )
+
+        children=[
+            Parameter.create(name="Amplitude", type="action", icon="h1d.png", value=self.amp_hist),
+            Parameter.create(name="X Position", type="action", icon="h1d.png", value=self.x_pos_hist),
+            Parameter.create(name="Y Position", type="action", icon="h1d.png", value=self.y_pos_hist),
+            Parameter.create(name="XY Position", type="action", icon="h2d.png", value=self.xy_pos_hist),
+        ]
+
+        for child in children:
+            child.sigActivated.connect(self.show_histogram)
+
+        self.root_param = Parameter.create(name=f"{device_name} Histograms", type="group", children=children)
+
+class DeviceThing(QtCore.QObject):
+    show_histogram = Signal(object)
+
+    def __init__(self, name: str):
+        super().__init__()
+        self.packet_counter = FrameCounter()
+        self.event_counter = FrameCounter()
+        self.packets_per_second = 0
+        self.events_per_second = 0
+        self.root_param = self._make_params(name)
+
+        self.mdll_histos: Optional[MDLLHistos] = None
+        self.mcpd_histos: Optional[McpdHistos] = None
+
+        def update_packet_counter(fps):
+            self.packets_per_second = fps
+            self._update_params()  # TODO: maybe move this out so that fps update and gui update are decoupled
+
+        def update_event_counter(fps):
+            self.events_per_second = fps
+            self._update_params()  # TODO: maybe move this out so that fps update and gui update are decoupled
+
+        self.packet_counter.sigFpsUpdate.connect(update_packet_counter)
+        self.event_counter.sigFpsUpdate.connect(update_event_counter)
+
+    def _make_params(self, name: str) -> Parameter:
+        return Parameter.create(
+            name=name,
+            type="group",
+            children=[
+                Parameter.create(name="Packets/s", type="float", readonly=True),
+                Parameter.create(name="Events/s", type="float", readonly=True),
+            ],
+        )
+
+    def _update_params(self):
+        self.root_param.param("Packets/s").setValue(self.packets_per_second)
+        self.root_param.param("Events/s").setValue(self.events_per_second)
+
+    def process_packet(self, packet: mcpd.DataPacket):
+
+        if packet.buffer_type == mcpd.buffer_types.McpdDataBufferType and self.mcpd_histos is None:
+            self.mcpd_histos = McpdHistos(self.root_param.name())
+            self.mcpd_histos.show_histogram.connect(self.show_histogram)
+            self.root_param.addChild(self.mcpd_histos.root_param)
+        elif packet.buffer_type == mcpd.buffer_types.MdllDataBufferType and self.mdll_histos is None:
+            self.mdll_histos = MDLLHistos(self.root_param.name())
+            self.mdll_histos.show_histogram.connect(self.show_histogram)
+            self.root_param.addChild(self.mdll_histos.root_param)
+
+        self.packet_counter.update()
+        for event in packet.get_events():
+            self.event_counter.update()
+
+
 class PacketProcessor(QtCore.QObject):
+    device_thing_added = Signal(object)
+
     def __init__(self, readout_tree: ParameterTree):
         super().__init__()
 
         self.readout_tree = readout_tree
-        self.device_params = dict() # device_id -> Parameter
+        self.device_things = dict()  # device_id -> DeviceThing
         self.packetCounter = FrameCounter()
         self.eventCounter = FrameCounter()
         self.packetsPerSecond = 0
@@ -121,30 +213,27 @@ class PacketProcessor(QtCore.QObject):
 
     @Slot()
     def process_packets(self, packets: list[mcpd.DataPacket]):
+
         self.packetCounter.update(len(packets))
+
         for packet in packets:
             self.eventCounter.update(packet.event_count())
 
-            if packet.device_id not in self.device_params:
-                #logging.info(f"{packet.buffer_type=:#06x}, {packet.device_id=}, {packet.device_status=}")
-                device_param = None
-                if packet.buffer_type == 0x0001: # MCPD
-                    device_param = Parameter.create(name=f"MCPD {packet.device_id}", type="group")
-                    self.device_params[packet.device_id] = device_param
-                    self.readout_tree.addParameters(device_param)
-                elif packet.buffer_type == 0x0002: # MDLL
-                    device_param = Parameter.create(name=f"MDLL {packet.device_id}", type="group")
-                    self.device_params[packet.device_id] = device_param
-                    self.readout_tree.addParameters(device_param)
+            if packet.device_id not in self.device_things:
+                # logging.info(f"{packet.buffer_type=:#06x}, {packet.device_id=}, {packet.device_status=}")
+                device_thing = None
+                if packet.buffer_type == 0x0001:  # MCPD
+                    device_thing = DeviceThing(name=f"MCPD {packet.device_id}")
+                elif packet.buffer_type == 0x0002:  # MDLL
+                    device_thing = DeviceThing(name=f"MDLL {packet.device_id}")
 
-                if device_param is not None:
-                    device_param.addChild(Parameter.create(name="Histogram", type="bool", value=False))
+                if device_thing is not None:
+                    self.device_things[packet.device_id] = device_thing
+                    self.readout_tree.addParameters(device_thing.root_param)
+                    self.device_thing_added.emit(device_thing)
 
-            for event in packet.get_events():
-                self.process_event(event)
-
-    def process_event(self, event: mcpd.DecodedEvent):
-        pass
+            device_thing = self.device_things.get(packet.device_id)
+            device_thing.process_packet(packet)
 
 
 class ReadoutControlWidget(QtWidgets.QWidget):
@@ -204,6 +293,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.readout_tree = ParameterTree()
         self.readout_tree.setParameters(self.readout_root, showTop=False)
         self.dock_readout_devices.addWidget(self.readout_tree)
+
+        self.plot_widget = pg.PlotWidget(title="Amplitude Histogram")
+        self.dock_plots.addWidget(self.plot_widget)
 
         logging.debug(f"MainWindow thread={QtCore.QThread.currentThread()}")
 
@@ -268,6 +360,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.readout_worker.started.connect(on_readout_started)
         self.readout_worker.stopped.connect(on_readout_stopped)
 
+        def on_device_thing_added(device_thing):
+            logging.info(f"Device thing added: {device_thing.root_param.name()}")
+            device_thing.show_histogram.connect(self.show_histogram)
+
+        self.packet_processor.device_thing_added.connect(on_device_thing_added)
+
     @Slot()
     def start_readout(self):
         if not self.readout_thread.isRunning():
@@ -281,9 +379,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.readout_thread.wait()
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        logging.debug(
-            "MainWindow: closeEvent called, stopping readout thread if running"
-        )
+        logging.debug("MainWindow: closeEvent called, stopping readout thread if running")
         self.stop_readout()
         super().closeEvent(event)
 
@@ -292,6 +388,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.readout_control_widget.label_stats.setText(
             f"Packets/s: {self.packet_processor.packetsPerSecond:.2f}, Events/s: {self.packet_processor.eventsPerSecond:.2f}"
         )
+
+    @Slot(object)
+    def show_histogram(self, hist):
+        logging.info(f"Show histogram: {hist}")
 
 
 def main():
