@@ -1,5 +1,9 @@
+# TODO: implement a hook that calls pybind11-stubgen and places the stubs inside
+# the wheel in case one is built. This should also work during dev, without
+# having to build a wheel.
+
 [build-system]
-requires = ["scikit-build-core", "pybind11", "setuptools-scm"]
+requires = ["scikit-build-core", "pybind11", "setuptools-scm", "pybind11-stubgen"]
 build-backend = "scikit_build_core.build"
 
 [project]
