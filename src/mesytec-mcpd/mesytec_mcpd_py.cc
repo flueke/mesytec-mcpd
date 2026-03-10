@@ -48,7 +48,7 @@ PYBIND11_MODULE(_mesytec_mcpd_py, m)
 
     py::class_<DecodedEvent::Neutron>(m, "Neutron")
         .def(py::init<>())
-        .def_readonly("mpsdId", &DecodedEvent::Neutron::mpsdId)
+        .def_readonly("mdpsd_id", &DecodedEvent::Neutron::mpsdId)
         .def_readonly("channel", &DecodedEvent::Neutron::channel)
         .def_readonly("amplitude", &DecodedEvent::Neutron::amplitude)
         .def_readonly("position", &DecodedEvent::Neutron::position);
@@ -56,8 +56,8 @@ PYBIND11_MODULE(_mesytec_mcpd_py, m)
     py::class_<DecodedEvent::MdllNeutron>(m, "MdllNeutron")
         .def(py::init<>())
         .def_readonly("amplitude", &DecodedEvent::MdllNeutron::amplitude)
-        .def_readonly("xPos", &DecodedEvent::MdllNeutron::xPos)
-        .def_readonly("yPos", &DecodedEvent::MdllNeutron::yPos);
+        .def_readonly("x_pos", &DecodedEvent::MdllNeutron::xPos)
+        .def_readonly("y_pos", &DecodedEvent::MdllNeutron::yPos);
 
     py::native_enum<EventType>(m, "EventType", "enum.Enum")
         .value("NeutronEvent", EventType::Neutron)
@@ -73,7 +73,7 @@ PYBIND11_MODULE(_mesytec_mcpd_py, m)
         .def_readonly("timestamp", &DecodedEvent::timestamp)
         .def_readonly("neutron", &DecodedEvent::neutron)
         .def_readonly("trigger", &DecodedEvent::trigger)
-        .def_readonly("mdllNeutron", &DecodedEvent::mdllNeutron)
+        .def_readonly("mdll_neutron", &DecodedEvent::mdllNeutron)
         .def("__str__", [](const DecodedEvent &event) { return to_string(event); });
 
     py::class_<DataPacket>(m, "DataPacket")
