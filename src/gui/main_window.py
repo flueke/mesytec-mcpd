@@ -97,13 +97,18 @@ class ReadoutWorker(QtCore.QObject):
         self.running = False
 
 
-class McpdHistos:
+class McpdHistos(QtCore.QObject):
+    show_histogram = Signal(bh.Histogram)
+
     def __init__(self, device_name: str):
+        super().__init__()
+        self.device_name = device_name
+
+    def process_packet(self, packet: mcpd.DataPacket):
         pass
 
-
 class MDLLHistos(QtCore.QObject):
-    show_histogram = Signal(object)
+    show_histogram = Signal(bh.Histogram)
 
     def __init__(self, device_name: str):
         super().__init__()
@@ -120,20 +125,32 @@ class MDLLHistos(QtCore.QObject):
             make_axis(mcpd.mdll_neutron.y_pos_max),
         )
 
-        children=[
+        children = [
             Parameter.create(name="Amplitude", type="action", icon="h1d.png", value=self.amp_hist),
             Parameter.create(name="X Position", type="action", icon="h1d.png", value=self.x_pos_hist),
             Parameter.create(name="Y Position", type="action", icon="h1d.png", value=self.y_pos_hist),
             Parameter.create(name="XY Position", type="action", icon="h2d.png", value=self.xy_pos_hist),
         ]
 
+        def on_child_activated(child):
+            self.show_histogram.emit(child.value())
+
         for child in children:
-            child.sigActivated.connect(self.show_histogram)
+            child.sigActivated.connect(on_child_activated)
 
         self.root_param = Parameter.create(name=f"{device_name} Histograms", type="group", children=children)
 
+    def process_packet(self, packet: mcpd.DataPacket):
+        if packet.buffer_type != mcpd.buffer_types.MdllDataBufferType:
+            raise RuntimeError(f"Invalid packet type for MDLLHistos: {packet.buffer_type:#06x}")
+
+        for event in packet.get_events():
+            self.amp_hist.fill(event.mdll_neutron.amplitude)
+            self.x_pos_hist.fill(event.mdll_neutron.x_pos)
+
+
 class DeviceThing(QtCore.QObject):
-    show_histogram = Signal(object)
+    show_histogram = Signal(bh.Histogram)
 
     def __init__(self, name: str):
         super().__init__()
@@ -172,19 +189,24 @@ class DeviceThing(QtCore.QObject):
         self.root_param.param("Events/s").setValue(self.events_per_second)
 
     def process_packet(self, packet: mcpd.DataPacket):
-
-        if packet.buffer_type == mcpd.buffer_types.McpdDataBufferType and self.mcpd_histos is None:
-            self.mcpd_histos = McpdHistos(self.root_param.name())
-            self.mcpd_histos.show_histogram.connect(self.show_histogram)
-            self.root_param.addChild(self.mcpd_histos.root_param)
-        elif packet.buffer_type == mcpd.buffer_types.MdllDataBufferType and self.mdll_histos is None:
-            self.mdll_histos = MDLLHistos(self.root_param.name())
-            self.mdll_histos.show_histogram.connect(self.show_histogram)
-            self.root_param.addChild(self.mdll_histos.root_param)
-
         self.packet_counter.update()
-        for event in packet.get_events():
-            self.event_counter.update()
+        self.event_counter.update(packet.event_count())
+
+        if packet.buffer_type == mcpd.buffer_types.McpdDataBufferType:
+            if self.mcpd_histos is None:
+                self.mcpd_histos = McpdHistos(self.root_param.name())
+                self.mcpd_histos.show_histogram.connect(self.show_histogram)
+                self.root_param.addChild(self.mcpd_histos.root_param)
+
+            self.mcpd_histos.process_packet(packet)
+
+        elif packet.buffer_type == mcpd.buffer_types.MdllDataBufferType:
+            if self.mdll_histos is None:
+                self.mdll_histos = MDLLHistos(self.root_param.name())
+                self.mdll_histos.show_histogram.connect(self.show_histogram)
+                self.root_param.addChild(self.mdll_histos.root_param)
+
+            self.mdll_histos.process_packet(packet)
 
 
 class PacketProcessor(QtCore.QObject):
@@ -294,45 +316,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.readout_tree.setParameters(self.readout_root, showTop=False)
         self.dock_readout_devices.addWidget(self.readout_tree)
 
-        self.plot_widget = pg.PlotWidget(title="Amplitude Histogram")
+        self.plot_widget = pg.PlotWidget()
         self.dock_plots.addWidget(self.plot_widget)
+        self.current_histo: Optional[bh.Histogram] = None
 
         logging.debug(f"MainWindow thread={QtCore.QThread.currentThread()}")
-
-        return
-
-        # Create plots
-        self.amp_plot = pg.PlotWidget(title="Amplitude Histogram")
-        self.pos_plot = pg.PlotWidget(title="Position Histogram")
-        self.rate_plot = pg.PlotWidget(title="Rate Plot")
-
-        # Set up histograms
-        self.amp_hist = pg.BarGraphItem(x=[], height=[], width=0.8, brush="r")
-        self.pos_hist = pg.BarGraphItem(x=[], height=[], width=0.8, brush="b")
-        self.rate_curve = self.rate_plot.plot([], [], pen="g")
-
-        self.amp_plot.addItem(self.amp_hist)
-        self.pos_plot.addItem(self.pos_hist)
-
-        self.start_button = QtWidgets.QPushButton("Start")
-        self.start_button.clicked.connect(self.start_readout)
-        self.stop_button = QtWidgets.QPushButton("Stop")
-        self.stop_button.clicked.connect(self.stop_readout)
-
-        button_layout = QtWidgets.QHBoxLayout()
-        button_layout.addWidget(self.start_button)
-        button_layout.addWidget(self.stop_button)
-
-        # Layout
-        layout = QtWidgets.QVBoxLayout()
-        layout.addWidget(self.amp_plot)
-        layout.addWidget(self.pos_plot)
-        layout.addWidget(self.rate_plot)
-        layout.addLayout(button_layout)
-
-        central_widget = QtWidgets.QWidget()
-        central_widget.setLayout(layout)
-        self.setCentralWidget(central_widget)
 
     def setup_readout(self):
         self.readout_worker = ReadoutWorker(self.readout)
@@ -388,10 +376,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.readout_control_widget.label_stats.setText(
             f"Packets/s: {self.packet_processor.packetsPerSecond:.2f}, Events/s: {self.packet_processor.eventsPerSecond:.2f}"
         )
+        self.replot()
 
-    @Slot(object)
-    def show_histogram(self, hist):
-        logging.info(f"Show histogram: {hist}")
+    @Slot(bh.Histogram)
+    def show_histogram(self, histo: bh.Histogram):
+        logging.info(f"Show histogram: {repr(histo)}")
+        self.current_histo = histo
+        self.replot()
+
+    @Slot()
+    def replot(self):
+        logging.info(f"Replotting histogram: {repr(self.current_histo)}")
+        if self.current_histo is not None:
+            self.plot_widget.plot(self.current_histo, clear=True)
 
 
 def main():
