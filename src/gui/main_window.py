@@ -63,33 +63,38 @@ class ReadoutWorker(QtCore.QObject):
 
     @Slot()
     def run(self):
-        self.running = True
-        logging.debug(f"ReadoutWorker: calling readout.start(), thread={QtCore.QThread.currentThread()}")
-        self.readout.start()
-        self.started.emit()
+        try:
+            self.running = True
+            logging.debug(f"ReadoutWorker: calling readout.start(), thread={QtCore.QThread.currentThread()}")
+            self.readout.start()
+            self.started.emit()
 
-        logging.debug("ReadoutWorker: entering readout loop")
+            logging.debug("ReadoutWorker: entering readout loop")
 
-        while self.running:
-            if self.readout.has_readout_exception():
-                logging.error(
-                    f"ReadoutWorker: exception in readout thread, stopping readout (e={self.readout.get_readout_exception()})"
-                )
-                break
+            while self.running:
+                if self.readout.has_readout_exception():
+                    logging.error(
+                        f"ReadoutWorker: exception in readout thread, stopping readout (e={self.readout.get_readout_exception()})"
+                    )
+                    break
 
-            packets = self.readout.get_packets()
+                packets = self.readout.get_packets()
 
-            if packets:
-                logging.debug(f"ReadoutWorker: got {len(packets)} packets")
-                self.new_packets.emit(packets)
-            else:
-                logging.debug("ReadoutWorker: no packets received, sleeping briefly")
-                QtCore.QThread.msleep(10)
+                if packets:
+                    logging.debug(f"ReadoutWorker: got {len(packets)} packets")
+                    self.new_packets.emit(packets)
+                else:
+                    logging.debug("ReadoutWorker: no packets received, sleeping briefly")
+                    QtCore.QThread.msleep(10)
 
-        logging.debug("ReadoutWorker: left loop, stopping readout")
+            logging.debug("ReadoutWorker: left loop, stopping readout")
 
-        self.readout.stop()
-        self.stopped.emit()
+        except Exception as e:
+            logging.error(f"ReadoutWorker: exception in readout thread, stopping readout (e={e})")
+        finally:
+            logging.info("ReadoutWorker: stopping readout in 'finally'")
+            self.readout.stop()
+            self.stopped.emit()
 
     @Slot()
     def stop(self):
@@ -340,7 +345,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         def on_readout_stopped():
             self.statusBar().showMessage("Readout stopped")
-            logging.info("Readout stopped")
+            logging.info("Readout stopped, stopping readout thread")
+            self.stop_readout()
             self.readout_control_widget.label_status.setText("Status: Stopped")
             self.readout_control_widget.start_button.setEnabled(True)
             self.readout_control_widget.stop_button.setEnabled(False)
@@ -358,6 +364,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def start_readout(self):
         if not self.readout_thread.isRunning():
             self.readout_thread.start()
+        else:
+            logging.warning("Readout thread is already running")
 
     @Slot()
     def stop_readout(self):
