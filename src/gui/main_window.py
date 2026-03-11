@@ -5,7 +5,7 @@ import pyqtgraph as pg
 import numpy as np
 import sys
 
-from pyqtgraph.Qt import QtCore, QtWidgets
+from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 from pyqtgraph.Qt.QtCore import Signal, Slot
 from pyqtgraph.Qt.QtGui import QCloseEvent
 from pyqtgraph.dockarea.Dock import Dock
@@ -109,6 +109,9 @@ class McpdHistos(QtCore.QObject):
         super().__init__()
         self.device_name = device_name
 
+    def update_params(self):
+        pass
+
     def process_packet(self, packet: mcpd.DataPacket):
         pass
 
@@ -130,20 +133,42 @@ class MDLLHistos(QtCore.QObject):
             make_axis(mcpd.mdll_neutron.y_pos_max),
         )
 
+        def make_histo_params(name, histo):
+            ret = Parameter.create(name=name, type="group")
+            ret.addChildren([
+                Parameter.create(name="Entries", type="int", readonly=True),
+                Parameter.create(name="Open", type="action", value=histo)
+            ])
+            return ret
+
+
+
         children = [
-            Parameter.create(name="Amplitude", type="action", icon="h1d.png", value=self.amp_hist),
-            Parameter.create(name="X Position", type="action", icon="h1d.png", value=self.x_pos_hist),
-            Parameter.create(name="Y Position", type="action", icon="h1d.png", value=self.y_pos_hist),
-            Parameter.create(name="XY Position", type="action", icon="h2d.png", value=self.xy_pos_hist),
+            make_histo_params("Amplitude", self.amp_hist),
+            make_histo_params("X Position", self.x_pos_hist),
+            make_histo_params("Y Position", self.y_pos_hist),
+            make_histo_params("XY Position", self.xy_pos_hist),
         ]
 
-        def on_child_activated(child):
-            self.show_histogram.emit(child.value())
-
-        for child in children:
-            child.sigActivated.connect(on_child_activated)
-
         self.root_param = Parameter.create(name=f"{device_name} Histograms", type="group", children=children)
+
+        def on_child_activated(child):
+            if isinstance(child.value(), bh.Histogram):
+                self.show_histogram.emit(child.value())
+
+        def connect_sig_activated(param):
+            for child in param.children():
+                if hasattr(child, "sigActivated"):
+                    child.sigActivated.connect(on_child_activated)
+                connect_sig_activated(child)
+
+        connect_sig_activated(self.root_param)
+
+    def update_params(self):
+        self.root_param.child("Amplitude", "Entries").setValue(self.amp_hist.sum())
+        self.root_param.child("X Position", "Entries").setValue(self.x_pos_hist.sum())
+        self.root_param.child("Y Position", "Entries").setValue(self.y_pos_hist.sum())
+        self.root_param.child("XY Position", "Entries").setValue(self.xy_pos_hist.sum())
 
     def process_packet(self, packet: mcpd.DataPacket):
         if packet.buffer_type != mcpd.buffer_types.MdllDataBufferType:
@@ -152,6 +177,8 @@ class MDLLHistos(QtCore.QObject):
         for event in packet.get_events():
             self.amp_hist.fill(event.mdll_neutron.amplitude)
             self.x_pos_hist.fill(event.mdll_neutron.x_pos)
+            self.y_pos_hist.fill(event.mdll_neutron.y_pos)
+            self.xy_pos_hist.fill(event.mdll_neutron.x_pos, event.mdll_neutron.y_pos)
 
 
 class DeviceThing(QtCore.QObject):
@@ -192,6 +219,11 @@ class DeviceThing(QtCore.QObject):
     def _update_params(self):
         self.root_param.param("Packets/s").setValue(self.packets_per_second)
         self.root_param.param("Events/s").setValue(self.events_per_second)
+        if self.mdll_histos is not None:
+            self.mdll_histos.update_params()
+        if self.mcpd_histos is not None:
+            self.mcpd_histos.update_params()
+
 
     def process_packet(self, packet: mcpd.DataPacket):
         self.packet_counter.update()
@@ -321,9 +353,25 @@ class MainWindow(QtWidgets.QMainWindow):
         self.readout_tree.setParameters(self.readout_root, showTop=False)
         self.dock_readout_devices.addWidget(self.readout_tree)
 
+        # Simple plot widget for 1d histograms
         self.plot_widget = pg.PlotWidget()
+
+        # Separate widget for 2d histograms plotted into an ImageItem
+        self.plot_widget2d = pg.PlotWidget()
+        plot_item = self.plot_widget2d.getPlotItem()
+        plot_item.setLabel('bottom', 'X')
+        plot_item.setLabel('left', 'Y')
+        self.plt2d_img = pg.ImageItem()
+        self.plt2d_colorbar =  pg.ColorBarItem(label='Counts', interactive=False, colorMap='viridis')
+        self.plt2d_colorbar.setImageItem(self.plt2d_img)
+        plot_item.addItem(self.plt2d_img)
+        plot_item.layout.addItem(self.plt2d_colorbar, 1, 2)
+
         self.dock_plots.addWidget(self.plot_widget)
+        self.dock_plots.addWidget(self.plot_widget2d)
         self.current_histo: Optional[bh.Histogram] = None
+        self.current_histo2d: Optional[bh.Histogram] = None
+        self.h1d_line = None # type: Optional[pg.PlotDataItem]
 
         logging.debug(f"MainWindow thread={QtCore.QThread.currentThread()}")
 
@@ -332,7 +380,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.readout_thread = QtCore.QThread()
         self.readout_thread.setObjectName("ReadoutThread")
         self.readout_worker.moveToThread(self.readout_thread)
+
         self.readout_thread.started.connect(self.readout_worker.run)
+        self.readout_worker.stopped.connect(self.readout_thread.quit)
+
         self.packet_processor = PacketProcessor(self.readout_tree)
         self.readout_worker.new_packets.connect(self.packet_processor.process_packets)
 
@@ -346,7 +397,6 @@ class MainWindow(QtWidgets.QMainWindow):
         def on_readout_stopped():
             self.statusBar().showMessage("Readout stopped")
             logging.info("Readout stopped, stopping readout thread")
-            self.stop_readout()
             self.readout_control_widget.label_status.setText("Status: Stopped")
             self.readout_control_widget.start_button.setEnabled(True)
             self.readout_control_widget.stop_button.setEnabled(False)
@@ -369,8 +419,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @Slot()
     def stop_readout(self):
+        self.readout_worker.stop()
         if self.readout_thread.isRunning():
-            self.readout_worker.stop()
             self.readout_thread.quit()
             self.readout_thread.wait()
 
@@ -389,14 +439,42 @@ class MainWindow(QtWidgets.QMainWindow):
     @Slot(bh.Histogram)
     def show_histogram(self, histo: bh.Histogram):
         logging.info(f"Show histogram: {repr(histo)}")
-        self.current_histo = histo
+
+        if histo.ndim == 1:
+            self.current_histo = histo
+        elif histo.ndim == 2:
+            self.current_histo2d = histo
+
         self.replot()
 
     @Slot()
     def replot(self):
-        logging.info(f"Replotting histogram: {repr(self.current_histo)}")
-        if self.current_histo is not None:
-            self.plot_widget.plot(self.current_histo, clear=True)
+        for h in self.current_histo, self.current_histo2d:
+
+            if h is None:
+                continue
+
+            #logging.info(f"Replotting histogram: {repr(self.current_histo)}, {h.to_numpy()=}")
+
+            if h.ndim == 1:
+                self.h1d_line = self.plot_widget.plot(self.current_histo, clear=True)
+
+            elif h.ndim == 2:
+                values, xedges, yedges = h.to_numpy()
+
+                levels = (values.min(), values.max())
+
+                # Ensure float type, then replace all zeroes with NaNs so that
+                # pyqtgraph renders them transparently.
+                values = values.astype(float)
+                values[values == 0] = np.nan
+
+                dx = xedges[1] - xedges[0]
+                dy = yedges[1] - yedges[0]
+
+                self.plt2d_img.setImage(values)
+                self.plt2d_img.setPos(xedges[0], yedges[0]) # bin origin
+                self.plt2d_colorbar.setLevels(levels)
 
 
 def main():
@@ -409,7 +487,9 @@ def main():
 
     mcpd.set_log_level("info")
 
-    app = QtWidgets.QApplication([])
+    app = pg.mkQApp("MPSD DAQ")
+    pg.setConfigOptions(antialias=True, leftButtonPan=True, imageAxisOrder="row-major", crashWarning=False)
+
     mainwin = MainWindow(mcpd.Readout())
     mainwin.show()
 
