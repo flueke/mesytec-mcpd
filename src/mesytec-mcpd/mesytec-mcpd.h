@@ -5,5 +5,6 @@
 #include "mcpd_core.h"
 #include "mcpd_functions.h"
 #include "mdll_functions.h"
+#include "util/pretty_function.h"
 
 #endif /* __MESYTEC_MCPD_H__ */

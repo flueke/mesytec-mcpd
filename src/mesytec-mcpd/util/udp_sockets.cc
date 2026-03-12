@@ -2,7 +2,7 @@
 #include <system_error>
 #include <spdlog/spdlog.h>
 
-#ifndef __WIN32
+#ifdef SOCKET_PLATFORM_POSIX
     #include <netdb.h>
     #include <sys/stat.h>
     #include <sys/socket.h>
@@ -18,7 +18,7 @@
     #endif
 
     #include <arpa/inet.h>
-#else // __WIN32
+#else // SOCKET_PLATFORM_WINDOWS
     #include <ws2tcpip.h>
     #include <stdio.h>
     #include <fcntl.h>
@@ -172,7 +172,7 @@ namespace
     {
         if (!socketSystemInitialized)
         {
-#ifdef __WIN32
+#ifdef SOCKET_PLATFORM_WINDOWS
             WORD wVersionRequested;
             WSADATA wsaData;
             wVersionRequested = MAKEWORD(2, 1);
@@ -324,7 +324,7 @@ std::error_code lookup(const std::string &host, u16 port, sockaddr_in &dest)
 
     if (rc != 0)
     {
-        #ifdef __WIN32
+        #ifdef SOCKET_PLATFORM_WINDOWS
         spdlog::error("getaddrinfo(): host={}, error={}", host, gai_strerror(rc));
         #endif
         return SocketErrorCode::HostLookupError;
@@ -347,7 +347,7 @@ std::error_code lookup(const std::string &host, u16 port, sockaddr_in &dest)
     return {};
 }
 
-#ifndef __WIN32
+#ifndef SOCKET_PLATFORM_WINDOWS
 std::error_code set_socket_timeout(int optname, int sock, unsigned ms)
 {
     struct timeval tv = ms_to_timeval(ms);
@@ -386,7 +386,7 @@ std::error_code set_socket_read_timeout(int sock, unsigned ms)
     return set_socket_timeout(SO_RCVTIMEO, sock, ms);
 }
 
-#ifndef __WIN32
+#ifndef SOCKET_PLATFORM_WINDOWS
 std::error_code close_socket(int sock)
 {
     int res = ::close(sock);
@@ -409,7 +409,7 @@ std::error_code close_socket(int sock)
 // non-jumbo ethernet MTU.
 // The send() call should return EMSGSIZE if the payload is too large to be
 // atomically transmitted.
-#ifdef __WIN32
+#ifdef SOCKET_PLATFORM_WINDOWS
 std::error_code write_to_socket(
     int socket, const u8 *buffer, size_t size, size_t &bytesTransferred)
 {
@@ -419,7 +419,7 @@ std::error_code write_to_socket(
 
     bytesTransferred = 0;
 
-    ssize_t res = ::send(socket, reinterpret_cast<const char *>(buffer), size, 0);
+    auto res = ::send(socket, reinterpret_cast<const char *>(buffer), size, 0);
 
     if (res == SOCKET_ERROR)
     {
@@ -459,7 +459,7 @@ std::error_code write_to_socket(
 }
 #endif // !__WIN32
 
-#ifdef __WIN32
+#ifdef SOCKET_PLATFORM_WINDOWS
 std::error_code receive_one_packet(int sockfd, u8 *dest, size_t size,
     size_t &bytesTransferred, int timeout_ms, sockaddr_in *src_addr)
 {
@@ -485,7 +485,7 @@ std::error_code receive_one_packet(int sockfd, u8 *dest, size_t size,
     struct sockaddr_in srcAddr;
     int srcAddrSize = sizeof(srcAddr);
 
-    ssize_t res = ::recvfrom(sockfd, reinterpret_cast<char *>(dest), size, 0,
+    auto res = ::recvfrom(sockfd, reinterpret_cast<char *>(dest), size, 0,
         reinterpret_cast<struct sockaddr *>(&srcAddr), &srcAddrSize);
 
     if (src_addr)

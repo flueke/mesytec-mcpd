@@ -11,7 +11,7 @@ namespace mesytec::mcpd
 Readout::Readout(int listenPort, size_t packetBufferMaxSize)
     : listenPort_(listenPort)
 {
-    spdlog::debug("{}: listenPort={}", __PRETTY_FUNCTION__, listenPort_);
+    spdlog::debug("{}: listenPort={}", PRETTY_FUNCTION, listenPort_);
     packetBuffer_.lock()->reserve(packetBufferMaxSize);
 }
 
@@ -22,13 +22,13 @@ Readout::~Readout()
 
 bool Readout::start()
 {
-    spdlog::debug("{}", __PRETTY_FUNCTION__);
+    spdlog::debug("{}", PRETTY_FUNCTION);
 
     std::unique_lock<std::mutex> lock(startStopMutex_);
 
     if (isRunning_())
     {
-        spdlog::warn("{}: already running, not starting again", __PRETTY_FUNCTION__);
+        spdlog::warn("{}: already running, not starting again", PRETTY_FUNCTION);
         return false;
     }
 
@@ -43,9 +43,9 @@ bool Readout::start()
     if (PyGILState_Check())
         gil_release = std::make_unique<py::gil_scoped_release>();
 
-    spdlog::debug("{}: starting readout thread", __PRETTY_FUNCTION__);
+    spdlog::debug("{}: starting readout thread", PRETTY_FUNCTION);
     readoutThread_ = std::thread(&Readout::readoutLoop, this, std::move(promise));
-    spdlog::debug("{}: readout thread started, returning", __PRETTY_FUNCTION__);
+    spdlog::debug("{}: readout thread started, returning", PRETTY_FUNCTION);
 
     // If we just return f.get() here it immediately throws any exceptions but
     // the readout thread will still be running for a bit. So to the outside
@@ -53,18 +53,18 @@ bool Readout::start()
     // thread in here if an exception was thrown.
     try
     {
-        spdlog::debug("{}: readout thread startup completed, waiting for result", __PRETTY_FUNCTION__);
+        spdlog::debug("{}: readout thread startup completed, waiting for result", PRETTY_FUNCTION);
         auto result = f.get();
-        spdlog::debug("{}: readout thread startup completed successfully, returning", __PRETTY_FUNCTION__);
+        spdlog::debug("{}: readout thread startup completed successfully, returning", PRETTY_FUNCTION);
         return result;
     }
     catch (...)
     {
         if (readoutThread_.joinable())
         {
-            spdlog::debug("{}: joining readout thread after exception in startup", __PRETTY_FUNCTION__);
+            spdlog::debug("{}: joining readout thread after exception in startup", PRETTY_FUNCTION);
             readoutThread_.join();
-            spdlog::debug("{}: readout thread joined after exception in startup, rethrowing", __PRETTY_FUNCTION__);
+            spdlog::debug("{}: readout thread joined after exception in startup, rethrowing", PRETTY_FUNCTION);
         }
         throw; // rethrow
     }
@@ -88,7 +88,7 @@ bool Readout::stop()
             gil_release = std::make_unique<py::gil_scoped_release>();
 
         readoutThread_.join();
-        spdlog::debug("{}: readout thread joined, returning", __PRETTY_FUNCTION__);
+        spdlog::debug("{}: readout thread joined, returning", PRETTY_FUNCTION);
         return true;
     }
     else
@@ -100,7 +100,7 @@ bool Readout::stop()
 
 void Readout::readoutLoop(std::promise<bool> promise)
 {
-    spdlog::debug("entering {}", __PRETTY_FUNCTION__);
+    spdlog::debug("entering {}", PRETTY_FUNCTION);
     int dataSock = -1;
 
     try
@@ -111,32 +111,32 @@ void Readout::readoutLoop(std::promise<bool> promise)
         if (ec)
         {
             spdlog::error("{}: failed to create and bind UDP socket to port {}, ec={}",
-                          __PRETTY_FUNCTION__, listenPort_, ec.message());
+                          PRETTY_FUNCTION, listenPort_, ec.message());
             throw std::system_error(ec);
         }
         else
         {
             spdlog::debug("{}: created and bound UDP socket to port {}, sockfd={}, ec={}",
-                          __PRETTY_FUNCTION__, listenPort_, dataSock, ec.message());
+                          PRETTY_FUNCTION, listenPort_, dataSock, ec.message());
         }
 
         ec = set_socket_read_timeout(dataSock, 100); // ms
 
         if (ec)
         {
-            spdlog::error("{}: failed to set socket read timeout, ec={}", __PRETTY_FUNCTION__,
+            spdlog::error("{}: failed to set socket read timeout, ec={}", PRETTY_FUNCTION,
                           ec.message());
             throw std::system_error(ec);
         }
         else
         {
-            spdlog::debug("{}: set socket read timeout to 100ms, ec={}", __PRETTY_FUNCTION__,
+            spdlog::debug("{}: set socket read timeout to 100ms, ec={}", PRETTY_FUNCTION,
                           ec.message());
         }
 
         {
             u16 localPort = get_local_socket_port(dataSock);
-            spdlog::info("{}: listening for data on port {}", __PRETTY_FUNCTION__, localPort);
+            spdlog::info("{}: listening for data on port {}", PRETTY_FUNCTION, localPort);
         }
 
         promise.set_value(true); // unblock the caller waiting for startup to complete
@@ -181,14 +181,14 @@ void Readout::readoutLoop(std::promise<bool> promise)
     }
     catch (const std::exception &e)
     {
-        spdlog::error("{}: readout loop exiting with exception: {}", __PRETTY_FUNCTION__, e.what());
+        spdlog::error("{}: readout loop exiting with exception: {}", PRETTY_FUNCTION, e.what());
         *readoutException_.lock() = std::current_exception();
     }
 
     if (dataSock != -1)
         close_socket(dataSock);
 
-    spdlog::debug("exiting {}", __PRETTY_FUNCTION__);
+    spdlog::debug("exiting {}", PRETTY_FUNCTION);
 }
 
 bool Readout::isRunning_() const { return readoutThread_.joinable(); }
@@ -205,7 +205,7 @@ std::vector<DataPacket> Readout::getPackets()
     auto result = std::move(*packetBuffer);
     *packetBuffer = {};
     packetBuffer->reserve(1024);
-    spdlog::debug("{}: returning {} packets", __PRETTY_FUNCTION__, result.size());
+    spdlog::debug("{}: returning {} packets", PRETTY_FUNCTION, result.size());
     return result;
 }
 
