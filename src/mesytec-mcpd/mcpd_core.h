@@ -7,6 +7,7 @@
 
 #include "util/int_types.h"
 #include "util/udp_sockets.h"
+#include "mesytec-mcpd_export.h"
 
 namespace mesytec::mcpd
 {
@@ -25,7 +26,7 @@ static const std::size_t CommandPacketMaxDataWords = 726;
 static const std::size_t DataPacketMaxDataWords = 715;
 
 #pragma pack(push, 1)
-struct PacketBase
+struct MESYTEC_MCPD_EXPORT PacketBase
 {
     u16 bufferLength;   // Length of the packet in 16 bit words starting from bufferType
                         // up to and including the last data word.
@@ -35,7 +36,7 @@ struct PacketBase
     u16 bufferNumber;   // 16 bit buffer number allowing to detect packet loss
 };
 
-struct CommandPacket: public PacketBase
+struct MESYTEC_MCPD_EXPORT CommandPacket: public PacketBase
 {
     u16 cmd;        // combined command id and response error code values
     u8 deviceStatus;
@@ -45,7 +46,7 @@ struct CommandPacket: public PacketBase
     u16 data[CommandPacketMaxDataWords];
 };
 
-struct DataPacket: public PacketBase
+struct MESYTEC_MCPD_EXPORT DataPacket: public PacketBase
 {
     u16 runId;
     u8 deviceStatus;
@@ -130,7 +131,7 @@ enum class CommandType: u16
 };
 
 // CommandType enum value to string conversion.
-const char *to_string(const CommandType &cmd);
+MESYTEC_MCPD_EXPORT const char *to_string(const CommandType &cmd);
 
 // Same as above but takes a u16 value as returned in the MCPD responses which
 // may contain extra error information. To extract error information use the
@@ -143,14 +144,14 @@ inline const char *mcpd_cmd_to_string(u16 cmd)
 static const char * const McpdDefaultAddress = "192.168.168.121";
 static const u16 McpdDefaultPort = 54321u;
 
-struct McpdVersionInfo
+struct MESYTEC_MCPD_EXPORT McpdVersionInfo
 {
     // major and minor version numbers for cpu and fpga
     u16 cpu[2];
     u8 fpga[2];
 };
 
-struct McpdParams
+struct MESYTEC_MCPD_EXPORT McpdParams
 {
     u16 adc[2];
     u16 dac[2];
@@ -260,7 +261,7 @@ enum class MpsdMode
     Amplitude,
 };
 
-struct MpsdParameters
+struct MESYTEC_MCPD_EXPORT MpsdParameters
 {
     u8 mpsdId;
     u16 busTxCaps;
@@ -269,7 +270,7 @@ struct MpsdParameters
 };
 
 // Constants to be used with read/write_peripheral_register()
-struct MpsdRegisters
+struct MESYTEC_MCPD_EXPORT MpsdRegisters
 {
     static const u16 TxCapabilities_Read = 0;
     static const u16 TxFormat_Write = 1;
@@ -455,8 +456,8 @@ inline std::tuple<u16, u16, u16> from_48bit_value(u64 v)
 }
 
 
-std::string to_string(const CommandPacket &packet);
-std::string raw_data_to_string(const CommandPacket &packet);
+MESYTEC_MCPD_EXPORT std::string to_string(const CommandPacket &packet);
+MESYTEC_MCPD_EXPORT std::string raw_data_to_string(const CommandPacket &packet);
 
 // Extracts the parameters transmitted with each MCPD/MDLL data packet.
 inline std::array<u64, McpdParamCount> get_parameter_values(const DataPacket &packet)
@@ -472,7 +473,7 @@ inline std::array<u64, McpdParamCount> get_parameter_values(const DataPacket &pa
     return result;
 }
 
-std::string to_string(const DataPacket &packet);
+MESYTEC_MCPD_EXPORT std::string to_string(const DataPacket &packet);
 
 inline size_t get_event_count(const DataPacket &packet)
 {
@@ -498,7 +499,7 @@ inline u64 get_event(const DataPacket &packet, size_t eventNum)
         packet.data[idx + 2]);
 }
 
-struct DecodedEvent
+struct MESYTEC_MCPD_EXPORT DecodedEvent
 {
     struct Neutron
     {
@@ -585,9 +586,9 @@ inline DecodedEvent decode_event(const DataPacket &packet, size_t eventNum)
     return result;
 }
 
-std::string to_string(const DecodedEvent &event);
+MESYTEC_MCPD_EXPORT std::string to_string(const DecodedEvent &event);
 
-std::error_code make_error_code(CommandError error);
+MESYTEC_MCPD_EXPORT std::error_code make_error_code(CommandError error);
 
 }
 

@@ -12,7 +12,7 @@
 #include "mcpd_root_histos.h"
 #endif
 
-#ifdef __WIN32
+#ifdef SOCKET_PLATFORM_WINDOWS
 #include <ws2tcpip.h>
 #else
 #include <arpa/inet.h>
@@ -42,7 +42,7 @@ bool file_exists(const char *path)
 
 void setup_signal_handlers()
 {
-#ifndef __WIN32
+#ifdef SOCKET_PLATFORM_POSIX
     /* Set up the structure to specify the new action. */
     struct sigaction new_action;
     new_action.sa_handler = signal_handler;
@@ -151,7 +151,7 @@ struct SetupCommand: public BaseCommand
             return 1;
 
         spdlog::debug("{} {} {} {} {}",
-                      __PRETTY_FUNCTION__, newAddress_, newId_, dataDestAddress_, dataPort_);
+                      PRETTY_FUNCTION, newAddress_, newId_, dataDestAddress_, dataPort_);
 
         // Note: setting the new mcpd id is not part of the SetProtoParams
         // command. It was added here purely for convenience to have a single
@@ -203,7 +203,7 @@ struct SetDataDestPortCommand: public BaseCommand
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{} {}", __PRETTY_FUNCTION__, dataPort_);
+        spdlog::debug("{} {}", PRETTY_FUNCTION, dataPort_);
 
         auto ec = mcpd_set_data_dest_port(ctx.cmdSock, ctx.mcpdId, dataPort_);
 
@@ -241,7 +241,7 @@ struct SetIdCommand: public BaseCommand
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{} {}", __PRETTY_FUNCTION__, newId_);
+        spdlog::debug("{} {}", PRETTY_FUNCTION, newId_);
 
         auto ec = mcpd_set_id(ctx.cmdSock, ctx.mcpdId, newId_);
 
@@ -297,7 +297,7 @@ struct TimingCommand: public BaseCommand
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{} role={} term={} extSync={}", __PRETTY_FUNCTION__, role_, term_, extSync_);
+        spdlog::debug("{} role={} term={} extSync={}", PRETTY_FUNCTION, role_, term_, extSync_);
 
         if (role_.empty())
         {
@@ -366,7 +366,7 @@ struct RunIdCommand: public BaseCommand
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{} runId={}", __PRETTY_FUNCTION__, runId_);
+        spdlog::debug("{} runId={}", PRETTY_FUNCTION, runId_);
 
         auto ec = mcpd_set_run_id(ctx.cmdSock, ctx.mcpdId, runId_);
 
@@ -419,7 +419,7 @@ struct CellCommand: public BaseCommand
     int runCommand(CliContext &ctx) override
     {
         spdlog::debug("{}, cellId={}, trigger={}, compareReg={}",
-                      __PRETTY_FUNCTION__, cellId_, trigger_, compareReg_);
+                      PRETTY_FUNCTION, cellId_, trigger_, compareReg_);
 
         auto ec = mcpd_setup_cell(ctx.cmdSock, ctx.mcpdId,
                                   static_cast<CellName>(cellId_),
@@ -467,7 +467,7 @@ struct TimerCommand: public BaseCommand
     int runCommand(CliContext &ctx) override
     {
         spdlog::debug("{}, timerId={}, captureValue={}",
-                      __PRETTY_FUNCTION__, timerId_, captureValue_);
+                      PRETTY_FUNCTION, timerId_, captureValue_);
 
         auto ec = mcpd_setup_auxtimer(ctx.cmdSock, ctx.mcpdId, timerId_, captureValue_);
 
@@ -504,7 +504,7 @@ struct SetMasterClockCommand: public BaseCommand
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{}, clockValue={}", __PRETTY_FUNCTION__, clockValue_);
+        spdlog::debug("{}, clockValue={}", PRETTY_FUNCTION, clockValue_);
 
         auto ec = mcpd_set_master_clock_value(ctx.cmdSock, ctx.mcpdId, clockValue_);
 
@@ -550,7 +550,7 @@ struct ParamSourceCommand: public BaseCommand
     int runCommand(CliContext &ctx)
     {
         spdlog::debug("{}, param={}, source={}",
-                      __PRETTY_FUNCTION__, param_, source_);
+                      PRETTY_FUNCTION, param_, source_);
 
         auto ec = mcpd_set_param_source(ctx.cmdSock, ctx.mcpdId, param_, static_cast<DataSource>(source_));
 
@@ -579,7 +579,7 @@ struct GetParametersCommand: public BaseCommand
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{}", __PRETTY_FUNCTION__);
+        spdlog::debug("{}", PRETTY_FUNCTION);
 
         McpdParams params = {};
 
@@ -621,7 +621,7 @@ struct VersionCommand: public BaseCommand
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{}", __PRETTY_FUNCTION__);
+        spdlog::debug("{}", PRETTY_FUNCTION);
 
         McpdVersionInfo vi = {};
         auto ec = mcpd_get_version(ctx.cmdSock, ctx.mcpdId, vi);
@@ -653,7 +653,7 @@ struct McpdFindIdCommand: public BaseCommand
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{}", __PRETTY_FUNCTION__);
+        spdlog::debug("{}", PRETTY_FUNCTION);
 
         for (u8 id=0; id<=std::numeric_limits<u8>::max(); ++id)
         {
@@ -710,7 +710,7 @@ struct DacSetupCommand: public BaseCommand
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{} dac0={}, dac1={}", __PRETTY_FUNCTION__, dac0_, dac1_);
+        spdlog::debug("{} dac0={}, dac1={}", PRETTY_FUNCTION, dac0_, dac1_);
 
         auto ec = mcpd_set_dac_output_values(ctx.cmdSock, ctx.mcpdId, dac0_, dac1_);
 
@@ -739,7 +739,7 @@ struct ScanBussesCommand: public BaseCommand
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{}", __PRETTY_FUNCTION__);
+        spdlog::debug("{}", PRETTY_FUNCTION);
 
         std::array<u16, McpdBusCount> scanDest = {};
         auto ec = mcpd_scan_busses(ctx.cmdSock, ctx.mcpdId, scanDest);
@@ -774,7 +774,7 @@ struct GetBusCapabilitiesCommand: public BaseCommand
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{}", __PRETTY_FUNCTION__);
+        spdlog::debug("{}", PRETTY_FUNCTION);
 
         BusCapabilities caps = {};
         auto ec = mcpd_get_bus_capabilities(ctx.cmdSock, ctx.mcpdId, caps);
@@ -816,7 +816,7 @@ struct SetBusCapabilitiesCommand: public BaseCommand
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{} capsValue={} (\"{}\")", __PRETTY_FUNCTION__,
+        spdlog::debug("{} capsValue={} (\"{}\")", PRETTY_FUNCTION,
             capsValue_, bus_capabilities_to_string(capsValue_));
 
         u8 result = {};
@@ -888,7 +888,7 @@ struct WriteRegisterCommand: public BaseCommand
     int runCommand(CliContext &ctx) override
     {
         spdlog::debug("{}: address=0x{:04X}, value=0x{:08X}",
-                      __PRETTY_FUNCTION__, address_, value_);
+                      PRETTY_FUNCTION, address_, value_);
 
         auto ec = mcpd_write_register(ctx.cmdSock, ctx.mcpdId, address_, value_);
 
@@ -925,7 +925,7 @@ struct ReadRegisterCommand: public BaseCommand
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{}: address=0x{:04X}", __PRETTY_FUNCTION__, address_);
+        spdlog::debug("{}: address=0x{:04X}", PRETTY_FUNCTION, address_);
 
         u32 dest{};
         auto ec = mcpd_read_register(ctx.cmdSock, ctx.mcpdId, address_, dest);
@@ -965,7 +965,7 @@ struct DecodeAllInputsParameter: public BaseCommand
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{}: value=0x{:012x}", __PRETTY_FUNCTION__, value_);
+        spdlog::debug("{}: value=0x{:012x}", PRETTY_FUNCTION, value_);
 
         auto [lo, mid, hi] = from_48bit_value(value_);
         spdlog::info("param=0x{:012x}, lo=0x{:04x}, mid=0x{:04x}, hi=0x{:04x}", value_, lo, mid, hi);
@@ -1016,7 +1016,7 @@ struct ReadPeripheralRegisterCommand: public BaseCommand
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{}, mpsdId={}, registerNumber={}", __PRETTY_FUNCTION__, mpsdId_, registerNumber_);
+        spdlog::debug("{}, mpsdId={}, registerNumber={}", PRETTY_FUNCTION, mpsdId_, registerNumber_);
 
         u16 dest{};
 
@@ -1074,7 +1074,7 @@ struct WritePeripheralRegisterCommand: public BaseCommand
     int runCommand(CliContext &ctx) override
     {
         spdlog::debug("{}, mpsdId={}, registerNumber={}, registerValue={}",
-            __PRETTY_FUNCTION__, mpsdId_, registerNumber_, registerValue_);
+            PRETTY_FUNCTION, mpsdId_, registerNumber_, registerValue_);
 
         auto ec = write_peripheral_register(ctx.cmdSock, ctx.mcpdId, mpsdId_, registerNumber_, registerValue_);
 
@@ -1123,7 +1123,7 @@ struct MpsdSetMode: public BaseCommand
 
     int runCommand(CliContext &ctx)
     {
-        spdlog::debug("{} mpsdId={}, mode={}", __PRETTY_FUNCTION__, mpsdId_, mode_);
+        spdlog::debug("{} mpsdId={}, mode={}", PRETTY_FUNCTION, mpsdId_, mode_);
 
         MpsdMode mode{};
 
@@ -1175,7 +1175,7 @@ struct MpsdSetTxFormat: public BaseCommand
 
     int runCommand(CliContext &ctx)
     {
-        spdlog::debug("{} mpsdId={}, txFormat={}", __PRETTY_FUNCTION__, mpsdId_, txFormat_);
+        spdlog::debug("{} mpsdId={}, txFormat={}", PRETTY_FUNCTION, mpsdId_, txFormat_);
 
         auto ec = mpsd_set_tx_format(ctx.cmdSock, ctx.mcpdId, mpsdId_, txFormat_);
 
@@ -1227,7 +1227,7 @@ struct MpsdSetGainCommand: public BaseCommand
     int runCommand(CliContext &ctx)
     {
         spdlog::debug("{} mpsdId={}, channel={}, gain={}",
-                      __PRETTY_FUNCTION__, mpsdId_, channel_, gain_);
+                      PRETTY_FUNCTION, mpsdId_, channel_, gain_);
 
         auto ec = mpsd_set_gain(ctx.cmdSock, ctx.mcpdId, mpsdId_, channel_, gain_);
 
@@ -1272,7 +1272,7 @@ struct MpsdSetTresholdCommand: public BaseCommand
     int runCommand(CliContext &ctx)
     {
         spdlog::debug("{} mpsdId={}, threshold={}",
-                      __PRETTY_FUNCTION__, mpsdId_, threshold_);
+                      PRETTY_FUNCTION, mpsdId_, threshold_);
 
         auto ec = mpsd_set_threshold(ctx.cmdSock, ctx.mcpdId, mpsdId_, threshold_);
 
@@ -1339,7 +1339,7 @@ struct MpsdSetPulserCommand: public BaseCommand
     int runCommand(CliContext &ctx)
     {
         spdlog::debug("{} mpsdId={} channel={}, position={}, amplitude={}, state={} ",
-                      __PRETTY_FUNCTION__, mpsdId_, channel_, pos_, amplitude_, state_);
+                      PRETTY_FUNCTION, mpsdId_, channel_, pos_, amplitude_, state_);
 
         auto state = state_ == "on" ? PulserState::On : PulserState::Off;
 
@@ -1380,7 +1380,7 @@ struct MpsdGetParametersCommand: public BaseCommand
 
     int runCommand(CliContext &ctx)
     {
-        spdlog::debug("{} mpsdId={}", __PRETTY_FUNCTION__, mpsdId_);
+        spdlog::debug("{} mpsdId={}", PRETTY_FUNCTION, mpsdId_);
 
         MpsdParameters params = {};
 
@@ -1439,7 +1439,7 @@ struct MstdSetGainCommand: public BaseCommand
     int runCommand(CliContext &ctx)
     {
         spdlog::debug("{} mstdId_={}, channel={}, gain={}",
-                      __PRETTY_FUNCTION__, mstdId_, channel_, gain_);
+                      PRETTY_FUNCTION, mstdId_, channel_, gain_);
 
         auto ec = mstd_set_gain(ctx.cmdSock, ctx.mcpdId, mstdId_, channel_, gain_);
 
@@ -1477,7 +1477,7 @@ struct DaqCommand: public BaseCommand
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{} {}", __PRETTY_FUNCTION__, subCommand_);
+        spdlog::debug("{} {}", PRETTY_FUNCTION, subCommand_);
 
         std::error_code ec;
 
@@ -1700,7 +1700,7 @@ struct ReadoutCommand: public BaseCommand
             return 1;
         }
 
-        spdlog::debug("{} {} {}", __PRETTY_FUNCTION__, dataPort_, listfilePath_);
+        spdlog::debug("{} {} {}", PRETTY_FUNCTION, dataPort_, listfilePath_);
 
         std::error_code ec;
         // Creates an unconnected UDP socket listening on the dataPort.
@@ -2120,7 +2120,7 @@ struct ReplayCommand: public BaseCommand
             return 1;
         }
 
-        spdlog::debug("{} {}", __PRETTY_FUNCTION__, listfilePath_);
+        spdlog::debug("{} {}", PRETTY_FUNCTION, listfilePath_);
 
         std::ifstream listfile;
         listfile.exceptions(std::ios::badbit);
@@ -2293,7 +2293,7 @@ struct CustomCommand: public BaseCommand
     int runCommand(CliContext &ctx)
     {
         spdlog::debug("{}: cmdId={}, cmdData=[{}]",
-                      __PRETTY_FUNCTION__, commandId_, fmt::join(commandData_, ", "));
+                      PRETTY_FUNCTION, commandId_, fmt::join(commandData_, ", "));
 
         std::vector<u16> data;
 
@@ -2375,7 +2375,7 @@ struct MdllSetThresholds: public BaseCommand
     int runCommand(CliContext &ctx)
     {
         spdlog::debug("{}: thresholdX={}, thresholdY={}, thresholdAnode={} ",
-                      __PRETTY_FUNCTION__, thresholdX_, thresholdY_, thresholdAnode_);
+                      PRETTY_FUNCTION, thresholdX_, thresholdY_, thresholdAnode_);
 
         auto ec = mdll_set_thresholds(
             ctx.cmdSock, ctx.mcpdId, thresholdX_, thresholdY_, thresholdAnode_);
@@ -2432,7 +2432,7 @@ struct MdllSetSpectrum: public BaseCommand
     int runCommand(CliContext &ctx)
     {
         spdlog::debug("{}: shiftX={}, shiftY={}, scaleX={}, scaleY={} ",
-                      __PRETTY_FUNCTION__, shiftX_, shiftY_, scaleX_, scaleY_);
+                      PRETTY_FUNCTION, shiftX_, shiftY_, scaleX_, scaleY_);
 
         auto ec = mdll_set_spectrum(
             ctx.cmdSock, ctx.mcpdId, shiftX_, shiftY_, scaleX_, scaleY_);
@@ -2486,7 +2486,7 @@ struct MdllSetPulser: public BaseCommand
     int runCommand(CliContext &ctx)
     {
         spdlog::debug("{}: enable={}, amplitude={}, position={} ",
-                      __PRETTY_FUNCTION__, enable_, amplitude_, position_);
+                      PRETTY_FUNCTION, enable_, amplitude_, position_);
 
         auto ec = mdll_set_pulser(
             ctx.cmdSock, ctx.mcpdId, enable_, amplitude_,
@@ -2527,7 +2527,7 @@ struct MdllSetTxDataSet: public BaseCommand
 
     int runCommand(CliContext &ctx)
     {
-        spdlog::debug("{}: ds={} ", __PRETTY_FUNCTION__, ds_);
+        spdlog::debug("{}: ds={} ", PRETTY_FUNCTION, ds_);
 
         auto ec = mdll_set_tx_data_set(
             ctx.cmdSock, ctx.mcpdId, static_cast<MdllTxDataSet>(ds_));
@@ -2584,7 +2584,7 @@ struct MdllSetTimingWindow: public BaseCommand
     int runCommand(CliContext &ctx)
     {
         spdlog::debug("{}: xLow={}, xHigh={}, yLow={}, yHigh={} ",
-                      __PRETTY_FUNCTION__,
+                      PRETTY_FUNCTION,
                       tSumLimitXLow_, tSumLimitXHigh_,
                       tSumLimitYLow_, tSumLimitYHigh_);
 
@@ -2637,7 +2637,7 @@ struct MdllSetEnergyWindow: public BaseCommand
     int runCommand(CliContext &ctx)
     {
         spdlog::debug("{}: lowerThreshold={}, upperThreshold={} ",
-                      __PRETTY_FUNCTION__, lowerThreshold_, upperThreshold_);
+                      PRETTY_FUNCTION, lowerThreshold_, upperThreshold_);
 
         auto ec = mdll_set_energy_window(
             ctx.cmdSock,

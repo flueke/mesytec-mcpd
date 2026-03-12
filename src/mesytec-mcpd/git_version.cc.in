@@ -1,3 +1,5 @@
+#include "mesytec-mcpd_export.h"
+
 #define DEF_GIT_SHA1 "@GIT_SHA1@"
 #define DEF_GIT_VERSION "@GIT_VERSION@"
 #define DEF_GIT_VERSION_SHORT "@GIT_VERSION_SHORT@"
@@ -7,9 +9,9 @@ namespace mesytec
 namespace mcpd
 {
 
-extern const char GIT_SHA1[]            = DEF_GIT_SHA1;
-extern const char GIT_VERSION[]         = DEF_GIT_VERSION;
-extern const char GIT_VERSION_SHORT[]   = DEF_GIT_VERSION_SHORT;
+extern const char MESYTEC_MCPD_EXPORT GIT_SHA1[]            = DEF_GIT_SHA1;
+extern const char MESYTEC_MCPD_EXPORT GIT_VERSION[]         = DEF_GIT_VERSION;
+extern const char MESYTEC_MCPD_EXPORT GIT_VERSION_SHORT[]   = DEF_GIT_VERSION_SHORT;
 
 } // end namespace mvlc
 } // end namespace mesytec

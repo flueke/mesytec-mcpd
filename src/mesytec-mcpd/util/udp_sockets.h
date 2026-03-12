@@ -1,7 +1,13 @@
 #ifndef __MESYTEC_MCPD_UTIL_UDP_SOCKETS_H__
 #define __MESYTEC_MCPD_UTIL_UDP_SOCKETS_H__
 
-#ifndef __WIN32
+#if defined(__WIN32) || defined(_WIN32) || defined(_MSC_VER)
+#define SOCKET_PLATFORM_WINDOWS
+#else
+#define SOCKET_PLATFORM_POSIX
+#endif
+
+#ifdef SOCKET_PLATFORM_POSIX
 #include <netinet/ip.h> // sockaddr_in
 #else
 #include <winsock2.h>
@@ -12,6 +18,7 @@
 #include <system_error>
 
 #include "int_types.h"
+#include "mesytec-mcpd_export.h"
 
 namespace mesytec
 {
@@ -32,34 +39,34 @@ static const size_t MaxPayloadSize = 1500 - 20 - 8;
 //
 // Returns the socket on success or -1 on error. If ecp is non-null and an
 // error occurs it will be stored in *ecp.
-int connect_udp_socket(const std::string &remoteHost, u16 remotePort, std::error_code *ecp = nullptr);
+MESYTEC_MCPD_EXPORT int connect_udp_socket(const std::string &remoteHost, u16 remotePort, std::error_code *ecp = nullptr);
 
 // Binds the given socket to the specified local port.
-std::error_code bind_udp_socket(int sockfd, u16 localPort = 0);
+MESYTEC_MCPD_EXPORT std::error_code bind_udp_socket(int sockfd, u16 localPort = 0);
 
 // Returns an unconnected UDP socket bound to the specified local port or -1 on
 // error. If ecp is non-null and an error occurs it will be stored in *ecp.
-int create_bound_udp_socket(u16 localPort, std::error_code *ecp = nullptr);
+MESYTEC_MCPD_EXPORT int create_bound_udp_socket(u16 localPort, std::error_code *ecp = nullptr);
 
 // Returns the local port the socket is bound to or 0 on error. If ecp is
 // non-null and an error occurs it will be stored in *ecp.
-u16 get_local_socket_port(int sock, std::error_code *ecp = nullptr);
+MESYTEC_MCPD_EXPORT u16 get_local_socket_port(int sock, std::error_code *ecp = nullptr);
 
 // Does IPv4 host lookup for a UDP socket. On success the resulting struct
 // sockaddr_in is copied to dest.
-std::error_code lookup(const std::string &host, u16 port, sockaddr_in &dest);
+MESYTEC_MCPD_EXPORT std::error_code lookup(const std::string &host, u16 port, sockaddr_in &dest);
 
-std::error_code set_socket_write_timeout(int sock, unsigned ms);
-std::error_code set_socket_read_timeout(int sock, unsigned ms);
+MESYTEC_MCPD_EXPORT std::error_code set_socket_write_timeout(int sock, unsigned ms);
+MESYTEC_MCPD_EXPORT std::error_code set_socket_read_timeout(int sock, unsigned ms);
 
-std::error_code close_socket(int sock);
+MESYTEC_MCPD_EXPORT std::error_code close_socket(int sock);
 
-std::error_code write_to_socket(
+MESYTEC_MCPD_EXPORT std::error_code write_to_socket(
     int socket, const u8 *buffer, size_t size, size_t &bytesTransferred);
 
 // Note: timeout_ms currently only applies under windows. Use
 // set_socket_write/read_timeout() under linux.
-std::error_code receive_one_packet(
+MESYTEC_MCPD_EXPORT std::error_code receive_one_packet(
     int sockfd, u8 *dest, size_t maxSize, size_t &bytesTransferred,
     int timeout_ms, sockaddr_in *src_addr = nullptr);
 
@@ -85,7 +92,7 @@ enum class SocketErrorCode
     GenericSocketError,
 };
 
-std::error_code make_error_code(SocketErrorCode error);
+MESYTEC_MCPD_EXPORT std::error_code make_error_code(SocketErrorCode error);
 
 enum class SocketErrorType
 {
@@ -95,7 +102,7 @@ enum class SocketErrorType
     ConnectionError,
 };
 
-std::error_condition make_error_condition(SocketErrorType et);
+MESYTEC_MCPD_EXPORT std::error_condition make_error_condition(SocketErrorType et);
 
 }
 }

@@ -8,14 +8,14 @@ namespace mesytec
 namespace mcpd
 {
 
-std::error_code mdll_set_thresholds(
+std::error_code MESYTEC_MCPD_EXPORT mdll_set_thresholds(
     int sock,
     u8 mdllId,
     u8 thresholdX,
     u8 thresholdY,
     u8 thresholdAnode);
 
-std::error_code mdll_set_spectrum(
+std::error_code MESYTEC_MCPD_EXPORT mdll_set_spectrum(
     int sock,
     u8 mdllId,
     u8 shiftX,
@@ -23,20 +23,20 @@ std::error_code mdll_set_spectrum(
     u8 scaleX,
     u8 scaleY);
 
-std::error_code mdll_set_pulser(
+std::error_code MESYTEC_MCPD_EXPORT mdll_set_pulser(
     int sock,
     u8 mdllId,
     bool enable,
     u16 amplitude,
     const MdllChannelPosition &pos);
 
-std::error_code mdll_set_tx_data_set(
+std::error_code MESYTEC_MCPD_EXPORT mdll_set_tx_data_set(
     int sock,
     u8 mdllId,
     const MdllTxDataSet &ds);
 
 
-std::error_code mdll_set_timing_window(
+std::error_code MESYTEC_MCPD_EXPORT mdll_set_timing_window(
     int sock,
     u8 mdllId,
     unsigned tSumLimitXLow,
@@ -45,7 +45,7 @@ std::error_code mdll_set_timing_window(
     unsigned tSumLimitYHigh);
 
 
-std::error_code mdll_set_energy_window(
+std::error_code MESYTEC_MCPD_EXPORT mdll_set_energy_window(
     int sock,
     u8 mdllId,
     u8 lowerThreshold,
