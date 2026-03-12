@@ -29,9 +29,13 @@ target_link_libraries(mcpd-cli
     #PRIVATE gnuplot_iostream
     )
 
+if (MSYS)
+    target_compile_options(mcpd-cli PRIVATE -Wno-format)
+endif(MSYS)
+
 if (WIN32)
     target_link_libraries(mcpd-cli PRIVATE ws2_32 winmm)
-    target_compile_options(mcpd-cli PRIVATE -Wno-format)
+    target_compile_definitions(mcpd-cli PRIVATE -DNOMINMAX)
 endif(WIN32)
 
 # LYRA_DEBUG enables very verbose output from the lyra cli parser
@@ -58,3 +62,7 @@ target_link_libraries(mdat2mcpdlst
     PRIVATE mesytec-mcpd
     PRIVATE spdlog::spdlog
     )
+
+if (WIN32)
+    target_compile_definitions(mdat2mcpdlst PRIVATE -DNOMINMAX)
+endif(WIN32)
