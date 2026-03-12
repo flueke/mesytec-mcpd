@@ -15,6 +15,7 @@ add_library(mesytec-mcpd SHARED
 
 target_include_directories(mesytec-mcpd
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
+    PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/..>
     PUBLIC $<INSTALL_INTERFACE:include>
     )
@@ -24,12 +25,15 @@ target_link_libraries(mesytec-mcpd
     PUBLIC Threads::Threads
     )
 
-target_compile_options(mesytec-mcpd PRIVATE -Wall -Wextra)
 target_compile_features(mesytec-mcpd PUBLIC cxx_std_17)
+if (MSYS OR NOT WIN32)
+    target_compile_options(mesytec-mcpd PRIVATE -Wall -Wextra)
+    target_compile_options(mesytec-mcpd PRIVATE -Wno-format)
+endif()
 
 if (WIN32)
     target_link_libraries(mesytec-mcpd PRIVATE ws2_32 winmm)
-    target_compile_options(mesytec-mcpd PRIVATE -Wno-format)
+    target_compile_definitions(mesytec-mcpd PRIVATE -DNOMINMAX)
 endif(WIN32)
 
 include(GenerateExportHeader)
