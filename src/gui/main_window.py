@@ -65,7 +65,9 @@ class ReadoutWorker(QtCore.QObject):
     def run(self):
         try:
             self.running = True
-            logging.debug(f"ReadoutWorker: calling readout.start(), thread={QtCore.QThread.currentThread()}")
+            logging.debug(
+                f"ReadoutWorker: calling readout.start(), thread={QtCore.QThread.currentThread()}"
+            )
             self.readout.start()
             self.started.emit()
 
@@ -115,6 +117,7 @@ class McpdHistos(QtCore.QObject):
     def process_packet(self, packet: mcpd.DataPacket):
         pass
 
+
 class MDLLHistos(QtCore.QObject):
     show_histogram = Signal(bh.Histogram)
 
@@ -135,13 +138,13 @@ class MDLLHistos(QtCore.QObject):
 
         def make_histo_params(name, histo):
             ret = Parameter.create(name=name, type="group")
-            ret.addChildren([
-                Parameter.create(name="Entries", type="int", readonly=True),
-                Parameter.create(name="Open", type="action", value=histo)
-            ])
+            ret.addChildren(
+                [
+                    Parameter.create(name="Entries", type="int", readonly=True),
+                    Parameter.create(name="Open", type="action", value=histo),
+                ]
+            )
             return ret
-
-
 
         children = [
             make_histo_params("Amplitude", self.amp_hist),
@@ -150,7 +153,9 @@ class MDLLHistos(QtCore.QObject):
             make_histo_params("XY Position", self.xy_pos_hist),
         ]
 
-        self.root_param = Parameter.create(name=f"{device_name} Histograms", type="group", children=children)
+        self.root_param = Parameter.create(
+            name=f"{device_name} Histograms", type="group", children=children
+        )
 
         def on_child_activated(child):
             if isinstance(child.value(), bh.Histogram):
@@ -223,7 +228,6 @@ class DeviceThing(QtCore.QObject):
             self.mdll_histos.update_params()
         if self.mcpd_histos is not None:
             self.mcpd_histos.update_params()
-
 
     def process_packet(self, packet: mcpd.DataPacket):
         self.packet_counter.update()
@@ -359,10 +363,10 @@ class MainWindow(QtWidgets.QMainWindow):
         # Separate widget for 2d histograms plotted into an ImageItem
         self.plot_widget2d = pg.PlotWidget()
         plot_item = self.plot_widget2d.getPlotItem()
-        plot_item.setLabel('bottom', 'X')
-        plot_item.setLabel('left', 'Y')
+        plot_item.setLabel("bottom", "X")
+        plot_item.setLabel("left", "Y")
         self.plt2d_img = pg.ImageItem()
-        self.plt2d_colorbar =  pg.ColorBarItem(label='Counts', interactive=False, colorMap='viridis')
+        self.plt2d_colorbar = pg.ColorBarItem(label="Counts", interactive=False, colorMap="viridis")
         self.plt2d_colorbar.setImageItem(self.plt2d_img)
         plot_item.addItem(self.plt2d_img)
         plot_item.layout.addItem(self.plt2d_colorbar, 1, 2)
@@ -371,7 +375,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dock_plots.addWidget(self.plot_widget2d)
         self.current_histo: Optional[bh.Histogram] = None
         self.current_histo2d: Optional[bh.Histogram] = None
-        self.h1d_line = None # type: Optional[pg.PlotDataItem]
+        self.h1d_line = None  # type: Optional[pg.PlotDataItem]
 
         logging.debug(f"MainWindow thread={QtCore.QThread.currentThread()}")
 
@@ -450,11 +454,10 @@ class MainWindow(QtWidgets.QMainWindow):
     @Slot()
     def replot(self):
         for h in self.current_histo, self.current_histo2d:
-
             if h is None:
                 continue
 
-            #logging.info(f"Replotting histogram: {repr(self.current_histo)}, {h.to_numpy()=}")
+            # logging.info(f"Replotting histogram: {repr(self.current_histo)}, {h.to_numpy()=}")
 
             if h.ndim == 1:
                 self.h1d_line = self.plot_widget.plot(self.current_histo, clear=True)
@@ -476,11 +479,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 # using the native bin resolution seems fine to me for now.
                 # When using e.g. dx/2, dy/2 for the transform the axis
                 # coordinates will be half of the real resolution.
-                #dx = xedges[1] - xedges[0]
-                #dy = yedges[1] - yedges[0]
+                # dx = xedges[1] - xedges[0]
+                # dy = yedges[1] - yedges[0]
 
                 self.plt2d_img.setImage(values)
-                self.plt2d_img.setPos(xedges[0], yedges[0]) # bin origin
+                self.plt2d_img.setPos(xedges[0], yedges[0])  # bin origin
                 self.plt2d_colorbar.setLevels(levels)
 
 
@@ -495,7 +498,9 @@ def main():
     mcpd.set_log_level("info")
 
     app = pg.mkQApp("MPSD DAQ")
-    pg.setConfigOptions(antialias=True, leftButtonPan=True, imageAxisOrder="row-major", crashWarning=False)
+    pg.setConfigOptions(
+        antialias=True, leftButtonPan=True, imageAxisOrder="row-major", crashWarning=False
+    )
 
     mainwin = MainWindow(mcpd.Readout())
     mainwin.show()
