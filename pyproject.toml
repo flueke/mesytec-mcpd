@@ -1,3 +1,4 @@
+# https://packaging.python.org/en/latest/guides/writing-pyproject-toml/
 # TODO: implement a hook that calls pybind11-stubgen and places the stubs inside
 # the wheel in case one is built. This should also work during dev, without
 # having to build a wheel.
@@ -9,16 +10,39 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "mesytec_mcpd_py"
 dynamic = ["version"]
+requires-python = ">= 3.10"
+authors = [ { name = "Florian Lüke", email = "f.lueke@mesytec.com" } ]
+description = "Driver library and tools for the mesytec PSD+ system"
+readme = "README.md"
+license = "BSL-1.0"
+license-files = ["LICEN[CS]E*"]
+keywords = ["mesytec", "MCPD", "MPSD", "MDLL", "neutron scattering"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Physics",
+  "Topic :: Software Development",
+  "Topic :: Software Development :: Libraries",
+  "Topic :: Software Development :: Libraries :: Python Module",
+  "Programming Language :: Python :: 3.10",
+]
 
 [project.optional-dependencies]
 gui = ["pyqtgraph", "numpy", "PySide6", "boost-histogram", "rich"]
+dev = ["pre-commit"]
 
-[project.scripts]
+[project.gui-scripts]
 mesytec-mcpd-gui = "mesytec_mcpd_py.gui.main_window:main"
+
+[project.urls]
+Homepage = "https://mesytec.com/products/neutron-scattering.html"
+Repository = "https://github.com/mesytec/mesytec-mcpd"
 
 [tool.scikit-build]
 cmake.args = [ '-DMCPD_ENABLE_PYTHON=ON' ]
 build.verbose = true
+logging.level = "INFO"
 metadata.version.provider = "scikit_build_core.metadata.setuptools_scm"
 
 [tool.setuptools_scm]
@@ -26,4 +50,9 @@ version_scheme = "python-simplified-semver"
 local_scheme = "no-local-version"
 
 [tool.ruff]
-line-length = 120
+line-length = 100
+target-version = "py310"
+
+# https://docs.astral.sh/ruff/rules/, https://docs.astral.sh/ruff/settings/#lint_select
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "B", "Q", "EXE"]
