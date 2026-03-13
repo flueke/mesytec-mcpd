@@ -59,6 +59,12 @@ PYBIND11_MODULE(_mesytec_mcpd_py, m)
         .def_readonly("x_pos", &DecodedEvent::MdllNeutron::xPos)
         .def_readonly("y_pos", &DecodedEvent::MdllNeutron::yPos);
 
+    py::class_<DecodedEvent::Trigger>(m, "Trigger")
+        .def(py::init<>())
+        .def_readonly("trigger_id", &DecodedEvent::Trigger::triggerId)
+        .def_readonly("data_id", &DecodedEvent::Trigger::dataId)
+        .def_readonly("value", &DecodedEvent::Trigger::value);
+
     py::native_enum<EventType>(m, "EventType", "enum.Enum")
         .value("NeutronEvent", EventType::Neutron)
         .value("TriggerEvent", EventType::Trigger)
@@ -157,25 +163,27 @@ PYBIND11_MODULE(_mesytec_mcpd_py, m)
     // Event field constants (maximum values)
     namespace ec = event_constants;
 
-    py::module_ mdll_neutron = m.def_submodule("mdll_neutron", "MDLL neutron event field ranges");
+    py::module_ constants = m.def_submodule("constants", "Event field ranges");
+
+    py::module_ mdll_neutron = constants.def_submodule("mdll_neutron", "MDLL neutron event field ranges");
     mdll_neutron.attr("amplitude_max") = (1u << ec::mdll_neutron::AmplitudeBits) - 1;
     mdll_neutron.attr("x_pos_max") = (1u << ec::mdll_neutron::xPosBits) - 1;
     mdll_neutron.attr("y_pos_max") = (1u << ec::mdll_neutron::yPosBits) - 1;
 
-    py::module_ neutron = m.def_submodule("neutron", "MPSD neutron event field ranges");
+    py::module_ neutron = constants.def_submodule("neutron", "MPSD neutron event field ranges");
     neutron.attr("mpsd_id_max") = (1u << ec::neutron::MpsdIdBits) - 1;
     neutron.attr("channel_max") = (1u << ec::neutron::ChannelBits) - 1;
     neutron.attr("amplitude_max") = (1u << ec::neutron::AmplitudeBits) - 1;
     neutron.attr("position_max") = (1u << ec::neutron::PositionBits) - 1;
 
-    py::module_ trigger = m.def_submodule("trigger", "Trigger event field ranges");
+    py::module_ trigger = constants.def_submodule("trigger", "Trigger event field ranges");
     trigger.attr("trigger_id_max") = (1u << ec::trigger::TriggerIdBits) - 1;
     trigger.attr("data_id_max") = (1u << ec::trigger::DataIdBits) - 1;
     trigger.attr("data_max") = (1u << ec::trigger::DataBits) - 1;
 
     m.attr("timestamp_max") = (1u << ec::TimestampBits) - 1;
 
-    py::module_ buffer_types = m.def_submodule("buffer_types", "Data buffer types");
+    py::module_ buffer_types = constants.def_submodule("buffer_types", "Data buffer types");
     buffer_types.attr("CommandPacketBufferType") = CommandPacketBufferType;
     buffer_types.attr("McpdDataBufferType") = McpdDataBufferType;
     buffer_types.attr("MdllDataBufferType") = MdllDataBufferType;
