@@ -48,11 +48,12 @@ if (MCPD_ENABLE_PYTHON)
 endif()
 
 if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
+    # Note: py.typed is required by PEP 561. It's just an empty file.
     if (DEFINED SKBUILD)
         pybind11_add_module(_mesytec_mcpd_py MODULE mesytec_mcpd_py.cc mcpd_py_lib.cc)
         target_link_libraries(_mesytec_mcpd_py PRIVATE mesytec-mcpd spdlog::spdlog)
         install(TARGETS _mesytec_mcpd_py mesytec-mcpd DESTINATION ${SKBUILD_PROJECT_NAME})
-        install(FILES __init__.py DESTINATION ${SKBUILD_PROJECT_NAME})
+        install(FILES __init__.py py.typed DESTINATION ${SKBUILD_PROJECT_NAME})
         # Install gui submodule
         install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../gui
                 DESTINATION ${SKBUILD_PROJECT_NAME}
@@ -65,7 +66,7 @@ if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
             RUNTIME DESTINATION bin
             ARCHIVE DESTINATION lib/mesytec_mcpd_py
             )
-        install(FILES __init__.py DESTINATION lib/mesytec_mcpd_py)
+        install(FILES __init__.py py.typed DESTINATION lib/mesytec_mcpd_py)
         # Install gui submodule
         install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../gui
                 DESTINATION lib/mesytec_mcpd_py
