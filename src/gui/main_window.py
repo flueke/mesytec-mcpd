@@ -462,6 +462,9 @@ class MainWindow(QtWidgets.QMainWindow):
             elif h.ndim == 2:
                 values, xedges, yedges = h.to_numpy()
 
+                # Levels for the colobar. This goes from zero to max.
+                # Alternative: use the min and max values of the non-zeroes
+                # only: non_zero = values[~np.isnan(values)]
                 levels = (values.min(), values.max())
 
                 # Ensure float type, then replace all zeroes with NaNs so that
@@ -469,8 +472,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 values = values.astype(float)
                 values[values == 0] = np.nan
 
-                dx = xedges[1] - xedges[0]
-                dy = yedges[1] - yedges[0]
+                # This was used with a QTransform to scale the image. But just
+                # using the native bin resolution seems fine to me for now.
+                # When using e.g. dx/2, dy/2 for the transform the axis
+                # coordinates will be half of the real resolution.
+                #dx = xedges[1] - xedges[0]
+                #dy = yedges[1] - yedges[0]
 
                 self.plt2d_img.setImage(values)
                 self.plt2d_img.setPos(xedges[0], yedges[0]) # bin origin
