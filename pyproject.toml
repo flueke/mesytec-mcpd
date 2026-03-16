@@ -29,7 +29,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-gui = ["pyqtgraph", "numpy", "PySide6", "boost-histogram", "rich"]
+gui = ["pyqtgraph", "numpy", "PySide6", "hist[plot,fit]", "rich", "awkward", "numba"]
 dev = ["pre-commit"]
 
 [project.gui-scripts]
@@ -58,3 +58,6 @@ target-version = "py310"
 # https://docs.astral.sh/ruff/rules/, https://docs.astral.sh/ruff/settings/#lint_select
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "B", "Q", "EXE"]
+
+[tool.pyside6-project]
+files = ["src/gui/main_window.py"]
