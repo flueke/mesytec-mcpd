@@ -1,3 +1,4 @@
+// TODO: set all default parameters to sane values. check mdll&mcpd docs for limits and defaults.
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -2388,10 +2389,10 @@ struct MdllSetTxDataSet: public BaseCommand
 
 struct MdllSetTimingWindow: public BaseCommand
 {
-    unsigned tSumLimitXLow_;
-    unsigned tSumLimitXHigh_;
-    unsigned tSumLimitYLow_;
-    unsigned tSumLimitYHigh_;
+    unsigned tSumLimitXLow_ = 0;
+    unsigned tSumLimitXHigh_ = 1024;
+    unsigned tSumLimitYLow_ = 0;
+    unsigned tSumLimitYHigh_ = 1024;
 
     MdllSetTimingWindow(lyra::cli &cli)
     {
