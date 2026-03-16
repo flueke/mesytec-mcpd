@@ -1,21 +1,21 @@
 import logging
+import sys
+from time import perf_counter
+from typing import Optional
+
 import boost_histogram as bh
 import mesytec_mcpd_py as mcpd
-import pyqtgraph as pg
 import numpy as np
-import sys
-
+import pyqtgraph as pg
+import pyqtgraph.parametertree.parameterTypes as pTypes
+import resources
+from pyqtgraph.dockarea.Dock import Dock
+from pyqtgraph.dockarea.DockArea import DockArea
+from pyqtgraph.parametertree import Parameter, ParameterTree
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 from pyqtgraph.Qt.QtCore import Signal, Slot
 from pyqtgraph.Qt.QtGui import QCloseEvent
-from pyqtgraph.dockarea.Dock import Dock
-from pyqtgraph.dockarea.DockArea import DockArea
-import pyqtgraph.parametertree.parameterTypes as pTypes
-from pyqtgraph.parametertree import Parameter, ParameterTree
-
 from rich.logging import RichHandler
-from time import perf_counter
-from typing import Optional
 
 
 # Taken from the pyqtgraph examples.utils file.
@@ -487,6 +487,19 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.plt2d_colorbar.setLevels(levels)
 
 
+def add_qt_font(font_path: str) -> Optional[QtGui.QFont]:
+    try:
+        f = QtCore.QFile(":/fonts/Roboto-VariableFont_wdth,wght.ttf")
+        f.open(QtCore.QIODevice.ReadOnly)
+        if f.isOpen():
+            id = QtGui.QFontDatabase.addApplicationFontFromData(f.readAll())
+            if id >= 0:
+                return QtGui.QFont(QtGui.QFontDatabase.applicationFontFamilies(id)[0])
+        return None
+    finally:
+        f.close()
+
+
 def main():
     logging.basicConfig(
         level="INFO",
@@ -498,11 +511,19 @@ def main():
     mcpd.set_log_level("info")
 
     app = pg.mkQApp("MPSD DAQ")
+
+    roboto = add_qt_font(":/fonts/Roboto-VariableFont_wdth,wght.ttf")
+    if roboto is not None:
+        roboto.setPointSizeF(roboto.pointSizeF() * 0.8)
+        app.setFont(roboto)
+    add_qt_font(":/fonts/RobotoMono-VariableFont_wght.ttf")
+
     pg.setConfigOptions(
         antialias=True, leftButtonPan=True, imageAxisOrder="row-major", crashWarning=False
     )
 
     mainwin = MainWindow(mcpd.Readout())
+
     mainwin.show()
 
     update_timer = QtCore.QTimer()
