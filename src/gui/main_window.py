@@ -22,8 +22,8 @@ from typing import Optional
 class FrameCounter(QtCore.QObject):
     sigFpsUpdate = QtCore.Signal(object)
 
-    def __init__(self, interval=1000):
-        super().__init__()
+    def __init__(self, interval=1000, parent=None):
+        super().__init__(parent)
         self.count = 0
         self.last_update = 0
         self.interval = interval
@@ -191,8 +191,8 @@ class DeviceThing(QtCore.QObject):
 
     def __init__(self, name: str):
         super().__init__()
-        self.packet_counter = FrameCounter()
-        self.event_counter = FrameCounter()
+        self.packet_counter = FrameCounter(parent=self)
+        self.event_counter = FrameCounter(parent=self)
         self.packets_per_second = 0
         self.events_per_second = 0
         self.root_param = self._make_params(name)
