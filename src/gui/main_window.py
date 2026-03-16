@@ -7,6 +7,7 @@ import boost_histogram as bh
 import mesytec_mcpd_py as mcpd
 import numpy as np
 import pyqtgraph as pg
+import pyqtgraph.console
 import pyqtgraph.parametertree.parameterTypes as pTypes
 import resources
 from pyqtgraph.dockarea.Dock import Dock
@@ -342,9 +343,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dock_readout_control = Dock("Readout Control")
         self.dock_readout_devices = Dock("Readout Devices")
         self.dock_plots = Dock("Plot")
+        self.dock_console = Dock("Console")
 
         self.dockArea.addDock(self.dock_readout_control, "left")
         self.dockArea.addDock(self.dock_readout_devices, "bottom", self.dock_readout_control)
+        self.dockArea.addDock(self.dock_console, "bottom")
         self.dockArea.addDock(self.dock_plots, "right")
 
         self.readout_control_widget = ReadoutControlWidget()
@@ -356,6 +359,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.readout_tree = ParameterTree()
         self.readout_tree.setParameters(self.readout_root, showTop=False)
         self.dock_readout_devices.addWidget(self.readout_tree)
+
+        self.console = pg.console.ConsoleWidget(namespace={"readout": self.readout, "mainwin": self})
+        self.dock_console.addWidget(self.console)
 
         # Simple plot widget for 1d histograms
         self.plot_widget = pg.PlotWidget()
