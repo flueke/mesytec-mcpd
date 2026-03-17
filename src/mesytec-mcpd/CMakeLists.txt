@@ -26,6 +26,7 @@ target_link_libraries(mesytec-mcpd
     )
 
 target_compile_features(mesytec-mcpd PUBLIC cxx_std_17)
+
 if (MSYS OR NOT WIN32)
     target_compile_options(mesytec-mcpd PRIVATE -Wall -Wextra)
     target_compile_options(mesytec-mcpd PRIVATE -Wno-format)

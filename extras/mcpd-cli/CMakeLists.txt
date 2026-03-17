@@ -29,7 +29,7 @@ target_link_libraries(mcpd-cli
     #PRIVATE gnuplot_iostream
     )
 
-if (MSYS)
+if (MSYS OR NOT WIN32)
     target_compile_options(mcpd-cli PRIVATE -Wno-format)
 endif(MSYS)
 
