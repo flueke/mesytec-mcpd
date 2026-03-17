@@ -57,8 +57,9 @@ project(${PROJECT_NAME}
   DESCRIPTION "User space driver library for the Mesytec PSD+ system"
   VERSION ${GIT_VERSION_SHORT})
 
-if (NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose Release or Debug")
+if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
 
 message("-- CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
