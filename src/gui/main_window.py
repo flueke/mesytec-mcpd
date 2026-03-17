@@ -8,8 +8,6 @@ import mesytec_mcpd_py as mcpd
 import numpy as np
 import pyqtgraph as pg
 import pyqtgraph.console
-import pyqtgraph.parametertree.parameterTypes as pTypes
-import resources
 from pyqtgraph.dockarea.Dock import Dock
 from pyqtgraph.dockarea.DockArea import DockArea
 from pyqtgraph.parametertree import Parameter, ParameterTree
@@ -360,7 +358,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.readout_tree.setParameters(self.readout_root, showTop=False)
         self.dock_readout_devices.addWidget(self.readout_tree)
 
-        self.console = pg.console.ConsoleWidget(namespace={"readout": self.readout, "mainwin": self})
+        self.console = pg.console.ConsoleWidget(
+            namespace={"readout": self.readout, "mainwin": self}
+        )
         self.dock_console.addWidget(self.console)
 
         # Simple plot widget for 1d histograms
