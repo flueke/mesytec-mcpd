@@ -39,7 +39,10 @@ endif()
 # PyPy sets an invalid SOABI (platform missing), causing older FindPythons to
 # report an incorrect value. Only use it if it looks correct (X-X-X form).
 if(DEFINED NB_SOABI AND "${NB_SOABI}" MATCHES ".+-.+-.+")
-  set(NB_SUFFIX ".${NB_SOABI}${NB_SUFFIX_EXT}")
+  set(NB_SUFFIX ".${NB_SOABI}")
+  if (NOT ${NB_SUFFIX} MATCHES ".*${NB_SUFFIX_EXT}$")
+    set(NB_SUFFIX "${NB_SUFFIX}${NB_SUFFIX_EXT}")
+  endif()
 endif()
 
 if(DEFINED NB_SOSABI)
