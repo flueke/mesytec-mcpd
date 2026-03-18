@@ -76,7 +76,7 @@ if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
 
     find_program(PYBIND11_STUBGEN pybind11-stubgen REQUIRED)
 
-    if (PYBIND11_STUBGEN)
+    if (PYBIND11_STUBGEN AND NOT WIN32) # TODO: pybind11-stubgen on windows
         add_custom_command(TARGET _mesytec_mcpd_py POST_BUILD
             COMMAND PYTHONPATH=${CMAKE_BINARY_DIR}:$ENV{PYTHONPATH} pybind11-stubgen -o ${CMAKE_BINARY_DIR}/stubs _mesytec_mcpd_py
             BYPRODUCTS ${CMAKE_BINARY_DIR}/stubs
