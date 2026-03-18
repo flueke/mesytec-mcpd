@@ -197,7 +197,12 @@ std::error_code bind_udp_socket(int sockfd, u16 localPort)
     if (::bind(sockfd, reinterpret_cast<struct sockaddr *>(&localAddr),
                 sizeof(localAddr)))
     {
+#ifdef SOCKET_PLATFORM_WINDOWS
+        auto err = WSAGetLastError();
+        auto ec = std::error_code(err, std::system_category());
+#else
         auto ec = std::error_code(errno, std::system_category());
+#endif
         return ec;
     }
 
