@@ -57,6 +57,12 @@ endif()
 
 find_package(Python 3.10 COMPONENTS Interpreter ${DEV_MODULE})
 
+if (Python_FOUND)
+    include(CMakePrintHelpers)
+    cmake_print_variables(Python_EXECUTABLE Python_STDLIB Python_SOABI Python_SOSABI Python_INCLUDE_DIRS
+    Python_LIBRARY Python_LIBRARIES Python_LIBRARY_DIRS Python_RUNTIME_LIBRARY_DIRS Python_SABI_LIBRARIES Python_LINK_OPTIONS)
+endif()
+
 if (DEFINED SKBUILD)
     set(PROJECT_NAME ${SKBUILD_PROJECT_NAME} LANGUAGES CXX)
 else()
