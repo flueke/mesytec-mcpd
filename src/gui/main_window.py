@@ -179,10 +179,11 @@ class MDLLHistos(QtCore.QObject):
             raise RuntimeError(f"Invalid packet type for MDLLHistos: {packet.buffer_type:#06x}")
 
         for event in packet.get_events():
-            self.amp_hist.fill(event.mdll_neutron.amplitude)
-            self.x_pos_hist.fill(event.mdll_neutron.x_pos)
-            self.y_pos_hist.fill(event.mdll_neutron.y_pos)
-            self.xy_pos_hist.fill(event.mdll_neutron.x_pos, event.mdll_neutron.y_pos)
+            if neutron := event.neutron():
+                self.amp_hist.fill(neutron.amplitude)
+                self.x_pos_hist.fill(neutron.x_pos)
+                self.y_pos_hist.fill(neutron.y_pos)
+                self.xy_pos_hist.fill(neutron.x_pos, neutron.y_pos)
 
 
 class DeviceThing(QtCore.QObject):
@@ -376,7 +377,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.log_widget.append("Welcome to the MPSD DAQ application!")
 
         self.dock_log.addWidget(self.log_widget)
-        #end of log widget
+        # end of log widget
 
         # Simple plot widget for 1d histograms
         self.plot_widget = pg.PlotWidget()
@@ -519,6 +520,7 @@ def add_qt_font(font_path: str) -> Optional[QtGui.QFont]:
         return None
     finally:
         f.close()
+
 
 def main():
     logging.basicConfig(
