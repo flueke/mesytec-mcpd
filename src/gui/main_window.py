@@ -342,11 +342,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dock_readout_devices = Dock("Readout Devices")
         self.dock_plots = Dock("Plot")
         self.dock_console = Dock("Console")
+        self.dock_log = Dock("Log")
 
         self.dockArea.addDock(self.dock_readout_control, "left")
         self.dockArea.addDock(self.dock_readout_devices, "bottom", self.dock_readout_control)
         self.dockArea.addDock(self.dock_console, "bottom")
         self.dockArea.addDock(self.dock_plots, "right")
+        self.dockArea.addDock(self.dock_log, "bottom", self.dock_plots)
 
         self.readout_control_widget = ReadoutControlWidget()
         self.dock_readout_control.addWidget(self.readout_control_widget)
@@ -362,6 +364,19 @@ class MainWindow(QtWidgets.QMainWindow):
             namespace={"readout": self.readout, "mainwin": self}
         )
         self.dock_console.addWidget(self.console)
+
+        # log widget
+        self.log_widget = QtWidgets.QTextEdit()
+        self.log_widget.setReadOnly(True)
+        self.log_widget.document().setMaximumBlockCount(10000)
+        self.log_widget.setLineWrapMode(QtWidgets.QTextEdit.WidgetWidth)
+        log_font = QtGui.QFont("Roboto Mono", 8)
+        log_font.setStyleHint(QtGui.QFont.StyleHint.Monospace)
+        self.log_widget.setFont(log_font)
+        self.log_widget.append("Welcome to the MPSD DAQ application!")
+
+        self.dock_log.addWidget(self.log_widget)
+        #end of log widget
 
         # Simple plot widget for 1d histograms
         self.plot_widget = pg.PlotWidget()
@@ -504,7 +519,6 @@ def add_qt_font(font_path: str) -> Optional[QtGui.QFont]:
         return None
     finally:
         f.close()
-
 
 def main():
     logging.basicConfig(
