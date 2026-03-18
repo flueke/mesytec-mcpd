@@ -74,19 +74,19 @@ if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
                 FILES_MATCHING PATTERN "*.py")
     endif()
 
-    find_program(PYBIND11_STUBGEN pybind11-stubgen)
+    find_program(PYBIND11_STUBGEN pybind11-stubgen REQUIRED)
 
     if (PYBIND11_STUBGEN)
         add_custom_command(TARGET _mesytec_mcpd_py POST_BUILD
-            COMMAND PYTHONPATH=${CMAKE_BINARY_DIR}/python:$ENV{PYTHONPATH} pybind11-stubgen -o ${CMAKE_BINARY_DIR}/stubs mesytec_mcpd_py
+            COMMAND PYTHONPATH=${CMAKE_BINARY_DIR}:$ENV{PYTHONPATH} pybind11-stubgen -o ${CMAKE_BINARY_DIR}/stubs _mesytec_mcpd_py
             BYPRODUCTS ${CMAKE_BINARY_DIR}/stubs
             USES_TERMINAL
             COMMENT "Generating python type stubs")
 
         if (DEFINED SKBUILD)
-            install(DIRECTORY ${CMAKE_BINARY_DIR}/stubs DESTINATION ${SKBUILD_PROJECT_NAME})
+            install(DIRECTORY ${CMAKE_BINARY_DIR}/stubs/_mesytec_mcpd_py DESTINATION ${SKBUILD_PROJECT_NAME})
         else()
-            install(DIRECTORY ${CMAKE_BINARY_DIR}/stubs DESTINATION lib/mesytec_mcpd_py)
+            install(DIRECTORY ${CMAKE_BINARY_DIR}/stubs/_mesytec_mcpd_py DESTINATION lib/mesytec_mcpd_py)
         endif()
     endif()
 
