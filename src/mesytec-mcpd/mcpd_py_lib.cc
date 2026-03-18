@@ -1,9 +1,9 @@
 #include "mcpd_py_lib.h"
 #include <memory>
 #include <mesytec-mcpd/util/logging.h>
-#include <pybind11/pybind11.h>
+#include <nanobind/nanobind.h>
 
-namespace py = pybind11;
+namespace nb = nanobind;
 
 namespace mesytec::mcpd
 {
@@ -39,9 +39,9 @@ bool Readout::start()
     std::promise<bool> promise;
     auto f = promise.get_future();
 
-    std::unique_ptr<py::gil_scoped_release> gil_release;
+    std::unique_ptr<nb::gil_scoped_release> gil_release;
     if (PyGILState_Check())
-        gil_release = std::make_unique<py::gil_scoped_release>();
+        gil_release = std::make_unique<nb::gil_scoped_release>();
 
     spdlog::debug("{}: starting readout thread", PRETTY_FUNCTION);
     readoutThread_ = std::thread(&Readout::readoutLoop, this, std::move(promise));
@@ -83,9 +83,9 @@ bool Readout::stop()
 
     if (readoutThread_.joinable())
     {
-        std::unique_ptr<py::gil_scoped_release> gil_release;
+        std::unique_ptr<nb::gil_scoped_release> gil_release;
         if (PyGILState_Check())
-            gil_release = std::make_unique<py::gil_scoped_release>();
+            gil_release = std::make_unique<nb::gil_scoped_release>();
 
         readoutThread_.join();
         spdlog::debug("{}: readout thread joined, returning", PRETTY_FUNCTION);

@@ -47,10 +47,20 @@ message("-- GIT_VERSION=${GIT_VERSION}")
 message("-- GIT_VERSION_SHORT=${GIT_VERSION_SHORT}")
 message("-- GIT_BRANCH=${GIT_BRANCH}")
 
-if (DEFINED SKBUILD)
-set(PROJECT_NAME ${SKBUILD_PROJECT_NAME} LANGUAGES CXX)
+# python - this should remain in the global scope, otherwise it has to be done
+# in every subdirectory which needs python
+if (CMAKE_VERSION VERSION_LESS 3.18)
+  set(DEV_MODULE Development)
 else()
-set(PROJECT_NAME mesytec-mcpd LANGUAGES CXX)
+  set(DEV_MODULE Development.Module)
+endif()
+
+find_package(Python 3.10 COMPONENTS Interpreter ${DEV_MODULE})
+
+if (DEFINED SKBUILD)
+    set(PROJECT_NAME ${SKBUILD_PROJECT_NAME} LANGUAGES CXX)
+else()
+    set(PROJECT_NAME mesytec-mcpd LANGUAGES CXX)
 endif()
 
 project(${PROJECT_NAME}

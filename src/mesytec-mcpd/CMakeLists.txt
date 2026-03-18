@@ -1,4 +1,4 @@
-option(MCPD_ENABLE_PYTHON "Build mesytec-mcpd with python bindings" OFF)
+option(MCPD_ENABLE_PYTHON "Build mesytec-mcpd with python bindings" ON)
 
 find_package(Threads)
 
@@ -40,18 +40,11 @@ endif(WIN32)
 include(GenerateExportHeader)
 generate_export_header(mesytec-mcpd)
 
-if (MCPD_ENABLE_PYTHON)
-    if (pybind11_FOUND)
-        message("-- Found pybind11: ${pybind11_DIR}")
-    else()
-        message(WARNING "Could not find pybind11. Disabling Python support in mesytec-mcpd")
-    endif()
-endif()
-
-if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
+if (MCPD_ENABLE_PYTHON AND Python_FOUND)
     # Note: py.typed is required by PEP 561. It's just an empty file.
     if (DEFINED SKBUILD)
-        pybind11_add_module(_mesytec_mcpd_py MODULE mesytec_mcpd_py.cc mcpd_py_lib.cc)
+        nanobind_add_module(_mesytec_mcpd_py STABLE_ABI mesytec_mcpd_py.cc mcpd_py_lib.cc)
+
         target_link_libraries(_mesytec_mcpd_py PRIVATE mesytec-mcpd spdlog::spdlog)
         install(TARGETS _mesytec_mcpd_py mesytec-mcpd DESTINATION ${SKBUILD_PROJECT_NAME})
         install(FILES __init__.py py.typed DESTINATION ${SKBUILD_PROJECT_NAME})
@@ -60,7 +53,7 @@ if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
                 DESTINATION ${SKBUILD_PROJECT_NAME}
                 FILES_MATCHING PATTERN "*.py")
     else()
-        pybind11_add_module(_mesytec_mcpd_py MODULE mesytec_mcpd_py.cc mcpd_py_lib.cc)
+        nanobind_add_module(_mesytec_mcpd_py STABLE_ABI mesytec_mcpd_py.cc mcpd_py_lib.cc)
         target_link_libraries(_mesytec_mcpd_py PRIVATE mesytec-mcpd spdlog::spdlog)
         install(TARGETS _mesytec_mcpd_py
             LIBRARY DESTINATION lib/mesytec_mcpd_py
@@ -128,9 +121,9 @@ if (MCPD_BUILD_TESTS)
         add_test(NAME ${exe_name} COMMAND $<TARGET_FILE:${exe_name}>)
     endfunction(add_gtest)
 
-    if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
+    if (MCPD_ENABLE_PYTHON AND Python_FOUND)
         add_gtest(test_mcpd_py_lib mcpd_py_lib.test.cc)
         target_sources(test_mcpd_py_lib PRIVATE mcpd_py_lib.cc)
-        target_link_libraries(test_mcpd_py_lib PRIVATE pybind11::embed)
+        target_link_libraries(test_mcpd_py_lib PRIVATE nanobind)
     endif()
 endif(MCPD_BUILD_TESTS)

@@ -7,5 +7,10 @@ set_target_properties(spdlog PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # Lyra command line parser
 add_subdirectory(lyra-1.7.0)
 
-set(PYBIND11_FINDPYTHON ON)
-add_subdirectory(pybind11-3.0.1)
+# nanobind
+if (Python_FOUND)
+    message(STATUS "Python found: ${Python_EXECUTABLE}")
+    add_subdirectory(nanobind-2.12.0)
+else()
+    message(WARNING "Python not found, not building Python bindings for mesytec-mcpd")
+endif()
