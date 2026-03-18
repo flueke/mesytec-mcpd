@@ -1,4 +1,4 @@
-option(MCPD_ENABLE_PYTHON "Build mesytec-mcpd with python bindings" OFF)
+option(MCPD_ENABLE_PYTHON "Build mesytec-mcpd with python bindings" ON)
 
 find_package(Threads)
 
