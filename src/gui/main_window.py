@@ -127,12 +127,12 @@ class MDLLHistos(QtCore.QObject):
         def make_axis(max_val):
             return bh.axis.Regular(max_val, 0, max_val)
 
-        self.amp_hist = bh.Histogram(make_axis(mcpd.mdll_neutron.amplitude_max))
-        self.x_pos_hist = bh.Histogram(make_axis(mcpd.mdll_neutron.x_pos_max))
-        self.y_pos_hist = bh.Histogram(make_axis(mcpd.mdll_neutron.y_pos_max))
+        self.amp_hist = bh.Histogram(make_axis(mcpd.constants.mdll_neutron.amplitude_max))
+        self.x_pos_hist = bh.Histogram(make_axis(mcpd.constants.mdll_neutron.x_pos_max))
+        self.y_pos_hist = bh.Histogram(make_axis(mcpd.constants.mdll_neutron.y_pos_max))
         self.xy_pos_hist = bh.Histogram(
-            make_axis(mcpd.mdll_neutron.x_pos_max),
-            make_axis(mcpd.mdll_neutron.y_pos_max),
+            make_axis(mcpd.constants.mdll_neutron.x_pos_max),
+            make_axis(mcpd.constants.mdll_neutron.y_pos_max),
         )
 
         def make_histo_params(name, histo):
@@ -175,7 +175,7 @@ class MDLLHistos(QtCore.QObject):
         self.root_param.child("XY Position", "Entries").setValue(self.xy_pos_hist.sum())
 
     def process_packet(self, packet: mcpd.DataPacket):
-        if packet.buffer_type != mcpd.buffer_types.MdllDataBufferType:
+        if packet.buffer_type != mcpd.constants.buffer_types.MdllDataBufferType:
             raise RuntimeError(f"Invalid packet type for MDLLHistos: {packet.buffer_type:#06x}")
 
         for event in packet.get_events():
@@ -232,7 +232,7 @@ class DeviceThing(QtCore.QObject):
         self.packet_counter.update()
         self.event_counter.update(packet.event_count())
 
-        if packet.buffer_type == mcpd.buffer_types.McpdDataBufferType:
+        if packet.buffer_type == mcpd.constants.buffer_types.McpdDataBufferType:
             if self.mcpd_histos is None:
                 self.mcpd_histos = McpdHistos(self.root_param.name())
                 self.mcpd_histos.show_histogram.connect(self.show_histogram)
@@ -240,7 +240,7 @@ class DeviceThing(QtCore.QObject):
 
             self.mcpd_histos.process_packet(packet)
 
-        elif packet.buffer_type == mcpd.buffer_types.MdllDataBufferType:
+        elif packet.buffer_type == mcpd.constants.buffer_types.MdllDataBufferType:
             if self.mdll_histos is None:
                 self.mdll_histos = MDLLHistos(self.root_param.name())
                 self.mdll_histos.show_histogram.connect(self.show_histogram)
