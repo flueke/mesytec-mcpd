@@ -77,9 +77,30 @@ PYBIND11_MODULE(_mesytec_mcpd_py, m)
         .def_readonly("deviceId", &DecodedEvent::deviceId)
         .def_readonly("type", &DecodedEvent::type)
         .def_readonly("timestamp", &DecodedEvent::timestamp)
-        .def_readonly("neutron", &DecodedEvent::neutron)
-        .def_readonly("trigger", &DecodedEvent::trigger)
-        .def_readonly("mdll_neutron", &DecodedEvent::mdllNeutron)
+        .def("neutron",
+                      [](const DecodedEvent &event) -> py::object
+                      {
+                        if (event.type == EventType::Neutron)
+                            return py::cast(event.neutron);
+                        else
+                            return py::none();
+                      })
+        .def("trigger",
+                      [](const DecodedEvent &event) -> py::object
+                      {
+                        if (event.type == EventType::Trigger)
+                            return py::cast(event.trigger);
+                        else
+                            return py::none();
+                      })
+        .def("mdll_neutron",
+                      [](const DecodedEvent &event) -> py::object
+                      {
+                        if (event.type == EventType::MdllNeutron)
+                            return py::cast(event.mdllNeutron);
+                        else
+                            return py::none();
+                      })
         .def("__str__", [](const DecodedEvent &event) { return to_string(event); });
 
     py::class_<DataPacket>(m, "DataPacket")
@@ -166,7 +187,8 @@ PYBIND11_MODULE(_mesytec_mcpd_py, m)
 
     py::module_ constants = m.def_submodule("constants", "Event field ranges");
 
-    py::module_ mdll_neutron = constants.def_submodule("mdll_neutron", "MDLL neutron event field ranges");
+    py::module_ mdll_neutron =
+        constants.def_submodule("mdll_neutron", "MDLL neutron event field ranges");
     mdll_neutron.attr("amplitude_max") = (1u << ec::mdll_neutron::AmplitudeBits) - 1;
     mdll_neutron.attr("x_pos_max") = (1u << ec::mdll_neutron::xPosBits) - 1;
     mdll_neutron.attr("y_pos_max") = (1u << ec::mdll_neutron::yPosBits) - 1;
