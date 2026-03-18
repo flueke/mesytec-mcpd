@@ -158,6 +158,7 @@ PYBIND11_MODULE(_mesytec_mcpd_py, m)
         .def("get_packets", &Readout::getPackets)
         .def("get_counters", &Readout::getCounters)
         .def("has_readout_exception", &Readout::hasReadoutException)
+        .def("get_readout_exception", &Readout::getReadoutException)
         .def("rethrow_readout_exception", &Readout::rethrowReadoutException);
 
     // Event field constants (maximum values)
