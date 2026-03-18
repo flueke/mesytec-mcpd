@@ -74,7 +74,7 @@ if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
                 FILES_MATCHING PATTERN "*.py")
     endif()
 
-    find_program(PYBIND11_STUBGEN pybind11-stubgen REQUIRED)
+    find_program(PYBIND11_STUBGEN pybind11-stubgen)
 
     if (PYBIND11_STUBGEN AND NOT WIN32) # TODO: pybind11-stubgen on windows
         add_custom_command(TARGET _mesytec_mcpd_py POST_BUILD
