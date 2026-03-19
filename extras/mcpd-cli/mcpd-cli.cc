@@ -1,5 +1,6 @@
 // TODO: set all default parameters to sane values. check mdll&mcpd docs for limits and defaults.
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <signal.h>
@@ -7,7 +8,6 @@
 #include <mesytec-mcpd/mesytec-mcpd.h>
 #include <lyra/lyra.hpp>
 #include <spdlog/spdlog.h>
-#include <sys/stat.h>
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
 #include "mcpd_root_histos.h"
@@ -34,9 +34,7 @@ void signal_handler(int signum)
 
 bool file_exists(const char *path)
 {
-    struct stat st = {};
-
-    return (::stat(path, &st) == 0);
+    return std::filesystem::exists(path);
 }
 
 }
