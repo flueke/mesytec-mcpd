@@ -46,14 +46,14 @@ class WorkerBase
     void resetCounters() { *counters_.lock() = Counters{}; }
 
   protected:
-    virtual void readoutLoop(std::promise<bool> promise) = 0;
+    virtual void workerLoop(std::promise<bool> promise) = 0;
     locked_ptr<Counters> &getCounters_() { return counters_; }
     bool keepRunning() const { return keepRunning_.load(std::memory_order_relaxed); }
     locked_ptr<std::vector<DataPacket>> &getPacketBuffer() { return packetBuffer_; }
     size_t getPacketBufferMaxPackets() const { return packetBufferMaxPackets_; }
 
   private:
-    void readoutLoop_(std::promise<bool> promise);
+    void workerLoop_(std::promise<bool> promise);
     bool isRunning_() const { return workerThread_.joinable(); }
 
     WorkerBase(const WorkerBase &) = delete;
@@ -91,7 +91,7 @@ class Readout: public WorkerBase
                      size_t packetBufferMaxPackets = DefaultPacketBufferMaxPackets);
 
   protected:
-    void readoutLoop(std::promise<bool> promise) override;
+    void workerLoop(std::promise<bool> promise) override;
 
   private:
     int listenPort_ = McpdDefaultPort;
