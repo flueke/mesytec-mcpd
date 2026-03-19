@@ -9,8 +9,9 @@
     pip install -e ..[dev,gui] --no-deps --no-build-isolation -v
 
   This will create and resuse a dir under build for the cmake build. Everything
-  can be inspected and cmake can be run manually or from vscode if needed.
-  The build deps need to be manually installed in the active venv.
+  can be inspected and cmake can be run manually or from vscode if needed.  The
+  build deps need to be manually installed in the active venv otherwise cmake or
+  the compilation will fail.
 
 # Notes
 - To use clang-cl set CMAKE_GENERATOR=Ninja and set both CC and CXX to the full path to clang-cl, e.g.
@@ -19,6 +20,8 @@
   set CC=C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\bin\clang-cl.exe
 
 - 'Ninja' could also be set in pyproject.toml under [tool.scikit-build] cmake.args .
+
+- Check vs code settings.json for cmake.generator too in case msbuild is still used!
 
 - The code currently also builds with msvc, so the above is not required.
 
