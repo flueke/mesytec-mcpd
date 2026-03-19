@@ -128,7 +128,6 @@ void WorkerBase::rethrowException()
             throw;
         }
     }
-
 }
 
 u64 WorkerBase::getPacketCount() const { return packetBuffer_.lock()->size(); }
@@ -250,7 +249,7 @@ void Readout::readoutLoop(std::promise<bool> promise)
                 }
                 else
                 {
-                    getPacketBuffer().lock()->emplace_back(std::move(dataPacket));
+                    packetBuffer->emplace_back(std::move(dataPacket));
                 }
             }
         }
