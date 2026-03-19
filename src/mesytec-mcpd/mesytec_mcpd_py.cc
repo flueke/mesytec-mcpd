@@ -32,6 +32,8 @@ void init_logging()
 
 using Counters = py_lib::Counters;
 using Readout = py_lib::Readout;
+using Replay = py_lib::Replay;
+using AugmentedDataPacket = py_lib::AugmentedDataPacket;
 
 PYBIND11_MODULE(_mesytec_mcpd_py, m)
 {
@@ -181,6 +183,12 @@ PYBIND11_MODULE(_mesytec_mcpd_py, m)
                  return result;
              });
 
+    py::class_<AugmentedDataPacket>(m, "AugmentedDataPacket")
+        .def(py::init<>())
+        .def_readonly("packet", &AugmentedDataPacket::packet)
+        .def_readonly("src_addr", &AugmentedDataPacket::srcAddr)
+        .def_readonly("src_port", &AugmentedDataPacket::srcPort);
+
     py::class_<Counters>(m, "Counters")
         .def(py::init<>())
         .def_readonly("packets", &Counters::packets)
@@ -189,6 +197,8 @@ PYBIND11_MODULE(_mesytec_mcpd_py, m)
         .def_readonly("events", &Counters::events)
         .def_readonly("packets_lost", &Counters::packetsLost)
         .def_readonly("packets_dropped", &Counters::packetsDropped);
+
+    // TODO: check if the inhertiance could be used here to cut down on code
 
     py::class_<Readout>(m, "Readout")
         .def(py::init<int, size_t>(), py::arg("listenPort") = McpdDefaultPort,
@@ -201,6 +211,20 @@ PYBIND11_MODULE(_mesytec_mcpd_py, m)
         .def("get_counters", &Readout::getCounters)
         .def("has_exception", &Readout::hasException)
         .def("rethrow_exception", &Readout::rethrowException);
+
+    py::class_<Replay>(m, "Replay")
+        .def(py::init<size_t>(), py::arg("packetBufferMaxPackets") = py_lib::DefaultPacketBufferMaxPackets)
+        .def(py::init<const std::string &, size_t>(),
+             py::arg("filename"),
+             py::arg("packetBufferMaxPackets") = py_lib::DefaultPacketBufferMaxPackets)
+        .def("start", &Replay::start)
+        .def("stop", &Replay::stop)
+        .def("is_running", &Replay::isRunning)
+        .def("get_packet_count", &Replay::getPacketCount)
+        .def("get_packets", &Replay::getPackets)
+        .def("get_counters", &Replay::getCounters)
+        .def("has_exception", &Replay::hasException)
+        .def("rethrow_exception", &Replay::rethrowException);
 
     // Event field constants (maximum values)
     namespace ec = event_constants;
