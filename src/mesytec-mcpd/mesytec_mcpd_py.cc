@@ -30,6 +30,9 @@ void init_logging()
     mesytec::mcpd::set_global_log_level(spdlog::level::trace);
 }
 
+using Counters = py_lib::Counters;
+using Readout = py_lib::Readout;
+
 PYBIND11_MODULE(_mesytec_mcpd_py, m)
 {
     m.doc() = "driver library for the mesytec PSD system (MCPD, MPSD, MDLL) - python bindings";
@@ -164,23 +167,26 @@ PYBIND11_MODULE(_mesytec_mcpd_py, m)
                  return events;
              });
 
-    py::class_<ReadoutCounters>(m, "ReadoutCounters")
+    py::class_<Counters>(m, "Counters")
         .def(py::init<>())
-        .def_readonly("packets", &ReadoutCounters::packets)
-        .def_readonly("bytes", &ReadoutCounters::bytes)
-        .def_readonly("timeouts", &ReadoutCounters::timeouts)
-        .def_readonly("events", &ReadoutCounters::events);
+        .def_readonly("packets", &Counters::packets)
+        .def_readonly("bytes", &Counters::bytes)
+        .def_readonly("timeouts", &Counters::timeouts)
+        .def_readonly("events", &Counters::events)
+        .def_readonly("packets_lost", &Counters::packetsLost)
+        .def_readonly("packets_dropped", &Counters::packetsDropped)
+        ;
 
     py::class_<Readout>(m, "Readout")
-        .def(py::init<int>(), py::arg("listenPort") = McpdDefaultPort)
+        .def(py::init<int, size_t>(), py::arg("listenPort") = McpdDefaultPort, py::arg("packetBufferMaxPackets") = py_lib::DefaultPacketBufferMaxPackets)
         .def("start", &Readout::start)
         .def("stop", &Readout::stop)
         .def("is_running", &Readout::isRunning)
         .def("get_packets", &Readout::getPackets)
         .def("get_counters", &Readout::getCounters)
-        .def("has_readout_exception", &Readout::hasReadoutException)
-        .def("get_readout_exception", &Readout::getReadoutException)
-        .def("rethrow_readout_exception", &Readout::rethrowReadoutException);
+        .def("has_exception", &Readout::hasException)
+        .def("rethrow_exception", &Readout::rethrowException)
+        ;
 
     // Event field constants (maximum values)
     namespace ec = event_constants;

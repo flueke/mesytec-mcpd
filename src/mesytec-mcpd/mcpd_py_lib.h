@@ -37,7 +37,7 @@ class WorkerBase
     bool stop();
     bool isRunning() const;
     bool hasException() const;
-    bool getResult() const;
+    void rethrowException();
 
     u64 getPacketCount() const;
     std::vector<DataPacket> getPackets();
