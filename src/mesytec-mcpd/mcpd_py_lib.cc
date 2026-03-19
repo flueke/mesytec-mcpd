@@ -93,6 +93,53 @@ bool WorkerBase::stop()
     }
 }
 
+void WorkerBase::publishPacket(AugmentedDataPacket &&augPacket, size_t bytesTransferred, bool block)
+{
+    //std::unique_ptr<py::gil_scoped_release> gil_release;
+    //if (PyGILState_Check())
+    //    gil_release = std::make_unique<py::gil_scoped_release>();
+
+    auto buffer_size = [this]() { return getPacketBuffer().lock()->size(); };
+
+    auto is_full = [this]()
+    { return getPacketBuffer().lock()->size() >= getPacketBufferMaxPackets(); };
+
+    //if (is_full() && !block)
+    //{
+    //    spdlog::warn("{}: packet buffer full ({} packets), dropping packet", PRETTY_FUNCTION,
+    //                 buffer_size());
+    //    getCounters_().lock()->packetsDropped++;
+    //}
+    //else
+    {
+        // all broken, do this properly or rethink
+        // TODO: might need a condition variable here or a better queue
+        while (block && is_full() && keepRunning())
+        {
+            spdlog::trace(
+                "{}: packet buffer full ({} packets), waiting for space to publish packet",
+                PRETTY_FUNCTION, buffer_size());
+            //std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+
+        if (!is_full())
+        {
+            auto counters = getCounters_().lock();
+            counters->packets++;
+            counters->bytes += bytesTransferred;
+            counters->events += get_event_count(augPacket.packet);
+
+            getPacketBuffer().lock()->emplace_back(std::move(augPacket));
+        }
+        else
+        {
+            getCounters_().lock()->packetsDropped++;
+            spdlog::warn("{}: packet buffer full ({} packets) and stop requested, dropping packet",
+                         PRETTY_FUNCTION, buffer_size());
+        }
+    }
+}
+
 void WorkerBase::workerLoop_(std::promise<bool> promise)
 {
     try
@@ -132,7 +179,9 @@ void WorkerBase::rethrowException()
 
 u64 WorkerBase::getPacketCount() const { return packetBuffer_.lock()->size(); }
 
-std::vector<DataPacket> WorkerBase::getPackets()
+// TODO: the binding code will copy the vector. expose as buffer protocol and
+// let pybind keep the vector alive
+std::vector<AugmentedDataPacket> WorkerBase::getPackets()
 {
     auto packetBuffer = packetBuffer_.lock();
     auto result = std::move(*packetBuffer);
@@ -141,13 +190,10 @@ std::vector<DataPacket> WorkerBase::getPackets()
     return result;
 }
 
-
 Readout::Readout(int listenPort, size_t packetBufferMaxPackets)
     : WorkerBase(packetBufferMaxPackets)
     , listenPort_(listenPort)
-{
-    spdlog::debug("{}: listenPort={}", PRETTY_FUNCTION, listenPort_);
-}
+{ spdlog::debug("{}: listenPort={}", PRETTY_FUNCTION, listenPort_); }
 
 void Readout::workerLoop(std::promise<bool> promise)
 {
@@ -162,8 +208,8 @@ void Readout::workerLoop(std::promise<bool> promise)
         }
     };
 
-    assert(dataSocket_ == -1); // should not happen as we do proper cleanup :)
-    cleanup();                 // in release builds close the socket and try to reopen it later
+    assert(dataSocket_ == -1); // would be a cleanup bug
+    cleanup();                 // in release builds just close the socket
 
     try
     {
@@ -205,7 +251,7 @@ void Readout::workerLoop(std::promise<bool> promise)
     }
     catch (const std::exception &e)
     {
-        // Exception from the startup phase: clean up, store the exception, return.
+        // Exception from the startup phase: clean up, store the exception in the promise, return.
         cleanup();
         promise.set_exception(std::current_exception());
         spdlog::warn("readout thread startup failed with exception: {}", e.what());
@@ -219,11 +265,14 @@ void Readout::workerLoop(std::promise<bool> promise)
         {
             size_t bytesTransferred = 0u;
             sockaddr_in srcAddr = {};
-            DataPacket dataPacket = {};
+            AugmentedDataPacket augPacket = {};
 
-            auto ec = receive_one_packet(dataSocket_, reinterpret_cast<u8 *>(&dataPacket),
-                                         sizeof(dataPacket), bytesTransferred,
+            auto ec = receive_one_packet(dataSocket_, reinterpret_cast<u8 *>(&augPacket.packet),
+                                         sizeof(augPacket.packet), bytesTransferred,
                                          DefaultReadTimeout_ms, &srcAddr);
+
+            augPacket.srcAddr = ntohl(srcAddr.sin_addr.s_addr);
+            augPacket.srcPort = ntohs(srcAddr.sin_port);
 
             if (ec)
             {
@@ -234,23 +283,7 @@ void Readout::workerLoop(std::promise<bool> promise)
             }
             else if (bytesTransferred)
             {
-                auto counters = getCounters_().lock();
-                counters->packets++;
-                counters->bytes += bytesTransferred;
-                counters->events += get_event_count(dataPacket);
-
-                auto packetBuffer = getPacketBuffer().lock();
-
-                if (packetBuffer->size() >= getPacketBufferMaxPackets())
-                {
-                    counters->packetsDropped++;
-                    spdlog::warn("{}: packet buffer full ({} packets), dropping packet",
-                                 PRETTY_FUNCTION, packetBuffer->size());
-                }
-                else
-                {
-                    packetBuffer->emplace_back(std::move(dataPacket));
-                }
+                publishPacket(std::move(augPacket), bytesTransferred, false);
             }
         }
 
@@ -259,6 +292,79 @@ void Readout::workerLoop(std::promise<bool> promise)
     catch (const std::exception &e)
     {
         cleanup();
+        throw; // WorkerBase handles it
+    }
+
+    spdlog::debug("exiting {}", PRETTY_FUNCTION);
+}
+
+Replay::Replay(size_t packetBufferMaxPackets)
+    : WorkerBase(packetBufferMaxPackets)
+{
+}
+
+Replay::Replay(const std::string &filename, size_t packetBufferMaxPackets)
+    : WorkerBase(packetBufferMaxPackets)
+    , filename_(filename)
+{
+}
+
+void Replay::workerLoop(std::promise<bool> promise)
+{
+    spdlog::debug("entering {}", PRETTY_FUNCTION);
+
+    try
+    {
+        if (!inputFile_.is_open())
+        {
+            inputFile_.exceptions(std::ios::badbit);
+            inputFile_.open(filename_, std::ios::in | std::ios::binary);
+            spdlog::debug("{}: opened input file '{}'", PRETTY_FUNCTION, filename_);
+        }
+        else
+        {
+            spdlog::debug("{}: input file '{}' already open, reopening", PRETTY_FUNCTION,
+                          filename_);
+            inputFile_.clear();
+            inputFile_.seekg(0);
+        }
+
+        promise.set_value(true); // unblock the caller waiting for startup to complete
+    }
+    catch (const std::exception &e)
+    {
+        promise.set_exception(std::current_exception());
+        spdlog::warn("readout thread startup failed with exception: {}", e.what());
+        return;
+    }
+
+    spdlog::info("{}: replaying from file '{}'", PRETTY_FUNCTION, filename_);
+
+    try
+    {
+        while (keepRunning() && !inputFile_.eof())
+        {
+            AugmentedDataPacket augPacket = {};
+            auto bytesRead = getCounters_().lock()->bytes;
+            auto mbRead = bytesRead / (1024.0 * 1024.0);
+            spdlog::debug("{}: reading packet from file '{}', eof={}, bytesRead={} MB ({} bytes)",
+                          PRETTY_FUNCTION, filename_, inputFile_.eof(), mbRead, bytesRead);
+            inputFile_.read(reinterpret_cast<char *>(&augPacket.packet), sizeof(augPacket.packet));
+
+            if (inputFile_.eof())
+            {
+                spdlog::debug("{}: reached end of file, exiting replay loop", PRETTY_FUNCTION);
+                break;
+            }
+
+            spdlog::debug("{}: read packet from file, bytesTransferred={}", PRETTY_FUNCTION,
+                          sizeof(augPacket.packet));
+            publishPacket(std::move(augPacket), sizeof(augPacket.packet), true);
+        }
+    }
+    catch (const std::exception &e)
+    {
+        // cleanup();
         throw; // WorkerBase handles it
     }
 

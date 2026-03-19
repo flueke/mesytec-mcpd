@@ -3,6 +3,7 @@
 
 #include <condition_variable>
 #include <exception>
+#include <fstream>
 #include <future>
 #include <memory>
 #include <mutex>
@@ -27,6 +28,13 @@ struct Counters
 
 const size_t DefaultPacketBufferMaxPackets = 10000;
 
+struct AugmentedDataPacket
+{
+    DataPacket packet;
+    u32 srcAddr;
+    u16 srcPort;
+};
+
 class WorkerBase
 {
   public:
@@ -40,7 +48,7 @@ class WorkerBase
     void rethrowException();
 
     u64 getPacketCount() const;
-    std::vector<DataPacket> getPackets();
+    std::vector<AugmentedDataPacket> getPackets();
 
     Counters getCounters() const { return *counters_.lock(); }
     void resetCounters() { *counters_.lock() = Counters{}; }
@@ -49,8 +57,9 @@ class WorkerBase
     virtual void workerLoop(std::promise<bool> promise) = 0;
     locked_ptr<Counters> &getCounters_() { return counters_; }
     bool keepRunning() const { return keepRunning_.load(std::memory_order_relaxed); }
-    locked_ptr<std::vector<DataPacket>> &getPacketBuffer() { return packetBuffer_; }
+    locked_ptr<std::vector<AugmentedDataPacket>> &getPacketBuffer() { return packetBuffer_; }
     size_t getPacketBufferMaxPackets() const { return packetBufferMaxPackets_; }
+    void publishPacket(AugmentedDataPacket &&augPacket, size_t bytesTransferred, bool block);
 
   private:
     void workerLoop_(std::promise<bool> promise);
@@ -67,8 +76,8 @@ class WorkerBase
 
     mutable locked_ptr<Counters> counters_ = locked_ptr<Counters>(std::in_place);
 
-    mutable locked_ptr<std::vector<DataPacket>> packetBuffer_ =
-        locked_ptr<std::vector<DataPacket>>(std::in_place);
+    mutable locked_ptr<std::vector<AugmentedDataPacket>> packetBuffer_ =
+        locked_ptr<std::vector<AugmentedDataPacket>>(std::in_place);
 
     mutable locked_ptr<std::exception_ptr> readoutException_ =
         locked_ptr<std::exception_ptr>(std::in_place);
@@ -96,6 +105,21 @@ class Readout: public WorkerBase
   private:
     int listenPort_ = McpdDefaultPort;
     int dataSocket_ = -1;
+};
+
+class Replay: public WorkerBase
+{
+  public:
+    explicit Replay(size_t packetBufferMaxPackets = DefaultPacketBufferMaxPackets);
+    explicit Replay(const std::string &filename,
+                    size_t packetBufferMaxPackets = DefaultPacketBufferMaxPackets);
+
+  protected:
+    void workerLoop(std::promise<bool> promise) override;
+
+  private:
+    std::string filename_;
+    std::ifstream inputFile_;
 };
 
 } // namespace mesytec::mcpd::py_lib
