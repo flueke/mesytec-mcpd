@@ -178,7 +178,7 @@ class MDLLHistos(QtCore.QObject):
         if packet.buffer_type != mcpd.constants.buffer_types.MdllDataBufferType:
             raise RuntimeError(f"Invalid packet type for MDLLHistos: {packet.buffer_type:#06x}")
 
-        for event in packet.get_events():
+        for event in packet.get_decoded_events():
             if neutron := event.mdll_neutron():
                 self.amp_hist.fill(neutron.amplitude)
                 self.x_pos_hist.fill(neutron.x_pos)
