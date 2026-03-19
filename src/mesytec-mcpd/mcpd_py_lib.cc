@@ -5,22 +5,17 @@
 
 namespace py = pybind11;
 
-namespace mesytec::mcpd
+namespace mesytec::mcpd::py_lib
 {
 
-Readout::Readout(int listenPort, size_t packetBufferMaxSize)
-    : listenPort_(listenPort)
+WorkerBase::WorkerBase(size_t packetBufferMaxPackets)
+    : packetBufferMaxPackets_(packetBufferMaxPackets)
 {
-    spdlog::debug("{}: listenPort={}", PRETTY_FUNCTION, listenPort_);
-    packetBuffer_.lock()->reserve(packetBufferMaxSize);
 }
 
-Readout::~Readout()
-{
-    stop();
-}
+WorkerBase::~WorkerBase() { stop(); }
 
-bool Readout::start()
+bool WorkerBase::start()
 {
     spdlog::debug("{}", PRETTY_FUNCTION);
 
@@ -33,7 +28,7 @@ bool Readout::start()
     }
 
     keepRunning_ = true;
-    counters_ = {};
+    resetCounters();
     *readoutException_.lock() = nullptr;
 
     std::promise<bool> promise;
@@ -44,33 +39,33 @@ bool Readout::start()
         gil_release = std::make_unique<py::gil_scoped_release>();
 
     spdlog::debug("{}: starting readout thread", PRETTY_FUNCTION);
-    readoutThread_ = std::thread(&Readout::readoutLoop, this, std::move(promise));
+    workerThread_ = std::thread(&WorkerBase::readoutLoop_, this, std::move(promise));
     spdlog::debug("{}: readout thread started, returning", PRETTY_FUNCTION);
 
-    // If we just return f.get() here it immediately throws any exceptions but
-    // the readout thread will still be running for a bit. So to the outside
-    // isRunning() will still return true. To fix this we immediately join the
-    // thread in here if an exception was thrown.
+    // In case f.get() throws we have to stop the thread, otherwise isRunning()
+    // will still return true, despite the worker being stopped.
     try
     {
-        spdlog::debug("{}: readout thread startup completed, waiting for result", PRETTY_FUNCTION);
+        spdlog::debug("{}: worker thread startup completed, waiting for result", PRETTY_FUNCTION);
         auto result = f.get();
-        spdlog::debug("{}: readout thread startup completed successfully, returning", PRETTY_FUNCTION);
+        spdlog::debug("{}: worker thread startup completed successfully, returning",
+                      PRETTY_FUNCTION);
         return result;
     }
     catch (...)
     {
-        if (readoutThread_.joinable())
+        if (workerThread_.joinable())
         {
             spdlog::debug("{}: joining readout thread after exception in startup", PRETTY_FUNCTION);
-            readoutThread_.join();
-            spdlog::debug("{}: readout thread joined after exception in startup, rethrowing", PRETTY_FUNCTION);
+            workerThread_.join();
+            spdlog::debug("{}: readout thread joined after exception in startup, rethrowing",
+                          PRETTY_FUNCTION);
         }
         throw; // rethrow
     }
 }
 
-bool Readout::stop()
+bool WorkerBase::stop()
 {
     std::unique_lock<std::mutex> lock(startStopMutex_);
 
@@ -81,14 +76,14 @@ bool Readout::stop()
 
     keepRunning_ = false;
 
-    if (readoutThread_.joinable())
+    if (workerThread_.joinable())
     {
         std::unique_ptr<py::gil_scoped_release> gil_release;
         if (PyGILState_Check())
             gil_release = std::make_unique<py::gil_scoped_release>();
 
-        readoutThread_.join();
-        spdlog::debug("{}: readout thread joined, returning", PRETTY_FUNCTION);
+        workerThread_.join();
+        spdlog::debug("{}: worker thread joined, returning", PRETTY_FUNCTION);
         return true;
     }
     else
@@ -98,15 +93,84 @@ bool Readout::stop()
     }
 }
 
+void WorkerBase::readoutLoop_(std::promise<bool> promise)
+{
+    try
+    {
+        readoutLoop(std::move(promise));
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::error("{}: worker loop exiting with exception: {}", PRETTY_FUNCTION, e.what());
+        *readoutException_.lock() = std::current_exception();
+    }
+}
+
+bool WorkerBase::isRunning() const
+{
+    std::lock_guard<std::mutex> lock(startStopMutex_);
+    return isRunning_();
+}
+bool WorkerBase::hasException() const { return *readoutException_.lock() != nullptr; }
+
+bool WorkerBase::getResult() const
+{
+    if (auto exPtr = readoutException_.lock(); *exPtr)
+    {
+        // Throw, clear, rethrow
+        try
+        {
+            std::rethrow_exception(*exPtr);
+        }
+        catch (...)
+        {
+            *exPtr = {};
+            throw;
+        }
+    }
+
+    return true;
+}
+
+u64 WorkerBase::getPacketCount() const { return packetBuffer_.lock()->size(); }
+
+std::vector<DataPacket> WorkerBase::getPackets()
+{
+    auto packetBuffer = packetBuffer_.lock();
+    auto result = std::move(*packetBuffer);
+    *packetBuffer = {};
+    spdlog::debug("{}: returning {} packets", PRETTY_FUNCTION, result.size());
+    return result;
+}
+
+
+Readout::Readout(int listenPort, size_t packetBufferMaxPackets)
+    : WorkerBase(packetBufferMaxPackets)
+    , listenPort_(listenPort)
+{
+    spdlog::debug("{}: listenPort={}", PRETTY_FUNCTION, listenPort_);
+}
+
 void Readout::readoutLoop(std::promise<bool> promise)
 {
     spdlog::debug("entering {}", PRETTY_FUNCTION);
-    int dataSock = -1;
+
+    auto cleanup = [this]()
+    {
+        if (dataSocket_ != -1)
+        {
+            close_socket(dataSocket_);
+            dataSocket_ = -1;
+        }
+    };
+
+    assert(dataSocket_ == -1); // should not happen as we do proper cleanup :)
+    cleanup();                 // in release builds close the socket and try to reopen it later
 
     try
     {
         std::error_code ec;
-        dataSock = create_bound_udp_socket(listenPort_, &ec);
+        dataSocket_ = create_bound_udp_socket(listenPort_, &ec);
 
         if (ec)
         {
@@ -117,10 +181,10 @@ void Readout::readoutLoop(std::promise<bool> promise)
         else
         {
             spdlog::debug("{}: created and bound UDP socket to port {}, sockfd={}, ec={}",
-                          PRETTY_FUNCTION, listenPort_, dataSock, ec.message());
+                          PRETTY_FUNCTION, listenPort_, dataSocket_, ec.message());
         }
 
-        ec = set_socket_read_timeout(dataSock, 100); // ms
+        ec = set_socket_read_timeout(dataSocket_, 100); // ms
 
         if (ec)
         {
@@ -135,7 +199,7 @@ void Readout::readoutLoop(std::promise<bool> promise)
         }
 
         {
-            u16 localPort = get_local_socket_port(dataSock);
+            u16 localPort = get_local_socket_port(dataSocket_);
             spdlog::info("{}: listening for data on port {}", PRETTY_FUNCTION, localPort);
         }
 
@@ -143,22 +207,23 @@ void Readout::readoutLoop(std::promise<bool> promise)
     }
     catch (const std::exception &e)
     {
-        if (dataSock != -1)
-            close_socket(dataSock);
+        // Exception from the startup phase: clean up, store the exception, return.
+        cleanup();
         promise.set_exception(std::current_exception());
         spdlog::warn("readout thread startup failed with exception: {}", e.what());
         return;
     }
 
+    // TODO: calculate packet loss and update counters.packetsLost
     try
     {
-        while (keepRunning_.load(std::memory_order_relaxed))
+        while (keepRunning())
         {
             size_t bytesTransferred = 0u;
             sockaddr_in srcAddr = {};
             DataPacket dataPacket = {};
 
-            auto ec = receive_one_packet(dataSock, reinterpret_cast<u8 *>(&dataPacket),
+            auto ec = receive_one_packet(dataSocket_, reinterpret_cast<u8 *>(&dataPacket),
                                          sizeof(dataPacket), bytesTransferred,
                                          DefaultReadTimeout_ms, &srcAddr);
 
@@ -167,60 +232,39 @@ void Readout::readoutLoop(std::promise<bool> promise)
                 if (ec != SocketErrorType::Timeout)
                     throw std::system_error(ec);
 
-                counters_.lock()->timeouts++;
+                getCounters_().lock()->timeouts++;
             }
             else if (bytesTransferred)
             {
-                packetBuffer_.lock()->push_back(std::move(dataPacket));
-                auto counters = counters_.lock();
+                auto counters = getCounters_().lock();
                 counters->packets++;
                 counters->bytes += bytesTransferred;
                 counters->events += get_event_count(dataPacket);
+
+                auto packetBuffer = getPacketBuffer().lock();
+
+                if (packetBuffer->size() >= getPacketBufferMaxPackets())
+                {
+                    counters->packetsDropped++;
+                    spdlog::warn("{}: packet buffer full ({} packets), dropping packet",
+                                 PRETTY_FUNCTION, packetBuffer->size());
+                }
+                else
+                {
+                    getPacketBuffer().lock()->emplace_back(std::move(dataPacket));
+                }
             }
         }
+
+        cleanup();
     }
     catch (const std::exception &e)
     {
-        spdlog::error("{}: readout loop exiting with exception: {}", PRETTY_FUNCTION, e.what());
-        *readoutException_.lock() = std::current_exception();
+        cleanup();
+        throw; // WorkerBase handles it
     }
-
-    if (dataSock != -1)
-        close_socket(dataSock);
 
     spdlog::debug("exiting {}", PRETTY_FUNCTION);
 }
 
-bool Readout::isRunning_() const { return readoutThread_.joinable(); }
-
-bool Readout::isRunning() const
-{
-    std::lock_guard<std::mutex> lock(startStopMutex_);
-    return isRunning_();
-}
-
-std::vector<DataPacket> Readout::getPackets()
-{
-    auto packetBuffer = packetBuffer_.lock();
-    auto result = std::move(*packetBuffer);
-    *packetBuffer = {};
-    packetBuffer->reserve(1024);
-    spdlog::debug("{}: returning {} packets", PRETTY_FUNCTION, result.size());
-    return result;
-}
-
-ReadoutCounters Readout::getCounters() { return *counters_.lock(); }
-
-bool Readout::hasReadoutException() const { return *readoutException_.lock() != nullptr; }
-
-std::exception_ptr Readout::getReadoutException() { return *readoutException_.lock(); }
-
-void Readout::rethrowReadoutException()
-{
-    auto excPtr = *readoutException_.lock();
-    if (excPtr)
-        std::rethrow_exception(excPtr);
-}
-
-
-} // namespace mesytec::mcpd
+} // namespace mesytec::mcpd::py_lib
