@@ -39,7 +39,7 @@ bool WorkerBase::start()
         gil_release = std::make_unique<py::gil_scoped_release>();
 
     spdlog::debug("{}: starting readout thread", PRETTY_FUNCTION);
-    workerThread_ = std::thread(&WorkerBase::readoutLoop_, this, std::move(promise));
+    workerThread_ = std::thread(&WorkerBase::workerLoop_, this, std::move(promise));
     spdlog::debug("{}: readout thread started, returning", PRETTY_FUNCTION);
 
     // In case f.get() throws we have to stop the thread, otherwise isRunning()
@@ -93,11 +93,11 @@ bool WorkerBase::stop()
     }
 }
 
-void WorkerBase::readoutLoop_(std::promise<bool> promise)
+void WorkerBase::workerLoop_(std::promise<bool> promise)
 {
     try
     {
-        readoutLoop(std::move(promise));
+        workerLoop(std::move(promise));
     }
     catch (const std::exception &e)
     {
@@ -149,7 +149,7 @@ Readout::Readout(int listenPort, size_t packetBufferMaxPackets)
     spdlog::debug("{}: listenPort={}", PRETTY_FUNCTION, listenPort_);
 }
 
-void Readout::readoutLoop(std::promise<bool> promise)
+void Readout::workerLoop(std::promise<bool> promise)
 {
     spdlog::debug("entering {}", PRETTY_FUNCTION);
 
