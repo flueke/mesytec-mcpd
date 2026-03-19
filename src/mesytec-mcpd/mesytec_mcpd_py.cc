@@ -81,29 +81,29 @@ PYBIND11_MODULE(_mesytec_mcpd_py, m)
         .def_readonly("type", &DecodedEvent::type)
         .def_readonly("timestamp", &DecodedEvent::timestamp)
         .def("neutron",
-                      [](const DecodedEvent &event) -> py::object
-                      {
-                        if (event.type == EventType::Neutron)
-                            return py::cast(event.neutron);
-                        else
-                            return py::none();
-                      })
+             [](const DecodedEvent &event) -> py::object
+             {
+                 if (event.type == EventType::Neutron)
+                     return py::cast(event.neutron);
+                 else
+                     return py::none();
+             })
         .def("trigger",
-                      [](const DecodedEvent &event) -> py::object
-                      {
-                        if (event.type == EventType::Trigger)
-                            return py::cast(event.trigger);
-                        else
-                            return py::none();
-                      })
+             [](const DecodedEvent &event) -> py::object
+             {
+                 if (event.type == EventType::Trigger)
+                     return py::cast(event.trigger);
+                 else
+                     return py::none();
+             })
         .def("mdll_neutron",
-                      [](const DecodedEvent &event) -> py::object
-                      {
-                        if (event.type == EventType::MdllNeutron)
-                            return py::cast(event.mdllNeutron);
-                        else
-                            return py::none();
-                      })
+             [](const DecodedEvent &event) -> py::object
+             {
+                 if (event.type == EventType::MdllNeutron)
+                     return py::cast(event.mdllNeutron);
+                 else
+                     return py::none();
+             })
         .def("__str__", [](const DecodedEvent &event) { return to_string(event); });
 
     py::class_<DataPacket>(m, "DataPacket")
@@ -154,7 +154,7 @@ PYBIND11_MODULE(_mesytec_mcpd_py, m)
         .def("decode_event", [](const DataPacket &packet, size_t eventNum)
              { return decode_event(packet, eventNum); })
 
-        .def("get_events",
+        .def("get_decoded_events",
              [](const DataPacket &packet)
              {
                  const auto eventCount = get_event_count(packet);
@@ -165,6 +165,20 @@ PYBIND11_MODULE(_mesytec_mcpd_py, m)
                      events.push_back(decode_event(packet, i));
 
                  return events;
+             })
+
+        .def("get_raw_events",
+             [](const DataPacket &packet)
+             {
+                 const auto eventCount = get_event_count(packet);
+                 auto result = py::array_t<u64>(eventCount); // allocates storage
+                 py::buffer_info info = result.request();
+                 u64 *ptr = static_cast<u64 *>(info.ptr);
+
+                 for (size_t i = 0; i < eventCount; ++i)
+                     ptr[i] = get_event(packet, i);
+
+                 return result;
              });
 
     py::class_<Counters>(m, "Counters")
@@ -174,24 +188,29 @@ PYBIND11_MODULE(_mesytec_mcpd_py, m)
         .def_readonly("timeouts", &Counters::timeouts)
         .def_readonly("events", &Counters::events)
         .def_readonly("packets_lost", &Counters::packetsLost)
-        .def_readonly("packets_dropped", &Counters::packetsDropped)
-        ;
+        .def_readonly("packets_dropped", &Counters::packetsDropped);
 
     py::class_<Readout>(m, "Readout")
-        .def(py::init<int, size_t>(), py::arg("listenPort") = McpdDefaultPort, py::arg("packetBufferMaxPackets") = py_lib::DefaultPacketBufferMaxPackets)
+        .def(py::init<int, size_t>(), py::arg("listenPort") = McpdDefaultPort,
+             py::arg("packetBufferMaxPackets") = py_lib::DefaultPacketBufferMaxPackets)
         .def("start", &Readout::start)
         .def("stop", &Readout::stop)
         .def("is_running", &Readout::isRunning)
+        .def("get_packet_count", &Readout::getPacketCount)
         .def("get_packets", &Readout::getPackets)
         .def("get_counters", &Readout::getCounters)
         .def("has_exception", &Readout::hasException)
-        .def("rethrow_exception", &Readout::rethrowException)
-        ;
+        .def("rethrow_exception", &Readout::rethrowException);
 
     // Event field constants (maximum values)
     namespace ec = event_constants;
 
     py::module_ constants = m.def_submodule("constants", "Event field ranges");
+
+    constants.attr("event_type_shift") = ec::IdShift;
+    constants.attr("event_type_mask") = ec::IdMask;
+    constants.attr("event_type_bits") = ec::IdBits;
+    constants.attr("timestamp_max") = (1u << ec::TimestampBits) - 1;
 
     py::module_ mdll_neutron =
         constants.def_submodule("mdll_neutron", "MDLL neutron event field ranges");
@@ -209,8 +228,6 @@ PYBIND11_MODULE(_mesytec_mcpd_py, m)
     trigger.attr("trigger_id_max") = (1u << ec::trigger::TriggerIdBits) - 1;
     trigger.attr("data_id_max") = (1u << ec::trigger::DataIdBits) - 1;
     trigger.attr("data_max") = (1u << ec::trigger::DataBits) - 1;
-
-    m.attr("timestamp_max") = (1u << ec::TimestampBits) - 1;
 
     py::module_ buffer_types = constants.def_submodule("buffer_types", "Data buffer types");
     buffer_types.attr("CommandPacketBufferType") = CommandPacketBufferType;
