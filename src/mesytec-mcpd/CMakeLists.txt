@@ -53,6 +53,9 @@ if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
     if (DEFINED SKBUILD)
         pybind11_add_module(_mesytec_mcpd_py MODULE mesytec_mcpd_py.cc mcpd_py_lib.cc)
         target_link_libraries(_mesytec_mcpd_py PRIVATE mesytec-mcpd spdlog::spdlog)
+        if (WIN32)
+            target_link_libraries(_mesytec_mcpd_py PRIVATE ws2_32 winmm)
+        endif(WIN32)
         install(TARGETS _mesytec_mcpd_py mesytec-mcpd DESTINATION ${SKBUILD_PROJECT_NAME})
         install(FILES __init__.py py.typed DESTINATION ${SKBUILD_PROJECT_NAME})
         # Install gui submodule
@@ -62,6 +65,9 @@ if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
     else()
         pybind11_add_module(_mesytec_mcpd_py MODULE mesytec_mcpd_py.cc mcpd_py_lib.cc)
         target_link_libraries(_mesytec_mcpd_py PRIVATE mesytec-mcpd spdlog::spdlog)
+        if (WIN32)
+            target_link_libraries(_mesytec_mcpd_py PRIVATE ws2_32 winmm)
+        endif(WIN32)
         install(TARGETS _mesytec_mcpd_py
             LIBRARY DESTINATION lib/mesytec_mcpd_py
             RUNTIME DESTINATION bin
