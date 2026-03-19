@@ -1,9 +1,16 @@
 # To build a wheel
-pip wheel -w dist .[gui]
-pipx install dist\mesytec_mcpd_py-0.6.1.dev35-cp314-cp314-win_amd64.whl[gui]
+
+    pip wheel -w dist .[gui]
+    pipx install dist\mesytec_mcpd_py-0.6.1.dev35-cp314-cp314-win_amd64.whl[gui]
 
 # Editable dev installation
-pip install -e .[gui,dev]
+
+    export SKBUILD_CMAKE_BUILD_TYPE=Debug
+    pip install -e ..[dev,gui] --no-deps --no-build-isolation -v
+
+  This will create and resuse a dir under build for the cmake build. Everything
+  can be inspected and cmake can be run manually or from vscode if needed.
+  The build deps need to be manually installed in the active venv.
 
 # Notes
 - To use clang-cl set CMAKE_GENERATOR=Ninja and set both CC and CXX to the full path to clang-cl, e.g.
@@ -15,7 +22,4 @@ pip install -e .[gui,dev]
 
 - The code currently also builds with msvc, so the above is not required.
 
-- To use Ninja and clang(-cl) CMAKE_GENERATOR and CMAKE_CXX_COMPILER have to be
-  set in the env. Figure out if this can be done without having to modify the env.
-- CMAKE_CXX_COMPILER has to be the full path to the compiler.
-- Everything has to be run in a 'native tools command prompt'.
+- Everything has to be run in a 'native tools command prompt' under windows.
