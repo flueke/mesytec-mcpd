@@ -73,10 +73,10 @@ class ReadoutWorker(QtCore.QObject):
             logging.debug("ReadoutWorker: entering readout loop")
 
             while self.running:
-                if self.readout.has_readout_exception():
-                    logging.error(
-                        f"ReadoutWorker: exception in readout thread, stopping readout (e={self.readout.get_readout_exception()})"
-                    )
+                try:
+                    self.readout.rethrow_exception()
+                except Exception as e:
+                    logging.error(f"ReadoutWorker: exception in readout thread, stopping readout ({e=})")
                     break
 
                 packets = self.readout.get_packets()
@@ -179,7 +179,7 @@ class MDLLHistos(QtCore.QObject):
             raise RuntimeError(f"Invalid packet type for MDLLHistos: {packet.buffer_type:#06x}")
 
         for event in packet.get_events():
-            if neutron := event.neutron():
+            if neutron := event.mdll_neutron():
                 self.amp_hist.fill(neutron.amplitude)
                 self.x_pos_hist.fill(neutron.x_pos)
                 self.y_pos_hist.fill(neutron.y_pos)
