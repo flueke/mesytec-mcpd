@@ -1,10 +1,8 @@
 # https://packaging.python.org/en/latest/guides/writing-pyproject-toml/
-# TODO: implement a hook that calls pybind11-stubgen and places the stubs inside
-# the wheel in case one is built. This should also work during dev, without
-# having to build a wheel.
+# https://scikit-build-core.readthedocs.io/en/stable/configuration/
 
 [build-system]
-requires = ["scikit-build-core", "pybind11", "setuptools-scm", "pybind11-stubgen"]
+requires = ["scikit-build-core>=0.12", "setuptools-scm", "pybind11-stubgen"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -40,12 +38,17 @@ Homepage = "https://mesytec.com/products/neutron-scattering.html"
 Repository = "https://github.com/mesytec/mesytec-mcpd"
 
 [tool.scikit-build]
+minimum-version = "build-system.requires"
 cmake.args = [ '-DMCPD_ENABLE_PYTHON=ON' ]
 build.verbose = true
 logging.level = "INFO"
 metadata.version.provider = "scikit_build_core.metadata.setuptools_scm"
 wheel.packages = [ "mesytec_mcpd_py" ]
 wheel.py-api = "cp312"
+# Not sure which one to keep. Plain 'build' is picked up by vscode, the
+# {wheel_tag} variant was not but it might be needed for cibuildwheel.
+#build-dir = "build/{wheel_tag}"
+build-dir = "build"
 
 [tool.setuptools_scm]
 version_scheme = "python-simplified-semver"
