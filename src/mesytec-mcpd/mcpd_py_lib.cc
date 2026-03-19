@@ -113,7 +113,7 @@ bool WorkerBase::isRunning() const
 }
 bool WorkerBase::hasException() const { return *readoutException_.lock() != nullptr; }
 
-bool WorkerBase::getResult() const
+void WorkerBase::rethrowException()
 {
     if (auto exPtr = readoutException_.lock(); *exPtr)
     {
@@ -129,7 +129,6 @@ bool WorkerBase::getResult() const
         }
     }
 
-    return true;
 }
 
 u64 WorkerBase::getPacketCount() const { return packetBuffer_.lock()->size(); }
