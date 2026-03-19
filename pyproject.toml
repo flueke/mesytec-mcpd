@@ -27,7 +27,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-gui = ["pyqtgraph", "numpy", "PySide6", "hist[plot,fit]", "rich", "awkward", "numba"]
+gui = ["pyqtgraph", "numpy", "PySide6", "hist[plot,fit]", "rich", "awkward", "numba", "platformdirs"]
 dev = ["pre-commit"]
 
 [project.gui-scripts]

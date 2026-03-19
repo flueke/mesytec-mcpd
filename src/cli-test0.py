@@ -3,6 +3,7 @@ import numba as nb
 import numpy as np
 import mesytec_mcpd_py as mcpd
 import time
+import sys
 
 from mesytec_mcpd_py import constants as mc
 
@@ -15,8 +16,10 @@ from mesytec_mcpd_py import constants as mc
 
 #@nb.njit(nb.int32(nb.uint64))
 @nb.vectorize([nb.int32(nb.uint64)])
-def get_event_type(raw_event):
-    return (raw_event >> mc.event_type_shift) & mc.event_type_mask
+def get_event_type(raw_event: np.uint64) -> np.uint8:
+    s = np.uint64(mc.event_type_shift)
+    m = np.uint64(mc.event_type_mask)
+    return np.uint8((raw_event >> s) & m)
 
 @nb.vectorize([nb.int32(nb.uint64)])
 
@@ -29,28 +32,30 @@ def decode_raw_events(buffer_type: int, raw_events: np.ndarray) -> ak.Array:
     #return get_event_type(raw_events)
 
 
-def decode_events(packet: mcpd.DataPacket) -> ak.Array:
-    return decode_raw_events(packet.buffer_type, packet.get_raw_events())
+def decode_events(aug_packet: mcpd.AugmentedDataPacket) -> ak.Array:
+    return decode_raw_events(aug_packet.buffer_type, aug_packet.packet.get_raw_events())
 
 
-rdo = mcpd.Readout()
-rdo.start()
-try:
-    while rdo.is_running():
-        if (packet_count := rdo.get_packet_count()) > 0:
-            print(f"Packet count: {packet_count}")
-            packets = rdo.get_packets()
+if __name__ == "__main__":
 
-            for packet in packets:
-                print(f"Packet with {packet.event_count()} events")
-                decoded = decode_events(packet)
-                print(decoded.layout, decoded.fields)
-                #print(decode_events(packet))
-                #raw_events = packet.get_raw_events()
-                #raw_events = raw_events_to_ak(raw_events=raw_events)
-        else:
-            time.sleep(0.1)
+    rdo = mcpd.Readout()
+    rdo.start()
+    try:
+        while rdo.is_running():
+            if (packet_count := rdo.get_packet_count()) > 0:
+                print(f"Packet count: {packet_count}")
+                packets = rdo.get_packets()
 
-except KeyboardInterrupt:
-    print("Stopping readout...")
-    rdo.stop()
+                for packet in packets:
+                    print(f"Packet with {packet.event_count()} events")
+                    decoded = decode_events(packet)
+                    print(decoded.layout, decoded.fields)
+                    #print(decode_events(packet))
+                    #raw_events = packet.get_raw_events()
+                    #raw_events = raw_events_to_ak(raw_events=raw_events)
+            else:
+                time.sleep(0.1)
+
+    except KeyboardInterrupt:
+        print("Stopping readout...")
+        rdo.stop()
