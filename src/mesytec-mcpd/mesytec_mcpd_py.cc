@@ -21,13 +21,15 @@ void init_logging()
     // mesytec-mcpd links privately against spdlog and so do we. This means we
     // have two copies of spdlog around. The code below sets logger and log
     // level for both instances.
-    auto logger = pybind11_log::init_mt("mcpd_py");
+    #if 1
+    //auto logger = pybind11_log::init_mt("mcpd_py");
 
-    spdlog::set_default_logger(logger);
+    //spdlog::set_default_logger(logger);
     spdlog::set_level(spdlog::level::trace);
 
-    mesytec::mcpd::set_default_logger(logger);
+    //mesytec::mcpd::set_default_logger(logger);
     mesytec::mcpd::set_global_log_level(spdlog::level::trace);
+    #endif
 }
 
 using Counters = py_lib::Counters;
@@ -202,29 +204,27 @@ PYBIND11_MODULE(_mesytec_mcpd_py, m)
 
     py::class_<Readout>(m, "Readout")
         .def(py::init<int, size_t>(), py::arg("listenPort") = McpdDefaultPort,
-             py::arg("packetBufferMaxPackets") = py_lib::DefaultPacketBufferMaxPackets)
+             py::arg("queue_size") = py_lib::DefaultQueueSize)
         .def("start", &Readout::start)
         .def("stop", &Readout::stop)
         .def("is_running", &Readout::isRunning)
-        .def("get_packet_count", &Readout::getPacketCount)
-        .def("get_packets", &Readout::getPackets)
-        .def("get_counters", &Readout::getCounters)
         .def("has_exception", &Readout::hasException)
-        .def("rethrow_exception", &Readout::rethrowException);
+        .def("rethrow_exception", &Readout::rethrowException)
+        .def("get_queue", &Readout::getQueue)
+        .def("get_counters", &Readout::getCounters);
 
     py::class_<Replay>(m, "Replay")
-        .def(py::init<size_t>(), py::arg("packetBufferMaxPackets") = py_lib::DefaultPacketBufferMaxPackets)
+        .def(py::init<size_t>(), py::arg("queue_size") = py_lib::DefaultQueueSize)
         .def(py::init<const std::string &, size_t>(),
              py::arg("filename"),
-             py::arg("packetBufferMaxPackets") = py_lib::DefaultPacketBufferMaxPackets)
+             py::arg("queue_size") = py_lib::DefaultQueueSize)
         .def("start", &Replay::start)
         .def("stop", &Replay::stop)
         .def("is_running", &Replay::isRunning)
-        .def("get_packet_count", &Replay::getPacketCount)
-        .def("get_packets", &Replay::getPackets)
-        .def("get_counters", &Replay::getCounters)
         .def("has_exception", &Replay::hasException)
-        .def("rethrow_exception", &Replay::rethrowException);
+        .def("rethrow_exception", &Replay::rethrowException)
+        .def("get_queue", &Replay::getQueue)
+        .def("get_counters", &Replay::getCounters);
 
     // Event field constants (maximum values)
     namespace ec = event_constants;

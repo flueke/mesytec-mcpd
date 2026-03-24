@@ -1,19 +1,19 @@
 #include "mcpd_py_lib.h"
 #include <memory>
 #include <mesytec-mcpd/util/logging.h>
-#include <pybind11/pybind11.h>
 
 namespace py = pybind11;
 
 namespace mesytec::mcpd::py_lib
 {
 
-WorkerBase::WorkerBase(size_t packetBufferMaxPackets)
-    : packetBufferMaxPackets_(packetBufferMaxPackets)
+WorkerBase::WorkerBase(size_t queueSize)
 {
+    py::object Queue = py::module_::import("queue").attr("Queue");
+    queue_ = Queue(queueSize);
 }
 
-WorkerBase::~WorkerBase() { stop(); }
+WorkerBase::~WorkerBase() { stop(true); }
 
 bool WorkerBase::start()
 {
@@ -27,18 +27,18 @@ bool WorkerBase::start()
         return false;
     }
 
-    keepRunning_ = true;
     resetCounters();
     *readoutException_.lock() = nullptr;
 
     std::promise<bool> promise;
     auto f = promise.get_future();
 
+    spdlog::debug("{}: starting readout thread", PRETTY_FUNCTION);
+
     std::unique_ptr<py::gil_scoped_release> gil_release;
     if (PyGILState_Check())
         gil_release = std::make_unique<py::gil_scoped_release>();
 
-    spdlog::debug("{}: starting readout thread", PRETTY_FUNCTION);
     workerThread_ = std::thread(&WorkerBase::workerLoop_, this, std::move(promise));
     spdlog::debug("{}: readout thread started, returning", PRETTY_FUNCTION);
 
@@ -65,22 +65,24 @@ bool WorkerBase::start()
     }
 }
 
-bool WorkerBase::stop()
+bool WorkerBase::stop(bool immediate)
 {
     std::unique_lock<std::mutex> lock(startStopMutex_);
+
+    auto gil_acquire = std::make_unique<py::gil_scoped_acquire>();
 
     if (!isRunning_())
     {
         return false;
     }
 
-    keepRunning_ = false;
+    queue_.attr("shutdown")(immediate);
 
     if (workerThread_.joinable())
     {
-        std::unique_ptr<py::gil_scoped_release> gil_release;
-        if (PyGILState_Check())
-            gil_release = std::make_unique<py::gil_scoped_release>();
+        //std::unique_ptr<py::gil_scoped_release> gil_release;
+        //if (PyGILState_Check())
+        //    gil_release = std::make_unique<py::gil_scoped_release>();
 
         workerThread_.join();
         spdlog::debug("{}: worker thread joined, returning", PRETTY_FUNCTION);
@@ -90,53 +92,6 @@ bool WorkerBase::stop()
     {
         // This should not happen because we checked isRunning_() above.
         return false;
-    }
-}
-
-void WorkerBase::publishPacket(AugmentedDataPacket &&augPacket, size_t bytesTransferred, bool block)
-{
-    //std::unique_ptr<py::gil_scoped_release> gil_release;
-    //if (PyGILState_Check())
-    //    gil_release = std::make_unique<py::gil_scoped_release>();
-
-    auto buffer_size = [this]() { return getPacketBuffer().lock()->size(); };
-
-    auto is_full = [this]()
-    { return getPacketBuffer().lock()->size() >= getPacketBufferMaxPackets(); };
-
-    //if (is_full() && !block)
-    //{
-    //    spdlog::warn("{}: packet buffer full ({} packets), dropping packet", PRETTY_FUNCTION,
-    //                 buffer_size());
-    //    getCounters_().lock()->packetsDropped++;
-    //}
-    //else
-    {
-        // all broken, do this properly or rethink
-        // TODO: might need a condition variable here or a better queue
-        while (block && is_full() && keepRunning())
-        {
-            spdlog::trace(
-                "{}: packet buffer full ({} packets), waiting for space to publish packet",
-                PRETTY_FUNCTION, buffer_size());
-            //std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-
-        if (!is_full())
-        {
-            auto counters = getCounters_().lock();
-            counters->packets++;
-            counters->bytes += bytesTransferred;
-            counters->events += get_event_count(augPacket.packet);
-
-            getPacketBuffer().lock()->emplace_back(std::move(augPacket));
-        }
-        else
-        {
-            getCounters_().lock()->packetsDropped++;
-            spdlog::warn("{}: packet buffer full ({} packets) and stop requested, dropping packet",
-                         PRETTY_FUNCTION, buffer_size());
-        }
     }
 }
 
@@ -177,27 +132,16 @@ void WorkerBase::rethrowException()
     }
 }
 
-u64 WorkerBase::getPacketCount() const { return packetBuffer_.lock()->size(); }
-
-// TODO: the binding code will copy the vector. expose as buffer protocol and
-// let pybind keep the vector alive
-std::vector<AugmentedDataPacket> WorkerBase::getPackets()
-{
-    auto packetBuffer = packetBuffer_.lock();
-    auto result = std::move(*packetBuffer);
-    *packetBuffer = {};
-    spdlog::debug("{}: returning {} packets", PRETTY_FUNCTION, result.size());
-    return result;
-}
-
-Readout::Readout(int listenPort, size_t packetBufferMaxPackets)
-    : WorkerBase(packetBufferMaxPackets)
+Readout::Readout(int listenPort, size_t queueSize)
+    : WorkerBase(queueSize)
     , listenPort_(listenPort)
 { spdlog::debug("{}: listenPort={}", PRETTY_FUNCTION, listenPort_); }
 
 void Readout::workerLoop(std::promise<bool> promise)
 {
     spdlog::debug("entering {}", PRETTY_FUNCTION);
+
+    py::object Queue = py::module_::import("queue").attr("Queue");
 
     auto cleanup = [this]()
     {
@@ -261,7 +205,7 @@ void Readout::workerLoop(std::promise<bool> promise)
     // TODO: calculate packet loss and update counters.packetsLost
     try
     {
-        while (keepRunning())
+        while (true)
         {
             size_t bytesTransferred = 0u;
             sockaddr_in srcAddr = {};
@@ -271,9 +215,6 @@ void Readout::workerLoop(std::promise<bool> promise)
                                          sizeof(augPacket.packet), bytesTransferred,
                                          DefaultReadTimeout_ms, &srcAddr);
 
-            augPacket.srcAddr = ntohl(srcAddr.sin_addr.s_addr);
-            augPacket.srcPort = ntohs(srcAddr.sin_port);
-
             if (ec)
             {
                 if (ec != SocketErrorType::Timeout)
@@ -281,9 +222,19 @@ void Readout::workerLoop(std::promise<bool> promise)
 
                 getCounters_().lock()->timeouts++;
             }
-            else if (bytesTransferred)
+
+            augPacket.srcAddr = ntohl(srcAddr.sin_addr.s_addr);
+            augPacket.srcPort = ntohs(srcAddr.sin_port);
+
+            try
             {
-                publishPacket(std::move(augPacket), bytesTransferred, false);
+                getQueue().attr("put")(std::move(augPacket), false);
+            }
+            catch (py::error_already_set &e)
+            {
+                getCounters_().lock()->packetsDropped++;
+                if (e.matches(Queue.attr("Shutdown")))
+                    break;
             }
         }
 
@@ -303,8 +254,8 @@ Replay::Replay(size_t packetBufferMaxPackets)
 {
 }
 
-Replay::Replay(const std::string &filename, size_t packetBufferMaxPackets)
-    : WorkerBase(packetBufferMaxPackets)
+Replay::Replay(const std::string &filename, size_t queueSize)
+    : WorkerBase(queueSize)
     , filename_(filename)
 {
 }
@@ -312,6 +263,8 @@ Replay::Replay(const std::string &filename, size_t packetBufferMaxPackets)
 void Replay::workerLoop(std::promise<bool> promise)
 {
     spdlog::debug("entering {}", PRETTY_FUNCTION);
+
+    auto gil_acquire = std::make_unique<py::gil_scoped_acquire>();
 
     try
     {
@@ -342,14 +295,23 @@ void Replay::workerLoop(std::promise<bool> promise)
 
     try
     {
-        while (keepRunning() && !inputFile_.eof())
+        while (true)
         {
             AugmentedDataPacket augPacket = {};
             auto bytesRead = getCounters_().lock()->bytes;
             auto mbRead = bytesRead / (1024.0 * 1024.0);
-            spdlog::debug("{}: reading packet from file '{}', eof={}, bytesRead={} MB ({} bytes)",
+            spdlog::debug("{}: reading packet from file '{}', eof={}, totalBytesRead={} MB ({} bytes)",
                           PRETTY_FUNCTION, filename_, inputFile_.eof(), mbRead, bytesRead);
-            inputFile_.read(reinterpret_cast<char *>(&augPacket.packet), sizeof(augPacket.packet));
+
+            {
+                auto gil_release = std::make_unique<py::gil_scoped_release>();
+                inputFile_.read(reinterpret_cast<char *>(&augPacket.packet), sizeof(augPacket.packet));
+                auto counters = getCounters_().lock();
+                counters->packets++;
+                counters->bytes += sizeof(augPacket.packet);
+            }
+
+            assert(PyGILState_Check());
 
             if (inputFile_.eof())
             {
@@ -359,7 +321,21 @@ void Replay::workerLoop(std::promise<bool> promise)
 
             spdlog::debug("{}: read packet from file, bytesTransferred={}", PRETTY_FUNCTION,
                           sizeof(augPacket.packet));
-            publishPacket(std::move(augPacket), sizeof(augPacket.packet), true);
+
+            try
+            {
+                assert(PyGILState_Check());
+
+                // blocking enqueue
+                getQueue().attr("put")(std::move(augPacket), true);
+            }
+            catch (py::error_already_set &e)
+            {
+                getCounters_().lock()->packetsDropped++;
+                py::object Queue = py::module_::import("queue").attr("Queue");
+                if (e.matches(Queue.attr("Shutdown")))
+                    break;
+            }
         }
     }
     catch (const std::exception &e)
@@ -368,7 +344,9 @@ void Replay::workerLoop(std::promise<bool> promise)
         throw; // WorkerBase handles it
     }
 
-    spdlog::debug("exiting {}", PRETTY_FUNCTION);
+
+    spdlog::debug("shutting down queue and exiting {}", PRETTY_FUNCTION);
+    getQueue().attr("shutdown")(false);
 }
 
 } // namespace mesytec::mcpd::py_lib
