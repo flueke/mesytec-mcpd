@@ -151,6 +151,8 @@ if (MCPD_BUILD_TESTS)
         add_test(NAME ${exe_name} COMMAND $<TARGET_FILE:${exe_name}>)
     endfunction(add_gtest)
 
+    add_gtest(test_thread_safe_queue util/thread_safe_queue.test.cc)
+
     if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
         add_gtest(test_mcpd_py_lib mcpd_py_lib.test.cc)
         target_sources(test_mcpd_py_lib PRIVATE mcpd_py_lib.cc)
