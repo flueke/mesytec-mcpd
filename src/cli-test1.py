@@ -52,22 +52,24 @@ if __name__ == "__main__":
     doc_dir = platformdirs.user_documents_dir()
     input_filepath = f"{doc_dir}/mcpd-cli-two-mdllv2-pulsertest-00.mcpdlst"
 
-    ripley = mcpd.Replay(filename=input_filepath, queue_size=10)
+    ripley = mcpd.Replay(filename=input_filepath, queue_size=1000)
     logging.info(f"input_filepath: {input_filepath}")
 
     ripley.start()
     logging.info("Started ellen ripley replay...")
     input_queue = ripley.get_queue()
     packet_count = 0
+    event_count = 0
     try:
         while True:
             #print("Waiting for packets...")
             try:
                 packet = input_queue.get()
-                print(f"Got packet: {packet}")
                 packet_count += 1
+                raw_events = np.array(packet, copy = False)
+                event_count += raw_events.size
             except queue.ShutDown:
-                print("Replay finished.")
+                print(f"Replay finished. Got {packet_count} packets with {event_count} events.")
                 break
 
             #if i > 100:

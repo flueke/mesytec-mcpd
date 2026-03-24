@@ -21,15 +21,13 @@ void init_logging()
     // mesytec-mcpd links privately against spdlog and so do we. This means we
     // have two copies of spdlog around. The code below sets logger and log
     // level for both instances.
-    #if 1
-    //auto logger = pybind11_log::init_mt("mcpd_py");
-
-    //spdlog::set_default_logger(logger);
-    spdlog::set_level(spdlog::level::trace);
-
-    //mesytec::mcpd::set_default_logger(logger);
-    mesytec::mcpd::set_global_log_level(spdlog::level::trace);
+    #if 0
+    auto logger = pybind11_log::init_mt("mcpd_py"); // this currently deadlocks :), :(
+    spdlog::set_default_logger(logger);
+    mesytec::mcpd::set_default_logger(logger);
     #endif
+    spdlog::set_level(spdlog::level::info);
+    mesytec::mcpd::set_global_log_level(spdlog::level::info);
 }
 
 using namespace py_lib;
@@ -182,11 +180,12 @@ PYBIND11_MODULE(_mesytec_mcpd_py, m)
                  return result;
              });
 
-    py::class_<AugmentedDataPacket>(m, "AugmentedDataPacket")
+    py::class_<AugmentedDataPacket>(m, "AugmentedDataPacket", py::buffer_protocol())
         .def(py::init<>())
         .def_readonly("packet", &AugmentedDataPacket::packet)
         .def_readonly("src_addr", &AugmentedDataPacket::srcAddr)
-        .def_readonly("src_port", &AugmentedDataPacket::srcPort);
+        .def_readonly("src_port", &AugmentedDataPacket::srcPort)
+        .def_buffer(&AugmentedDataPacket::getBufferInfo);
 
     py::class_<Counters>(m, "Counters")
         .def(py::init<>())
@@ -196,8 +195,6 @@ PYBIND11_MODULE(_mesytec_mcpd_py, m)
         .def_readonly("events", &Counters::events)
         .def_readonly("packets_lost", &Counters::packetsLost)
         .def_readonly("packets_dropped", &Counters::packetsDropped);
-
-    // TODO: check if the inhertiance could be used here to cut down on code
 
     py::class_<WorkerBase>(m, "WorkerBase")
         .def("start", &WorkerBase::start)

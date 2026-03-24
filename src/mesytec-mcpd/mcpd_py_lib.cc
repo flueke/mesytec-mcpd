@@ -315,7 +315,7 @@ void Replay::workerLoop(std::promise<bool> promise)
 
             if (inputFile_.eof())
             {
-                spdlog::debug("{}: reached end of file, exiting replay loop", PRETTY_FUNCTION);
+                spdlog::info("{}: reached end of file, exiting replay loop", PRETTY_FUNCTION);
                 break;
             }
 
