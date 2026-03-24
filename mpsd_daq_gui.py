@@ -84,7 +84,6 @@ class PacketProcessor(QtCore.QObject):
     def process_event(self, event: mcpd.DecodedEvent):
         pass
 
-
 class ReadoutControlWidget(QtWidgets.QWidget):
     start = Signal()
     stop = Signal()

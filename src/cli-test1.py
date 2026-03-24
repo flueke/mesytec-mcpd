@@ -17,7 +17,7 @@ from mesytec_mcpd_py import constants as mc
 # All         Neutron         MdllNeutron     Trigger         outside
 # timestamp   mpsd_id         amplitude       trigger_id      buffer_type
 # device_id   channel         x_pos           data_id
-# event_type  position
+# event_type  position        y_pos
 
 ##@nb.njit(nb.int32(nb.uint64))
 #@nb.vectorize([nb.int32(nb.uint64)])
