@@ -36,6 +36,28 @@ struct AugmentedDataPacket
     DataPacket packet;
     u32 srcAddr;
     u16 srcPort;
+    mutable std::vector<u64> rawEvents; // buffer for raw event data, allocated on demand
+
+    py::buffer_info getBufferInfo() const
+    {
+        if (rawEvents.empty())
+        {
+            const auto eventCount = get_event_count(packet);
+            rawEvents.reserve(eventCount);
+
+            for (size_t i = 0; i < eventCount; ++i)
+                rawEvents.push_back(get_event(packet, i));
+        }
+
+        return py::buffer_info(
+            rawEvents.data(),           // Pointer to buffer
+            sizeof(u64),               // Size of one scalar
+            py::format_descriptor<u64>::format(), // Python struct-style format descriptor
+            1,                         // Number of dimensions
+            {rawEvents.size()},        // Buffer dimensions
+            {sizeof(u64)}              // Strides (in bytes) for each index
+        );
+    }
 };
 
 class WorkerBase
