@@ -32,10 +32,7 @@ void init_logging()
     #endif
 }
 
-using Counters = py_lib::Counters;
-using Readout = py_lib::Readout;
-using Replay = py_lib::Replay;
-using AugmentedDataPacket = py_lib::AugmentedDataPacket;
+using namespace py_lib;
 
 PYBIND11_MODULE(_mesytec_mcpd_py, m)
 {
@@ -202,29 +199,24 @@ PYBIND11_MODULE(_mesytec_mcpd_py, m)
 
     // TODO: check if the inhertiance could be used here to cut down on code
 
-    py::class_<Readout>(m, "Readout")
-        .def(py::init<int, size_t>(), py::arg("listenPort") = McpdDefaultPort,
-             py::arg("queue_size") = py_lib::DefaultQueueSize)
-        .def("start", &Readout::start)
-        .def("stop", &Readout::stop)
-        .def("is_running", &Readout::isRunning)
-        .def("has_exception", &Readout::hasException)
-        .def("rethrow_exception", &Readout::rethrowException)
-        .def("get_queue", &Readout::getQueue)
-        .def("get_counters", &Readout::getCounters);
+    py::class_<WorkerBase>(m, "WorkerBase")
+        .def("start", &WorkerBase::start)
+        .def("stop", &WorkerBase::stop, py::arg("immediate") = false)
+        .def("is_running", &WorkerBase::isRunning)
+        .def("has_exception", &WorkerBase::hasException)
+        .def("rethrow_exception", &WorkerBase::rethrowException)
+        .def("get_queue", &WorkerBase::getQueue)
+        .def("get_counters", &WorkerBase::getCounters);
 
-    py::class_<Replay>(m, "Replay")
+    py::class_<Readout, WorkerBase>(m, "Readout")
+        .def(py::init<int, size_t>(), py::arg("listenPort") = McpdDefaultPort,
+             py::arg("queue_size") = py_lib::DefaultQueueSize);
+
+    py::class_<Replay, WorkerBase>(m, "Replay")
         .def(py::init<size_t>(), py::arg("queue_size") = py_lib::DefaultQueueSize)
         .def(py::init<const std::string &, size_t>(),
              py::arg("filename"),
-             py::arg("queue_size") = py_lib::DefaultQueueSize)
-        .def("start", &Replay::start)
-        .def("stop", &Replay::stop)
-        .def("is_running", &Replay::isRunning)
-        .def("has_exception", &Replay::hasException)
-        .def("rethrow_exception", &Replay::rethrowException)
-        .def("get_queue", &Replay::getQueue)
-        .def("get_counters", &Replay::getCounters);
+             py::arg("queue_size") = py_lib::DefaultQueueSize);
 
     // Event field constants (maximum values)
     namespace ec = event_constants;
