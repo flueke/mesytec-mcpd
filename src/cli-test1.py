@@ -1,3 +1,5 @@
+import queue
+
 import awkward as ak
 import numba as nb
 import numpy as np
@@ -50,18 +52,26 @@ if __name__ == "__main__":
     doc_dir = platformdirs.user_documents_dir()
     input_filepath = f"{doc_dir}/mcpd-cli-two-mdllv2-pulsertest-00.mcpdlst"
 
-    ripley = mcpd.Replay(filename=input_filepath, packetBufferMaxPackets=10)
+    ripley = mcpd.Replay(filename=input_filepath, queue_size=10)
     logging.info(f"input_filepath: {input_filepath}")
 
     ripley.start()
     logging.info("Started ellen ripley replay...")
+    input_queue = ripley.get_queue()
+    packet_count = 0
     try:
-        while ripley.is_running():
-            print(f"Waiting for packets...{ripley.get_packet_count()} packets in buffer")
-            if (packet_count := ripley.get_packet_count()) > 0:
-                print(f"Packet count: {packet_count}")
-                packets = ripley.get_packets()
-                print(f"Got {len(packets)} packets from replay")
+        while True:
+            #print("Waiting for packets...")
+            try:
+                packet = input_queue.get()
+                print(f"Got packet: {packet}")
+                packet_count += 1
+            except queue.ShutDown:
+                print("Replay finished.")
+                break
+
+            #if i > 100:
+            #    ripley.foobar()
 
                 #for aug_packet in packets:
                 #    packet = aug_packet.packet
@@ -72,10 +82,6 @@ if __name__ == "__main__":
                     #print(decode_events(packet))
                     #raw_events = packet.get_raw_events()
                     #raw_events = raw_events_to_ak(raw_events=raw_events)
-            else:
-                time.sleep(0.1)
-
-        print("Replay finished.")
 
     except KeyboardInterrupt:
         print("Stopping ellen ripley...")

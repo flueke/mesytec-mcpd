@@ -7,6 +7,7 @@
 #include <future>
 #include <memory>
 #include <mutex>
+#include <pybind11/pybind11.h>
 #include <thread>
 #include <vector>
 
@@ -15,6 +16,8 @@
 
 namespace mesytec::mcpd::py_lib
 {
+
+namespace py = pybind11;
 
 struct Counters
 {
@@ -26,7 +29,7 @@ struct Counters
     u64 packetsDropped = 0u;
 };
 
-const size_t DefaultPacketBufferMaxPackets = 10000;
+const size_t DefaultQueueSize = 1000;
 
 struct AugmentedDataPacket
 {
@@ -38,17 +41,16 @@ struct AugmentedDataPacket
 class WorkerBase
 {
   public:
-    explicit WorkerBase(size_t packetBufferMaxPackets = DefaultPacketBufferMaxPackets);
+    explicit WorkerBase(size_t queueSize = DefaultQueueSize);
     virtual ~WorkerBase();
 
     bool start();
-    bool stop();
+    bool stop(bool immediate = false);
     bool isRunning() const;
     bool hasException() const;
     void rethrowException();
 
-    u64 getPacketCount() const;
-    std::vector<AugmentedDataPacket> getPackets();
+    py::object getQueue() const { return queue_; }
 
     Counters getCounters() const { return *counters_.lock(); }
     void resetCounters() { *counters_.lock() = Counters{}; }
@@ -56,10 +58,6 @@ class WorkerBase
   protected:
     virtual void workerLoop(std::promise<bool> promise) = 0;
     locked_ptr<Counters> &getCounters_() { return counters_; }
-    bool keepRunning() const { return keepRunning_.load(std::memory_order_relaxed); }
-    locked_ptr<std::vector<AugmentedDataPacket>> &getPacketBuffer() { return packetBuffer_; }
-    size_t getPacketBufferMaxPackets() const { return packetBufferMaxPackets_; }
-    void publishPacket(AugmentedDataPacket &&augPacket, size_t bytesTransferred, bool block);
 
   private:
     void workerLoop_(std::promise<bool> promise);
@@ -70,34 +68,22 @@ class WorkerBase
     WorkerBase(WorkerBase &&) = delete;
     WorkerBase &operator=(WorkerBase &&) = delete;
 
-    size_t packetBufferMaxPackets_;
-    std::atomic<bool> keepRunning_;
     std::thread workerThread_;
 
     mutable locked_ptr<Counters> counters_ = locked_ptr<Counters>(std::in_place);
-
-    mutable locked_ptr<std::vector<AugmentedDataPacket>> packetBuffer_ =
-        locked_ptr<std::vector<AugmentedDataPacket>>(std::in_place);
 
     mutable locked_ptr<std::exception_ptr> readoutException_ =
         locked_ptr<std::exception_ptr>(std::in_place);
 
     mutable std::mutex startStopMutex_;
-};
 
-// Helper class for the python bindings to read out data packets from MCPD/MDLL
-// modules.
-// Runs its own thread, reading packets in a loop and buffering them. Packets
-// can be consumed using getPackets().
-//
-// Error handling is done via exceptions. The current implementation throws
-// std::system_error() to transmit error codes to the outside.
+    py::object queue_;
+};
 
 class Readout: public WorkerBase
 {
   public:
-    explicit Readout(int listenPort = McpdDefaultPort,
-                     size_t packetBufferMaxPackets = DefaultPacketBufferMaxPackets);
+    explicit Readout(int listenPort = McpdDefaultPort, size_t queueSize = DefaultQueueSize);
 
   protected:
     void workerLoop(std::promise<bool> promise) override;
@@ -110,9 +96,9 @@ class Readout: public WorkerBase
 class Replay: public WorkerBase
 {
   public:
-    explicit Replay(size_t packetBufferMaxPackets = DefaultPacketBufferMaxPackets);
+    explicit Replay(size_t queueSize = DefaultQueueSize);
     explicit Replay(const std::string &filename,
-                    size_t packetBufferMaxPackets = DefaultPacketBufferMaxPackets);
+                    size_t queueSize = DefaultQueueSize);
 
   protected:
     void workerLoop(std::promise<bool> promise) override;
