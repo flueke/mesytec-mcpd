@@ -1,17 +1,25 @@
 # To build a wheel
 
     pip wheel -w dist .[gui]
-    pipx install dist\mesytec_mcpd_py-0.6.1.dev35-cp314-cp314-win_amd64.whl[gui]
+
+# Installation from wheel
+
+    pip install dist\mesytec_mcpd_py-0.6.1.dev35-cp314-cp314-win_amd64.whl[gui]
 
 # Editable dev installation
 
+    # Optional:
     export SKBUILD_CMAKE_BUILD_TYPE=Debug
+    set CMAKE_GENERATOR=Ninja
+    set CC=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\Llvm\x64\bin\clang-cl.exe
+    set CXX=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\Llvm\x64\bin\clang-cl.exe
+    # Build with fast rebuilds:
     pip install -e ..[dev,gui] --no-deps --no-build-isolation -v
 
-  This will create and resuse a dir under build for the cmake build. Everything
-  can be inspected and cmake can be run manually or from vscode if needed.  The
-  build deps need to be manually installed in the active venv otherwise cmake or
-  the compilation will fail.
+  This will create and resuse a dir under build for the cmake part. Everything
+  can be inspected and cmake can be run manually or from vscode if needed. The
+  build deps need to be installed in the active venv otherwise the build will
+  fail.
 
 # Notes
 - To use clang-cl set CMAKE_GENERATOR=Ninja and set both CC and CXX to the full path to clang-cl, e.g.
