@@ -33,7 +33,7 @@ if (MSYS OR NOT WIN32)
 endif()
 
 if (WIN32)
-    target_link_libraries(mesytec-mcpd PRIVATE ws2_32 winmm)
+    target_link_libraries(mesytec-mcpd PUBLIC ws2_32 winmm)
     target_compile_definitions(mesytec-mcpd PRIVATE -DNOMINMAX)
 endif(WIN32)
 
