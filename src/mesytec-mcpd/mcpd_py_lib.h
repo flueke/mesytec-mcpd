@@ -99,7 +99,7 @@ class WorkerBase
 
     mutable std::mutex startStopMutex_;
 
-    py::object queue_;
+    py::object queue_; // our queue.Queue instance
 };
 
 class Readout: public WorkerBase

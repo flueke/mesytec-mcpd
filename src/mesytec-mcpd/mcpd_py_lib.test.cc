@@ -16,6 +16,11 @@ using namespace mesytec::mcpd::py_lib;
 class PythonEnvironment: public ::testing::Environment
 {
   public:
+    PythonEnvironment()
+    {
+        set_global_log_level(spdlog::level::trace);
+        spdlog::set_level(spdlog::level::trace);
+    }
     ~PythonEnvironment() override {}
 
     void SetUp() override { guard = std::make_unique<py::scoped_interpreter>(); }
@@ -30,11 +35,26 @@ class PythonEnvironment: public ::testing::Environment
 [[maybe_unused]] static ::testing::Environment *const python_env =
     ::testing::AddGlobalTestEnvironment(new PythonEnvironment());
 
+TEST(mcpd_py_lib, QueueAugPackets)
+{
+    // This import is needed to make the pybind11 casts work. Otherwise the
+    // types are not known and runtime conversion error occur.
+    auto mcpd_lib = py::module_::import("_mesytec_mcpd_py");
+    py::object Queue = py::module_::import("queue").attr("Queue");
+    auto queue_ = Queue(10);
+    AugmentedDataPacket augPacket = {};
+    augPacket.packet.runId = 42;
+
+    queue_.attr("put")(py::cast(augPacket, py::return_value_policy::copy), false);
+    ASSERT_EQ(queue_.attr("qsize")().cast<size_t>(), 1u);
+
+    auto augCopy = queue_.attr("get")().cast<AugmentedDataPacket>();
+    ASSERT_EQ(queue_.attr("qsize")().cast<size_t>(), 0u);
+    ASSERT_EQ(augCopy.packet.runId, 42u);
+}
+
 TEST(mcpd_py_lib, CreateDestroy)
 {
-    set_global_log_level(spdlog::level::trace);
-    spdlog::set_level(spdlog::level::trace);
-
     for (size_t i = 0; i < 10; ++i)
     {
         Readout readout(McpdDefaultPort + 3);
