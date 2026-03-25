@@ -63,7 +63,7 @@ if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
                 DESTINATION ${SKBUILD_PROJECT_NAME}
                 FILES_MATCHING PATTERN "*.py")
     else()
-        pybind11_add_module(_mesytec_mcpd_py MODULE mesytec_mcpd_py.cc mcpd_py_lib.cc)
+        pybind11_add_module(_mesytec_mcpd_py MODULE mesytec_mcpd_py_module.cc mesytec_mcpd_py.cc mcpd_py_lib.cc)
         target_link_libraries(_mesytec_mcpd_py PRIVATE mesytec-mcpd spdlog::spdlog)
         if (WIN32)
             target_link_libraries(_mesytec_mcpd_py PRIVATE ws2_32 winmm)
