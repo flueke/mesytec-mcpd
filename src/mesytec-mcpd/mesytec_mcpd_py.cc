@@ -32,7 +32,7 @@ void init_logging()
 
 using namespace py_lib;
 
-PYBIND11_MODULE(_mesytec_mcpd_py, m)
+void init_py_module(py::module_ &m)
 {
     m.doc() = "driver library for the mesytec PSD system (MCPD, MPSD, MDLL) - python bindings";
     m.attr("__version__") = library_version();
