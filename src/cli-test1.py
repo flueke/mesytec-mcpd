@@ -75,10 +75,7 @@ if __name__ == "__main__":
 
             except queue.ShutDown:
                 print(f"Replay finished. Got {packet_count} packets with {event_count} events.")
-                counters = ripley.get_counters()
-                print(
-                    f"Replay Counters: {counters.packets=}, {counters.bytes=}, {counters.events=}, {counters.timeouts=}, {counters.packets_dropped=}, {counters.packets_lost=}"
-                )
+                print("Final Counters:", ripley.get_counters())
                 break
 
     except KeyboardInterrupt:
