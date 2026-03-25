@@ -1,4 +1,6 @@
 #include "mcpd_py_lib.h"
+#include <cstring>
+#include <filesystem>
 #include <memory>
 #include <mesytec-mcpd/util/logging.h>
 
@@ -283,8 +285,20 @@ void Replay::workerLoop(std::promise<bool> promise)
 
         if (!inputFile_.is_open())
         {
-            inputFile_.exceptions(std::ios::badbit);
             inputFile_.open(filename_, std::ios::in | std::ios::binary);
+            if (!inputFile_)
+            {
+                if (!std::filesystem::exists(filename_))
+                {
+                    throw std::runtime_error(
+                        fmt::format("Input file '{}' does not exist", filename_));
+                }
+
+                throw std::runtime_error(
+                    fmt::format("Failed to open input file '{}' for reading {}", filename_,
+                                std::strerror(errno)));
+            }
+            inputFile_.exceptions(std::ios::badbit);
             spdlog::debug("{}: opened input file '{}'", PRETTY_FUNCTION, filename_);
         }
         else
@@ -306,7 +320,8 @@ void Replay::workerLoop(std::promise<bool> promise)
 
     spdlog::info("{}: replaying from file '{}'", PRETTY_FUNCTION, filename_);
 
-    // TODO: calculate packet loss (recording time loss, not replay loss) and update counters.packetsLost
+    // TODO: calculate packet loss (recording time loss, not replay loss) and update
+    // counters.packetsLost
     try
     {
         while (true)
@@ -322,15 +337,17 @@ void Replay::workerLoop(std::promise<bool> promise)
                 py::gil_scoped_release gil_release;
                 inputFile_.read(reinterpret_cast<char *>(&augPacket.packet),
                                 sizeof(augPacket.packet));
+
+                if (inputFile_.eof())
+                {
+                    spdlog::info("{}: reached end of file, exiting replay loop", PRETTY_FUNCTION);
+                    break;
+                }
+
                 auto counters = getCounters_().lock();
                 counters->packets++;
                 counters->bytes += sizeof(augPacket.packet);
-            }
-
-            if (inputFile_.eof())
-            {
-                spdlog::info("{}: reached end of file, exiting replay loop", PRETTY_FUNCTION);
-                break;
+                counters->events += get_event_count(augPacket.packet);
             }
 
             spdlog::debug("{}: read packet from file, bytesTransferred={}", PRETTY_FUNCTION,
