@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.15)
 
+if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
+    cmake_policy(SET CMP0135 NEW) # DOWNLOAD_EXTRACT_TIMESTAMP
+endif()
+
 # Check if mesytec-mcpd is being used directly or via add_subdirectory
 set(MESYTEC_MCPD_MASTER_PROJECT OFF)
 if (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
