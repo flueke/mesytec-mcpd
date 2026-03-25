@@ -28,7 +28,7 @@ classifiers = [
 
 [project.optional-dependencies]
 gui = ["pyqtgraph", "numpy", "PySide6", "hist[plot,fit]", "rich", "awkward", "numba", "platformdirs"]
-dev = ["pre-commit"]
+dev = ["pre-commit", "scikit-build-core>=0.12", "setuptools-scm", "pybind11-stubgen"]
 
 [project.gui-scripts]
 mesytec-mcpd-gui = "mesytec_mcpd_py.gui.main_window:main"
