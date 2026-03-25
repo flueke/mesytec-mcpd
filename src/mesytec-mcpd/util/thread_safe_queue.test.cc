@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <thread>
 #include "thread_safe_queue.h"
 
 TEST(ThreadSafeQueue, PushPop)
