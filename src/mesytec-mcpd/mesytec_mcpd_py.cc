@@ -194,7 +194,16 @@ void init_py_module(py::module_ &m)
         .def_readonly("timeouts", &Counters::timeouts)
         .def_readonly("events", &Counters::events)
         .def_readonly("packets_lost", &Counters::packetsLost)
-        .def_readonly("packets_dropped", &Counters::packetsDropped);
+        .def_readonly("packets_dropped", &Counters::packetsDropped)
+        .def("__repr__", [] (const Counters &counters)
+             {
+                 return "mesytec_mcpd_py.Counters(packets=" + std::to_string(counters.packets)
+                     + ", bytes=" + std::to_string(counters.bytes)
+                     + ", timeouts=" + std::to_string(counters.timeouts)
+                     + ", events=" + std::to_string(counters.events)
+                     + ", packets_lost=" + std::to_string(counters.packetsLost)
+                     + ", packets_dropped=" + std::to_string(counters.packetsDropped) + ")";
+             });
 
     py::class_<WorkerBase>(m, "WorkerBase")
         .def("start", &WorkerBase::start)
