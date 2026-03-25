@@ -77,6 +77,7 @@ if (MCPD_BUILD_TESTS)
     # For Windows: Prevent overriding the parent project's compiler/linker settings
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
+    enable_testing()
 endif(MCPD_BUILD_TESTS)
 
 set(not-msvc $<NOT:$<CXX_COMPILER_ID:MSVC>>)
