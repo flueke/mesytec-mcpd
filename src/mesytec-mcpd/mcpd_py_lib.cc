@@ -80,10 +80,7 @@ bool WorkerBase::stop(bool immediate)
 
     if (workerThread_.joinable())
     {
-        //std::unique_ptr<py::gil_scoped_release> gil_release;
-        //if (PyGILState_Check())
-        //    gil_release = std::make_unique<py::gil_scoped_release>();
-
+        py::gil_scoped_release gil_release;
         workerThread_.join();
         spdlog::debug("{}: worker thread joined, returning", PRETTY_FUNCTION);
         return true;
@@ -135,13 +132,17 @@ void WorkerBase::rethrowException()
 Readout::Readout(int listenPort, size_t queueSize)
     : WorkerBase(queueSize)
     , listenPort_(listenPort)
-{ spdlog::debug("{}: listenPort={}", PRETTY_FUNCTION, listenPort_); }
+{
+    spdlog::debug("{}: listenPort={}", PRETTY_FUNCTION, listenPort_);
+}
 
 void Readout::workerLoop(std::promise<bool> promise)
 {
     spdlog::debug("entering {}", PRETTY_FUNCTION);
 
-    py::object Queue = py::module_::import("queue").attr("Queue");
+    // Hold the GIL. We'll release it when it's not needed.
+    py::gil_scoped_acquire gil_acquire;
+    py::object pyqueue = py::module_::import("queue");
 
     auto cleanup = [this]()
     {
@@ -157,6 +158,8 @@ void Readout::workerLoop(std::promise<bool> promise)
 
     try
     {
+        py::gil_scoped_release gil_release;
+
         std::error_code ec;
         dataSocket_ = create_bound_udp_socket(listenPort_, &ec);
 
@@ -210,30 +213,36 @@ void Readout::workerLoop(std::promise<bool> promise)
             size_t bytesTransferred = 0u;
             sockaddr_in srcAddr = {};
             AugmentedDataPacket augPacket = {};
+            std::error_code ec;
 
-            auto ec = receive_one_packet(dataSocket_, reinterpret_cast<u8 *>(&augPacket.packet),
-                                         sizeof(augPacket.packet), bytesTransferred,
-                                         DefaultReadTimeout_ms, &srcAddr);
-
-            if (ec)
             {
-                if (ec != SocketErrorType::Timeout)
-                    throw std::system_error(ec);
+                py::gil_scoped_release gil_release;
+                ec = receive_one_packet(dataSocket_, reinterpret_cast<u8 *>(&augPacket.packet),
+                                        sizeof(augPacket.packet), bytesTransferred,
+                                        DefaultReadTimeout_ms, &srcAddr);
 
-                getCounters_().lock()->timeouts++;
+                if (ec)
+                {
+                    if (ec != SocketErrorType::Timeout)
+                        throw std::system_error(ec);
+
+                    getCounters_().lock()->timeouts++;
+                }
+
+                augPacket.srcAddr = ntohl(srcAddr.sin_addr.s_addr);
+                augPacket.srcPort = ntohs(srcAddr.sin_port);
             }
-
-            augPacket.srcAddr = ntohl(srcAddr.sin_addr.s_addr);
-            augPacket.srcPort = ntohs(srcAddr.sin_port);
 
             try
             {
-                getQueue().attr("put")(std::move(augPacket), false);
+                assert(PyGILState_Check());
+                getQueue().attr("put")(std::move(augPacket), false); // non-blocking
             }
             catch (py::error_already_set &e)
             {
+                assert(PyGILState_Check());
                 getCounters_().lock()->packetsDropped++;
-                if (e.matches(Queue.attr("Shutdown")))
+                if (e.matches(pyqueue.attr("ShutDown")))
                     break;
             }
         }
@@ -264,10 +273,14 @@ void Replay::workerLoop(std::promise<bool> promise)
 {
     spdlog::debug("entering {}", PRETTY_FUNCTION);
 
-    auto gil_acquire = std::make_unique<py::gil_scoped_acquire>();
+    // Hold the GIL. We'll release it when it's not needed.
+    py::gil_scoped_acquire gil_acquire;
+    py::object pyqueue = py::module_::import("queue");
 
     try
     {
+        py::gil_scoped_release gil_release;
+
         if (!inputFile_.is_open())
         {
             inputFile_.exceptions(std::ios::badbit);
@@ -293,6 +306,7 @@ void Replay::workerLoop(std::promise<bool> promise)
 
     spdlog::info("{}: replaying from file '{}'", PRETTY_FUNCTION, filename_);
 
+    // TODO: calculate packet loss (recording time loss, not replay loss) and update counters.packetsLost
     try
     {
         while (true)
@@ -300,18 +314,18 @@ void Replay::workerLoop(std::promise<bool> promise)
             AugmentedDataPacket augPacket = {};
             auto bytesRead = getCounters_().lock()->bytes;
             auto mbRead = bytesRead / (1024.0 * 1024.0);
-            spdlog::debug("{}: reading packet from file '{}', eof={}, totalBytesRead={} MB ({} bytes)",
-                          PRETTY_FUNCTION, filename_, inputFile_.eof(), mbRead, bytesRead);
+            spdlog::debug(
+                "{}: reading packet from file '{}', eof={}, totalBytesRead={} MB ({} bytes)",
+                PRETTY_FUNCTION, filename_, inputFile_.eof(), mbRead, bytesRead);
 
             {
-                auto gil_release = std::make_unique<py::gil_scoped_release>();
-                inputFile_.read(reinterpret_cast<char *>(&augPacket.packet), sizeof(augPacket.packet));
+                py::gil_scoped_release gil_release;
+                inputFile_.read(reinterpret_cast<char *>(&augPacket.packet),
+                                sizeof(augPacket.packet));
                 auto counters = getCounters_().lock();
                 counters->packets++;
                 counters->bytes += sizeof(augPacket.packet);
             }
-
-            assert(PyGILState_Check());
 
             if (inputFile_.eof())
             {
@@ -325,15 +339,13 @@ void Replay::workerLoop(std::promise<bool> promise)
             try
             {
                 assert(PyGILState_Check());
-
-                // blocking enqueue
-                getQueue().attr("put")(std::move(augPacket), true);
+                getQueue().attr("put")(std::move(augPacket), true); // blocking
             }
             catch (py::error_already_set &e)
             {
+                assert(PyGILState_Check());
                 getCounters_().lock()->packetsDropped++;
-                py::object Queue = py::module_::import("queue").attr("Queue");
-                if (e.matches(Queue.attr("Shutdown")))
+                if (e.matches(pyqueue.attr("ShutDown")))
                     break;
             }
         }
@@ -343,7 +355,6 @@ void Replay::workerLoop(std::promise<bool> promise)
         // cleanup();
         throw; // WorkerBase handles it
     }
-
 
     spdlog::debug("shutting down queue and exiting {}", PRETTY_FUNCTION);
     getQueue().attr("shutdown")(false);
