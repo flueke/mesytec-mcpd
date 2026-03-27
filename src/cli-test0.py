@@ -1,11 +1,11 @@
 import awkward as ak
 import numba as nb
 import numpy as np
-import mesytec_mcpd_py as mcpd
+import mesytec_mcpd as mcpd
 import time
 import sys
 
-from mesytec_mcpd_py import constants as mc
+from mesytec_mcpd import constants as mc
 
 # All possible data members:
 #

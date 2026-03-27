@@ -6,7 +6,7 @@ requires = ["scikit-build-core>=0.12", "setuptools-scm", "pybind11-stubgen"]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "mesytec_mcpd_py"
+name = "mesytec_mcpd"
 dynamic = ["version"]
 requires-python = ">= 3.12"
 authors = [ { name = "Florian Lüke", email = "f.lueke@mesytec.com" } ]
@@ -31,7 +31,7 @@ gui = ["pyqtgraph", "numpy", "PySide6", "hist[plot,fit]", "rich", "awkward", "nu
 dev = ["pre-commit", "scikit-build-core>=0.12", "setuptools-scm", "pybind11-stubgen"]
 
 [project.gui-scripts]
-mesytec-mcpd-gui = "mesytec_mcpd_py.gui.main_window:main"
+mesytec-mcpd-gui = "mesytec_mcpd.gui.main_window:main"
 
 [project.urls]
 Homepage = "https://mesytec.com/products/neutron-scattering.html"
@@ -43,7 +43,7 @@ cmake.args = [ '-DMCPD_ENABLE_PYTHON=ON' ]
 build.verbose = true
 logging.level = "INFO"
 metadata.version.provider = "scikit_build_core.metadata.setuptools_scm"
-wheel.packages = [ "mesytec_mcpd_py" ]
+wheel.packages = [ "mesytec_mcpd" ]
 wheel.py-api = "cp312"
 # Not sure which one to keep. Plain 'build' is picked up by vscode, the
 # {wheel_tag} variant was not but it might be needed for cibuildwheel.

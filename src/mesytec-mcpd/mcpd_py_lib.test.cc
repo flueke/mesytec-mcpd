@@ -39,7 +39,7 @@ TEST(mcpd_py_lib, QueueAugPackets)
 {
     // This import is needed to make the pybind11 casts work. Otherwise the
     // types are not known and runtime conversion error occur.
-    auto mcpd_lib = py::module_::import("_mesytec_mcpd_py");
+    auto mcpd_lib = py::module_::import("_mesytec_mcpd");
     py::object Queue = py::module_::import("queue").attr("Queue");
     auto queue_ = Queue(10);
     AugmentedDataPacket augPacket = {};

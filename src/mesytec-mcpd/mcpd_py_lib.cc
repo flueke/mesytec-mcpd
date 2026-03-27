@@ -15,7 +15,11 @@ WorkerBase::WorkerBase(size_t queueSize)
     queue_ = Queue(queueSize);
 }
 
-WorkerBase::~WorkerBase() { stop(true); }
+WorkerBase::~WorkerBase()
+{
+    spdlog::trace("{}: stopping worker thread in destructor", PRETTY_FUNCTION);
+    stop(true);
+}
 
 bool WorkerBase::start()
 {
