@@ -4,7 +4,7 @@
 
 # Installation from wheel
 
-    pip install dist\mesytec_mcpd_py-0.6.1.dev35-cp314-cp314-win_amd64.whl[gui]
+    pip install dist/mesytec_mcpd-0.6.1.dev102-cp312-abi3-linux_x86_64.whl[gui]
 
 # Editable dev installation
 
