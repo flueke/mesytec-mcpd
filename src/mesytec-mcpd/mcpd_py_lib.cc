@@ -237,6 +237,10 @@ void Readout::workerLoop(std::promise<bool> promise)
 
                 augPacket.srcAddr = ntohl(srcAddr.sin_addr.s_addr);
                 augPacket.srcPort = ntohs(srcAddr.sin_port);
+                auto counters = getCounters_().lock();
+                counters->packets++;
+                counters->bytes += sizeof(augPacket.packet);
+                counters->events += get_event_count(augPacket.packet);
             }
 
             try
@@ -247,9 +251,12 @@ void Readout::workerLoop(std::promise<bool> promise)
             catch (py::error_already_set &e)
             {
                 assert(PyGILState_Check());
-                getCounters_().lock()->packetsDropped++;
                 if (e.matches(pyqueue.attr("ShutDown")))
                     break;
+                else
+                    spdlog::warn("{}: exception while putting packet into queue: {}", PRETTY_FUNCTION, e.what());
+                // Not counting the one lost packet when the queue is shut down.
+                getCounters_().lock()->packetsDropped++;
             }
         }
 
