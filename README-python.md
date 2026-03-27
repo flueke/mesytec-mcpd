@@ -34,3 +34,8 @@
 - The code currently also builds with msvc, so the above is not required.
 
 - Everything has to be run in a 'native tools command prompt' under windows.
+
+# uv and the lock file
+
+- To generate uv.lock: run `uv lock` from the projects root
+- To install from lock file: `uv sync --extra gui --extra dev`
