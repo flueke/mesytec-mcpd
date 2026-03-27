@@ -1,16 +1,15 @@
+import logging
 import queue
+import sys
+import time
 
 import awkward as ak
+import mesytec_mcpd as mcpd
 import numba as nb
 import numpy as np
-import mesytec_mcpd as mcpd
-import time
-import sys
 import platformdirs
-import logging
-from rich.logging import RichHandler
-
 from mesytec_mcpd import constants as mc
+from rich.logging import RichHandler
 
 # All possible data members:
 #
@@ -60,18 +59,20 @@ if __name__ == "__main__":
     logging.info(f"input_filepath: {input_filepath}")
 
     ripley.start()
-    logging.info("Started ellen ripley replay...")
+    logging.info("Started ellen ripley...")
     input_queue = ripley.get_queue()
     packet_count = 0
     event_count = 0
+
     try:
         while True:
             # print("Waiting for packets...")
             try:
-                packet = input_queue.get()
+                augPacket = input_queue.get()
                 packet_count += 1
-                raw_events = np.array(packet, copy=True)
+                raw_events = np.array(augPacket, copy=True)
                 event_count += raw_events.size
+                print(f"{augPacket.packet.event_count()=}")
 
             except queue.ShutDown:
                 print(f"Replay finished. Got {packet_count} packets with {event_count} events.")
@@ -79,5 +80,9 @@ if __name__ == "__main__":
                 break
 
     except KeyboardInterrupt:
-        print("Stopping ellen ripley...")
-        ripley.stop()
+        pass
+
+    print("Stopping ellen ripley...")
+    ripley.stop()
+    print(f"Readout finished. Got {packet_count} packets with {event_count} events.")
+    print("Final Counters:", ripley.get_counters())
