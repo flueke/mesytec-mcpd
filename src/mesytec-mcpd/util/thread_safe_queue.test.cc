@@ -10,7 +10,7 @@ TEST(ThreadSafeQueue, PushPop)
     ASSERT_TRUE(queue.empty());
 
     for (int i = 0; i < 10; ++i)
-        queue.push(int(i));
+        queue.push(std::move(int(i)));
 
     ASSERT_TRUE(queue.full());
     ASSERT_FALSE(queue.empty());
@@ -33,7 +33,7 @@ TEST(ThreadSafeQueue, TaskDone)
     std::atomic<bool> workerDone = false;
 
     for (int i = 0; i < 10; ++i)
-        queue.push(int(i));
+        queue.push(std::move(int(i)));
 
     std::thread worker([&queue, &workerDone]()
     {
