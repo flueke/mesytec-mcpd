@@ -1,10 +1,11 @@
 import logging
+import queue
 import sys
 from time import perf_counter
 from typing import Optional
 
 import boost_histogram as bh
-import mesytec_mcpd_py as mcpd
+import mesytec_mcpd as mcpd
 import numpy as np
 import pyqtgraph as pg
 import pyqtgraph.console
@@ -70,6 +71,8 @@ class ReadoutWorker(QtCore.QObject):
             self.readout.start()
             self.started.emit()
 
+            input_queue = self.readout.get_queue()
+
             logging.debug("ReadoutWorker: entering readout loop")
 
             while self.running:
@@ -79,14 +82,12 @@ class ReadoutWorker(QtCore.QObject):
                     logging.error(f"ReadoutWorker: exception in readout thread, stopping readout ({e=})")
                     break
 
-                packets = self.readout.get_packets()
-
-                if packets:
-                    logging.debug(f"ReadoutWorker: got {len(packets)} packets")
-                    self.new_packets.emit(packets)
-                else:
-                    logging.debug("ReadoutWorker: no packets received, sleeping briefly")
-                    QtCore.QThread.msleep(10)
+                try:
+                    aug_packet = input_queue.get(timeout=10)
+                    self.new_packets.emit([aug_packet])
+                except queue.ShutDown:
+                    logging.info("ReadoutWorker: input queue shutdown, stopping readout")
+                    break
 
             logging.debug("ReadoutWorker: left loop, stopping readout")
 
@@ -275,11 +276,12 @@ class PacketProcessor(QtCore.QObject):
         self.eventCounter.sigFpsUpdate.connect(update_event_counter)
 
     @Slot()
-    def process_packets(self, packets: list[mcpd.DataPacket]):
+    def process_packets(self, packets: list[mcpd.AugmentedDataPacket]):
 
         self.packetCounter.update(len(packets))
 
-        for packet in packets:
+        for aug_packet in packets:
+            packet = aug_packet.packet
             self.eventCounter.update(packet.event_count())
 
             if packet.device_id not in self.device_things:

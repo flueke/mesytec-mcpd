@@ -218,17 +218,18 @@ void Readout::workerLoop(std::promise<bool> promise)
         {
             size_t bytesTransferred = 0u;
             sockaddr_in srcAddr = {};
-            AugmentedDataPacket augPacket = {};
+            std::optional<AugmentedDataPacket> augPacket = AugmentedDataPacket{};
             std::error_code ec;
 
             {
                 py::gil_scoped_release gil_release;
-                ec = receive_one_packet(dataSocket_, reinterpret_cast<u8 *>(&augPacket.packet),
-                                        sizeof(augPacket.packet), bytesTransferred,
+                ec = receive_one_packet(dataSocket_, reinterpret_cast<u8 *>(&augPacket->packet),
+                                        sizeof(augPacket->packet), bytesTransferred,
                                         DefaultReadTimeout_ms, &srcAddr);
 
                 if (ec)
                 {
+                    augPacket = std::nullopt;
                     if (ec != SocketErrorType::Timeout)
                         throw std::system_error(ec);
 
@@ -236,29 +237,38 @@ void Readout::workerLoop(std::promise<bool> promise)
                 }
                 else
                 {
-                    augPacket.srcAddr = ntohl(srcAddr.sin_addr.s_addr);
-                    augPacket.srcPort = ntohs(srcAddr.sin_port);
+                    augPacket->srcAddr = ntohl(srcAddr.sin_addr.s_addr);
+                    augPacket->srcPort = ntohs(srcAddr.sin_port);
                     auto counters = getCounters_().lock();
                     counters->packets++;
-                    counters->bytes += sizeof(augPacket.packet);
-                    counters->events += get_event_count(augPacket.packet);
+                    counters->bytes += sizeof(augPacket->packet);
+                    counters->events += get_event_count(augPacket->packet);
                 }
             }
 
+            assert(PyGILState_Check());
+
             try
             {
-                assert(PyGILState_Check());
-                getQueue().attr("put")(std::move(augPacket), false); // non-blocking
+                if (augPacket.has_value())
+                {
+                    getQueue().attr("put")(std::move(augPacket.value()), false); // non-blocking
+                }
+                else
+                {
+                    // We have to enqueue something to detect shutdown. There is no other way to query this.
+                    getQueue().attr("put")(py::none(), false); // non-blocking
+                }
             }
             catch (py::error_already_set &e)
             {
-                assert(PyGILState_Check());
                 if (e.matches(pyqueue.attr("ShutDown")))
                     break;
                 else
                     spdlog::warn("{}: exception while putting packet into queue: {}", PRETTY_FUNCTION, e.what());
-                // Not counting the one lost packet when the queue is shut down.
-                getCounters_().lock()->packetsDropped++;
+
+                if (augPacket.has_value())
+                    getCounters_().lock()->packetsDropped++;
             }
         }
 
