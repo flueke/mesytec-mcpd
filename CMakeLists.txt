@@ -53,12 +53,13 @@ message("-- GIT_VERSION_SHORT=${GIT_VERSION_SHORT}")
 message("-- GIT_BRANCH=${GIT_BRANCH}")
 
 if (DEFINED SKBUILD)
-set(PROJECT_NAME ${SKBUILD_PROJECT_NAME} LANGUAGES CXX)
+set(PROJECT_NAME ${SKBUILD_PROJECT_NAME})
 else()
-set(PROJECT_NAME mesytec-mcpd LANGUAGES CXX)
+set(PROJECT_NAME mesytec-mcpd)
 endif()
 
 project(${PROJECT_NAME}
+  LANGUAGES CXX
   DESCRIPTION "User space driver library for the Mesytec PSD+ system"
   VERSION ${GIT_VERSION_SHORT})
 
