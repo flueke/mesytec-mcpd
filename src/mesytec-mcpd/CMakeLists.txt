@@ -4,7 +4,7 @@ find_package(Threads)
 
 if (MCPD_ENABLE_PYTHON)
     if (pybind11_FOUND)
-        message("-- Found pybind11: ${pybind11_DIR}")
+        message("-- Found pybind11: ${pybind11_VERSION}")
     else()
         message(WARNING "Could not find pybind11. Disabling Python support in mesytec-mcpd")
     endif()
