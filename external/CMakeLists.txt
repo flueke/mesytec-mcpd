@@ -16,7 +16,7 @@ find_package(Python 3.12 COMPONENTS Interpreter Development GLOBAL)
 
 message(STATUS "${PROJECT_NAME}: pre: Python_FOUND=${Python_FOUND}, pybind11_FOUND=${pybind11_FOUND}")
 
-if (Python_FOUND AND NOT pybind11_FOUND)
+if (Python_FOUND AND NOT TARGET pybind11::module)
     add_subdirectory(pybind11-3.0.1)
 endif()
 
