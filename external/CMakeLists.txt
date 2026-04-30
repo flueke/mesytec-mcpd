@@ -1,10 +1,15 @@
 # spdlog
-option(SPDLOG_FMT_EXTERNAL "Use external fmt library instead of bundled" OFF)
-option(SPDLOG_INSTALL "Generate the install target" ON)
-add_subdirectory(spdlog)
-set_target_properties(spdlog PROPERTIES POSITION_INDEPENDENT_CODE ON)
-if (WIN32)
-    target_compile_definitions(spdlog PRIVATE _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)
+if (NOT TARGET spdlog)
+    message(STATUS "${PROJECT_NAME}: Using spdlog from ${CMAKE_CURRENT_SOURCE_DIR}/spdlog")
+    option(SPDLOG_FMT_EXTERNAL "Use external fmt library instead of bundled" OFF)
+    option(SPDLOG_INSTALL "Generate the install target" ON)
+    add_subdirectory(spdlog)
+    set_target_properties(spdlog PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    if (WIN32)
+        target_compile_definitions(spdlog PRIVATE _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)
+    else()
+        target_compile_options(spdlog PUBLIC -Wno-dangling-reference)
+    endif()
 endif()
 
 # Lyra command line parser
