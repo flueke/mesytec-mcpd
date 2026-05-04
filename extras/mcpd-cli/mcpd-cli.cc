@@ -72,7 +72,7 @@ struct PyCliContext
 
     PyCliContext()
     {
-        //mcpdPy = py::module_::import("mesytec_mcpd_py");
+        mcpdPy = py::module_::import("_mesytec_mcpd");
     }
 };
 #endif

@@ -48,6 +48,7 @@ if (MCPD_CLI_WITH_ROOT AND ROOT_FOUND)
 endif()
 
 if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
+    message("-- Enabling Python support in mcpd-cli")
     target_compile_definitions(mcpd-cli PRIVATE -DMESYTEC_MCPD_ENABLE_PYTHON)
     target_sources(mcpd-cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../src/mesytec-mcpd/mcpd_py_embed.cc)
     target_link_libraries(mcpd-cli PRIVATE pybind11::embed $<TARGET_OBJECTS:mesytec-mcpd-python-bindings>)
