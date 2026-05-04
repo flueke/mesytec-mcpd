@@ -81,8 +81,8 @@ bool setup_python_context(PyCliContext &pyCtx, const std::string &pythonScriptPa
     try
     {
         auto scope = py::module_::import("__main__").attr("__dict__");
+        scope["mcpd"] = pyCtx.mcpdPy;
         py::eval_file(pythonScriptPath, scope);
-        //py::exec(userCodePath, scope);
 
         spdlog::warn("After py::eval_file!");
 
