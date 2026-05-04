@@ -22,7 +22,7 @@
 
 The libraries source code is available on github: https://github.com/flueke/mesytec-mcpd
 
-Building requires a recent version of cmake and a modern c++ compiler (c++14
+Building requires a recent version of cmake and a modern c++ compiler (c++17
 support required).
 
 The only (optional) external dependency is the ROOT framework. If ROOT is found
