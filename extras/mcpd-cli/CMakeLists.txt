@@ -12,7 +12,7 @@ if(MCPD_CLI_WITH_ROOT)
     endif()
 endif()
 
-if (MCPD_CLI_WITH_PYTHON)
+if (MCPD_ENABLE_PYTHON)
     if (pybind11_FOUND)
         message("-- Found pybind11: ${pybind11_DIR}")
     else()
@@ -47,16 +47,17 @@ if (MCPD_CLI_WITH_ROOT AND ROOT_FOUND)
     target_link_libraries(mcpd-cli PRIVATE ${ROOT_LIBRARIES})
 endif()
 
-if (MCPD_CLI_WITH_PYTHON AND pybind11_FOUND)
+if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
     target_compile_definitions(mcpd-cli PRIVATE -DMESYTEC_MCPD_ENABLE_PYTHON)
-    target_sources(mcpd-cli PRIVATE mesytec_mcpd_py.cc)
-    target_link_libraries(mcpd-cli PRIVATE pybind11::embed)
+    target_sources(mcpd-cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../src/mesytec-mcpd/mcpd_py_embed.cc)
+    target_link_libraries(mcpd-cli PRIVATE pybind11::embed $<TARGET_OBJECTS:mesytec-mcpd-python-bindings>)
 endif()
 
 if (NOT DEFINED SKBUILD)
     install(TARGETS mcpd-cli LIBRARY DESTINATION lib RUNTIME DESTINATION bin)
 endif()
 
+# converter from qmesydaq .mdat to our .mcpdlst format
 add_executable(mdat2mcpdlst mdat2mcpdlst.cc)
 target_link_libraries(mdat2mcpdlst
     PRIVATE mesytec-mcpd

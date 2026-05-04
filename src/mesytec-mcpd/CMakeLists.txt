@@ -50,8 +50,13 @@ include(GenerateExportHeader)
 generate_export_header(${MCPD_LIBRARY_NAME})
 
 if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
+    add_library(mesytec-mcpd-python-bindings OBJECT mesytec_mcpd_py.cc mcpd_py_lib.cc)
+    target_link_libraries(mesytec-mcpd-python-bindings PUBLIC pybind11::pybind11 mesytec-mcpd spdlog::spdlog)
+    set_target_properties(mesytec-mcpd-python-bindings PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+
     # Note: py.typed is required by PEP 561. It's just an empty file.
-    pybind11_add_module(_mesytec_mcpd MODULE mesytec_mcpd_py.cc mcpd_py_lib.cc mcpd_py_module.cc)
+    pybind11_add_module(_mesytec_mcpd MODULE mcpd_py_module.cc $<TARGET_OBJECTS:mesytec-mcpd-python-bindings>)
     target_link_libraries(_mesytec_mcpd PRIVATE ${MCPD_LIBRARY_NAME} spdlog::spdlog)
     if (WIN32)
         target_link_libraries(_mesytec_mcpd PRIVATE ws2_32 winmm)
