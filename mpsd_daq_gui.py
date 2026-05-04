@@ -40,19 +40,27 @@ class ReadoutWorker(QtCore.QObject):
         self.running = True
         logging.debug(f"ReadoutWorker: calling readout.start(), thread={QtCore.QThread.currentThread()}")
         self.readout.start()
-        logging.debug(f"ReadoutWorker: emitting started() signal")
+        logging.debug("ReadoutWorker: emitting started() signal")
         self.started.emit()
         logging.debug("ReadoutWorker: entering readout loop")
-        while self.running:
-            logging.warning("ping")
 
-            if self.readout.has_readout_exception():
-                logging.error(f"ReadoutWorker: exception in readout thread, stopping readout (e={self.readout.get_readout_exception()})")
+        input_queue = self.readout.get_queue()
+
+
+        while self.running:
+
+            if self.readout.has_exception():
+                try:
+                    self.readout.rethrow_exception()
+                except Exception as e:
+                    logging.error(f"ReadoutWorker: exception in readout thread, stopping readout ({e=})")
                 break
             else:
                 logging.debug("ReadoutWorker: no exception in readout thread")
 
-            packets = self.readout.get_packets()
+            # TODO: maybe buffer up more packets or change new_packets() to new_packet() and emit only the single packet we got.
+            aug_packet = input_queue.get(block=True, timeout=None)
+            packets = [ aug_packet.packet ] if aug_packet is not None else []
 
             if packets:
                 logging.debug(f"ReadoutWorker: got {len(packets)} packets")
@@ -78,7 +86,7 @@ class PacketProcessor(QtCore.QObject):
     @Slot()
     def process_packets(self, packets: list[mcpd.DataPacket]):
         for packet in packets:
-            for event in packet.get_events():
+            for event in packet.get_decoded_events():
                 self.process_event(event)
 
     def process_event(self, event: mcpd.DecodedEvent):
