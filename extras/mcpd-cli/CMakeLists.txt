@@ -52,6 +52,7 @@ if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
     target_compile_definitions(mcpd-cli PRIVATE -DMESYTEC_MCPD_ENABLE_PYTHON)
     target_sources(mcpd-cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../src/mesytec-mcpd/mcpd_py_embed.cc)
     target_link_libraries(mcpd-cli PRIVATE pybind11::embed $<TARGET_OBJECTS:mesytec-mcpd-python-bindings>)
+    set_target_properties(mcpd-cli PROPERTIES POSITION_INDEPENDENT_CODE ON CXX_VISIBILITY_PRESET hidden)
 endif()
 
 if (NOT DEFINED SKBUILD)
