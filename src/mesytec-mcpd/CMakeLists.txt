@@ -54,7 +54,6 @@ if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
     target_link_libraries(mesytec-mcpd-python-bindings PUBLIC pybind11::pybind11 mesytec-mcpd spdlog::spdlog)
     set_target_properties(mesytec-mcpd-python-bindings PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-
     # Note: py.typed is required by PEP 561. It's just an empty file.
     pybind11_add_module(_mesytec_mcpd MODULE mcpd_py_module.cc $<TARGET_OBJECTS:mesytec-mcpd-python-bindings>)
     target_link_libraries(_mesytec_mcpd PRIVATE ${MCPD_LIBRARY_NAME} spdlog::spdlog)
