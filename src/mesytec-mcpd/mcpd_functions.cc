@@ -152,16 +152,22 @@ std::error_code mcpd_get_version(int sock, u8 mcpdId, McpdVersionInfo &vi)
     if (auto ec = command_transaction(sock, request, response))
         return ec;
 
-    if (get_data_length(response) < 3)
+    // The old MDLL-v1 returns only 2 data words in the GetVersion response.
+    if (get_data_length(response) < 2)
     {
-        spdlog::error("GetVersion response too short, expected 3 data words, got {}", get_data_length(response));
+        spdlog::error("GetVersion response too short, expected 2 or 3 data words, got {}", get_data_length(response));
         return make_error_code(std::errc::protocol_error);
     }
 
+    vi = {};
     vi.cpu[0] = response.data[0];
     vi.cpu[1] = response.data[1];
-    vi.fpga[0] = (response.data[2] >> 8) & 0xffffu;
-    vi.fpga[1] = (response.data[2] >> 0) & 0xffffu;
+
+    if (get_data_length(response) >= 3)
+    {
+        vi.fpga[0] = (response.data[2] >> 8) & 0xffffu;
+        vi.fpga[1] = (response.data[2] >> 0) & 0xffffu;
+    }
 
     return {};
 }
