@@ -75,6 +75,79 @@ struct PyCliContext
         mcpdPy = py::module_::import("_mesytec_mcpd");
     }
 };
+
+bool setup_python_context(PyCliContext &pyCtx, const std::string &pythonScriptPath)
+{
+    try
+    {
+        auto scope = py::module_::import("__main__").attr("__dict__");
+        py::eval_file(pythonScriptPath, scope);
+        //py::exec(userCodePath, scope);
+
+        spdlog::warn("After py::eval_file!");
+
+        if (scope.contains("start"))
+            pyCtx.startCallback = scope["start"];
+        if (scope.contains("process_packet"))
+            pyCtx.packetCallback = scope["process_packet"];
+        if (scope.contains("process_event"))
+            pyCtx.eventCallback = scope["process_event"];
+        if (scope.contains("stop"))
+            pyCtx.stopCallback = scope["stop"];
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::error("readout: Error executing Python script '{}': {}",
+                        pythonScriptPath, e.what());
+        return false;
+    }
+
+    if (!(pyCtx.packetCallback || pyCtx.eventCallback))
+    {
+        spdlog::error("readout: Python script '{}' defines neither 'process_packet' nor 'process_event'", pythonScriptPath);
+        return false;
+    }
+
+    return true;
+}
+
+bool python_context_handle_packet(PyCliContext &pyCtx, const DataPacket &packet)
+{
+    if (pyCtx.packetCallback)
+    {
+        try
+        {
+            pyCtx.packetCallback(packet);
+        }
+        catch (const std::exception &e)
+        {
+            spdlog::error("readout: Error in Python packet callback: {}", e.what());
+            return false;
+        }
+    }
+
+    if (pyCtx.eventCallback)
+    {
+        const auto eventCount = get_event_count(packet);
+
+        for (size_t ei = 0; ei < eventCount; ++ei)
+        {
+            auto event = decode_event(packet, ei);
+            try
+            {
+                pyCtx.eventCallback(event);
+            }
+            catch (const std::exception &e)
+            {
+                spdlog::error("readout: Error in Python event callback: {}", e.what());
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
 #endif
 
 struct CliContext
@@ -1756,53 +1829,20 @@ struct ReadoutCommand: public BaseCommand
 #ifdef MESYTEC_MCPD_ENABLE_PYTHON
         if (!pythonScriptPath_.empty())
         {
-            try
+            auto &pyCtx = ctx.pyContext;
+
+            if (!setup_python_context(pyCtx, pythonScriptPath_))
             {
-                auto &pyCtx = ctx.pyContext;
-
-                try
-                {
-                    auto scope = py::module_::import("__main__").attr("__dict__");
-                    py::eval_file(pythonScriptPath_, scope);
-                    //py::exec(pythonScriptPath_, scope);
-
-                    spdlog::warn("After py::eval_file!");
-
-                    if (scope.contains("start"))
-                        pyCtx.startCallback = scope["start"];
-                    if (scope.contains("process_packet"))
-                        pyCtx.packetCallback = scope["process_packet"];
-                    if (scope.contains("process_event"))
-                        pyCtx.eventCallback = scope["process_event"];
-                    if (scope.contains("stop"))
-                        pyCtx.stopCallback = scope["stop"];
-                }
-                catch (const std::exception &e)
-                {
-                    spdlog::error("readout: Error executing Python script '{}': {}",
-                                  pythonScriptPath_, e.what());
-                    return 1;
-                }
-
-                if (!(pyCtx.packetCallback || pyCtx.eventCallback))
-                {
-                    spdlog::error("readout: Python script '{}' defines neither 'process_packet' nor 'process_event'", pythonScriptPath_);
-                    return 1;
-                }
-
-                spdlog::info("readout: successfully loaded Python script '{}'", pythonScriptPath_);
-
-                if (pyCtx.startCallback)
-                {
-                    spdlog::debug("readout: calling Python start() callback");
-                    pyCtx.startCallback();
-                }
-            }
-            catch (const std::exception &e)
-            {
-                spdlog::error("readout: Error loading Python script '{}': {}",
-                              pythonScriptPath_, e.what());
+                spdlog::error("readout: Failed to set up Python context for script '{}'", pythonScriptPath_);
                 return 1;
+            }
+
+            spdlog::info("readout: successfully loaded Python script '{}'", pythonScriptPath_);
+
+            if (pyCtx.startCallback)
+            {
+                spdlog::debug("readout: calling Python start() callback");
+                pyCtx.startCallback();
             }
         }
 #endif
@@ -1905,35 +1945,7 @@ struct ReadoutCommand: public BaseCommand
 #endif
 
 #ifdef MESYTEC_MCPD_ENABLE_PYTHON
-                if (ctx.pyContext.packetCallback)
-                {
-                    try
-                    {
-                        ctx.pyContext.packetCallback(dataPacket);
-                    }
-                    catch (const std::exception &e)
-                    {
-                        spdlog::error("readout: Error in Python packet callback: {}", e.what());
-                        return 1;
-                    }
-                }
-
-                if (ctx.pyContext.eventCallback)
-                {
-                    for (size_t ei = 0; ei < eventCount; ++ei)
-                    {
-                        auto event = decode_event(dataPacket, ei);
-                        try
-                        {
-                            ctx.pyContext.eventCallback(event);
-                        }
-                        catch (const std::exception &e)
-                        {
-                            spdlog::error("readout: Error in Python event callback: {}", e.what());
-                            return 1;
-                        }
-                    }
-                }
+                python_context_handle_packet(ctx.pyContext, dataPacket);
 #endif
 
                 ++counters.packets;
@@ -2138,6 +2150,27 @@ struct ReplayCommand: public BaseCommand
         }
 #endif
 
+#ifdef MESYTEC_MCPD_ENABLE_PYTHON
+        if (!pythonScriptPath_.empty())
+        {
+            auto &pyCtx = ctx.pyContext;
+
+            if (!setup_python_context(pyCtx, pythonScriptPath_))
+            {
+                spdlog::error("readout: Failed to set up Python context for script '{}'", pythonScriptPath_);
+                return 1;
+            }
+
+            spdlog::info("readout: successfully loaded Python script '{}'", pythonScriptPath_);
+
+            if (pyCtx.startCallback)
+            {
+                spdlog::debug("readout: calling Python start() callback");
+                pyCtx.startCallback();
+            }
+        }
+#endif
+
         ReadoutCounters counters = {};
         DataPacket dataPacket = {};
 
@@ -2198,6 +2231,10 @@ struct ReplayCommand: public BaseCommand
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
             if (rootHistoContext_.histoOutFile)
                 root_histos_process_packet(rootHistoContext_, dataPacket);
+#endif
+
+#ifdef MESYTEC_MCPD_ENABLE_PYTHON
+                python_context_handle_packet(ctx.pyContext, dataPacket);
 #endif
 
             ++counters.packets;
