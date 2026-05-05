@@ -1578,6 +1578,9 @@ struct ReadoutCounters
     size_t bytes = 0u;
     size_t timeouts = 0u;
     size_t events = 0u;
+    // Counters for McpdDataBufferType and MdllDataBufferType. Command packets
+    // are not counted as we should never see any.
+    std::array<size_t, 3> packetsByType = {};
 };
 
 struct CountersReportInfo
@@ -1602,10 +1605,10 @@ void report_counters(const CountersReportInfo &info, const std::string &title = 
 
     if (info.flags & CountersReportInfo::ReportValues)
     {
-        spdlog::info("{}: counters: packets={}, bytes={}, timeouts={}, events={}",
-                    title, counters.packets, counters.bytes, counters.timeouts,
-                    counters.events
-                    );
+        spdlog::info(
+            "{}: counters: packets={} (mcpd={}, mdll={}), bytes={}, timeouts={}, events={}", title,
+            counters.packets, counters.packetsByType[1], counters.packetsByType[2], counters.bytes,
+            counters.timeouts, counters.events);
     }
 
     ReadoutCounters deltas;
@@ -1613,37 +1616,35 @@ void report_counters(const CountersReportInfo &info, const std::string &title = 
     deltas.bytes = counters.bytes - prevCounters.bytes;
     deltas.timeouts = counters.timeouts - prevCounters.timeouts;
     deltas.events = counters.events - prevCounters.events;
+    deltas.packetsByType[1] = counters.packetsByType[1] - prevCounters.packetsByType[1];
+    deltas.packetsByType[2] = counters.packetsByType[2] - prevCounters.packetsByType[2];
 
     if (info.flags & CountersReportInfo::ReportDeltas)
     {
-        spdlog::info("{}: deltas: packets={}, bytes={}, timeouts={}, events={}",
-                    title, deltas.packets, deltas.bytes, deltas.timeouts,
+        spdlog::info("{}: deltas: packets={} (mcpd={}, mdll={}), bytes={}, timeouts={}, events={}", title,
+                    deltas.packets, deltas.packetsByType[1], deltas.packetsByType[2], deltas.bytes, deltas.timeouts,
                     deltas.events
                     );
     }
 
-    auto dt_s = std::chrono::duration<double>(info.dt).count();
+    auto dt_s = info.dt.count() / 1'000'000.0;
 
     if (dt_s > 0)
     {
-        spdlog::info("{}: rates: packets/s={:.2f}, MiB/s={:.2f}, events/s={:.0f}",
-                     title,
-                     deltas.packets / dt_s,
-                     deltas.bytes / dt_s / (1u << 20),
-                     deltas.events / dt_s
-                    );
+        spdlog::info(
+            "{}: rates: dt_s={}, packets/s={:.2f} (mcpd={}, mdll={}), MiB/s={:.2f}, events/s={:.0f}", title,
+            dt_s, deltas.packets / dt_s, deltas.packetsByType[1] / dt_s, deltas.packetsByType[2] / dt_s,
+            deltas.bytes / dt_s / (1u << 20), deltas.events / dt_s);
     }
-
 }
 
-// TODO: get rid of this and only use the one above instead
 void report_counters(const ReadoutCounters &counters, const std::string &title = "readout")
 {
     CountersReportInfo info;
     info.counters = counters;
+    info.flags = CountersReportInfo::All;
     report_counters(info, title);
 }
-
 
 struct ReadoutCommand: public BaseCommand
 {
@@ -1951,6 +1952,8 @@ struct ReadoutCommand: public BaseCommand
                 ++counters.packets;
                 counters.bytes += bytesTransferred;
                 counters.events += eventCount;
+                if (dataPacket.bufferType < counters.packetsByType.size())
+                    ++counters.packetsByType[dataPacket.bufferType];
             }
 
             const auto now = std::chrono::steady_clock::now();
@@ -1990,8 +1993,8 @@ struct ReadoutCommand: public BaseCommand
                     info.counters = counters;
                     info.prevCounters = prevCounters;
                     info.dt = std::chrono::duration_cast<std::chrono::microseconds>(elapsed);
-                    info.flags = CountersReportInfo::ReportValues | CountersReportInfo::ReportRates;
-                    report_counters(info); fmt::print("\n");
+                    info.flags = CountersReportInfo::All;
+                    report_counters(info, "readout final"); fmt::print("\n");
                     tReport = now;
                     prevCounters = counters;
                 }
@@ -2014,7 +2017,19 @@ struct ReadoutCommand: public BaseCommand
         }
 #endif
 
-        report_counters(counters);
+        // final report. lots of copy pasta :(
+        {
+            const auto now = std::chrono::steady_clock::now();
+            auto elapsed = now - tReport;
+            CountersReportInfo info;
+            info.counters = counters;
+            info.prevCounters = prevCounters;
+            info.dt = std::chrono::duration_cast<std::chrono::microseconds>(elapsed);
+            info.flags = CountersReportInfo::ReportRates | CountersReportInfo::ReportValues;
+            report_counters(info, "readout final"); fmt::print("\n");
+            tReport = now;
+            prevCounters = counters;
+        }
 
         return 0;
     }
@@ -2172,6 +2187,7 @@ struct ReplayCommand: public BaseCommand
 #endif
 
         ReadoutCounters counters = {};
+        ReadoutCounters prevCounters = {};
         DataPacket dataPacket = {};
 
         spdlog::info("Replaying from {}", listfilePath_);
@@ -2204,7 +2220,7 @@ struct ReplayCommand: public BaseCommand
             {
                 spdlog::info(
                     "packet#{}: bufferType=0x{:04x}, bufferNumber={}, runId={}, "
-                    "devStatus={}, deviceId={}, timestamp={}",
+                    "devStatus={}, deviceId={}, timestamp={:#0x}",
                     counters.packets, dataPacket.bufferType, dataPacket.bufferNumber,
                     dataPacket.runId, dataPacket.deviceStatus, dataPacket.deviceId,
                     get_header_timestamp(dataPacket));
@@ -2240,6 +2256,8 @@ struct ReplayCommand: public BaseCommand
             ++counters.packets;
             counters.bytes += sizeof(dataPacket);
             counters.events += eventCount;
+            if (dataPacket.bufferType < counters.packetsByType.size())
+                ++counters.packetsByType[dataPacket.bufferType];
 
             const auto now = std::chrono::steady_clock::now();
 
@@ -2263,8 +2281,14 @@ struct ReplayCommand: public BaseCommand
 
                 if (elapsed >= std::chrono::milliseconds(reportInterval_ms_))
                 {
-                    report_counters(counters, "replay");
+                    CountersReportInfo info;
+                    info.counters = counters;
+                    info.prevCounters = prevCounters;
+                    info.dt = std::chrono::duration_cast<std::chrono::microseconds>(elapsed);
+                    info.flags = CountersReportInfo::All;
+                    report_counters(info, "replay"); fmt::print("\n");
                     tReport = now;
+                    prevCounters = counters;
                 }
             }
         }
@@ -2277,7 +2301,19 @@ struct ReplayCommand: public BaseCommand
         }
 #endif
 
-        report_counters(counters, "replay");
+        // final report. lots of copy pasta :(
+        {
+            const auto now = std::chrono::steady_clock::now();
+            auto elapsed = now - tStart;
+            CountersReportInfo info;
+            info.counters = counters;
+            info.prevCounters = prevCounters;
+            info.dt = std::chrono::duration_cast<std::chrono::microseconds>(elapsed);
+            info.flags = CountersReportInfo::ReportRates | CountersReportInfo::ReportValues;
+            report_counters(info, "replay final"); fmt::print("\n");
+            tReport = now;
+            prevCounters = counters;
+        }
 
         return 0;
     }
