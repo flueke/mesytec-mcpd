@@ -175,8 +175,11 @@ int main(int argc, char *argv[])
 
             auto correctedPos = inFile.tellg();
 
-            spdlog::trace("trailingBytes={}, Position in input file before correction={}, after correction={}, delta={}",
-                          trailingBytes, curPos, correctedPos, curPos - correctedPos);
+            spdlog::trace("trailingBytes={}, Position in input file before correction={}, after "
+                          "correction={}, delta={}",
+                          trailingBytes, static_cast<std::streamoff>(curPos),
+                          static_cast<std::streamoff>(correctedPos),
+                          static_cast<std::streamoff>(curPos - correctedPos));
 
             u64 sep = {};
             inFile.read(reinterpret_cast<char *>(&sep), sizeof(sep));
