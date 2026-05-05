@@ -221,7 +221,7 @@ Out &format(Out &out, const DecodedEvent &event)
             break;
     }
 
-    out << fmt::format(", full_timestamp={}", event.timestamp);
+    out << fmt::format(", full_timestamp={:#0x}", event.timestamp);
 
     return out;
 }
