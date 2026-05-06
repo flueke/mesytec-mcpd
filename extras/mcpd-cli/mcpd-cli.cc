@@ -1737,7 +1737,7 @@ struct ReadoutCommand: public BaseCommand
                     info.prevCounters = prevCounters;
                     info.dt = std::chrono::duration_cast<std::chrono::microseconds>(elapsed);
                     info.flags = CountersReportInfo::All;
-                    report_counters(info, "readout final");
+                    report_counters(info, "readout");
                     fmt::print("\n");
                     tReport = now;
                     prevCounters = counters;
