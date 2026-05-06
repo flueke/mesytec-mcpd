@@ -535,6 +535,7 @@ struct MESYTEC_MCPD_EXPORT DecodedEvent
 
     u64 timestamp;      // The full event timestamp calculated by adding up the 48 bit
                         // packet header timestamp and the 19 bit event timestamp.
+    u32 event_stamp;    // The raw 19 bit event timestamp.
 };
 
 inline DecodedEvent decode_event(const DataPacket &packet, size_t eventNum)
@@ -579,9 +580,9 @@ inline DecodedEvent decode_event(const DataPacket &packet, size_t eventNum)
             break;
     }
 
-    result.timestamp = (event >> ec::TimestampShift) & ec::TimestampMask;
+    result.event_stamp = (event >> ec::TimestampShift) & ec::TimestampMask;
     // Add the 48 bit header timestamp to the events 19 bit timestamp value.
-    result.timestamp += get_header_timestamp(packet);
+    result.timestamp = result.event_stamp + get_header_timestamp(packet);
 
     return result;
 }
