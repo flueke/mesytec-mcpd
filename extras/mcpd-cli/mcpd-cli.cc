@@ -5,8 +5,8 @@
 #include <iostream>
 #include <signal.h>
 
-#include <mesytec-mcpd/mesytec-mcpd.h>
 #include <lyra/lyra.hpp>
+#include <mesytec-mcpd/mesytec-mcpd.h>
 #include <spdlog/spdlog.h>
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
@@ -32,12 +32,9 @@ void signal_handler(int signum)
     g_interrupted = true;
 }
 
-bool file_exists(const char *path)
-{
-    return std::filesystem::exists(path);
-}
+bool file_exists(const char *path) { return std::filesystem::exists(path); }
 
-}
+} // namespace
 
 void setup_signal_handlers()
 {
@@ -45,10 +42,10 @@ void setup_signal_handlers()
     /* Set up the structure to specify the new action. */
     struct sigaction new_action;
     new_action.sa_handler = signal_handler;
-    sigemptyset (&new_action.sa_mask);
+    sigemptyset(&new_action.sa_mask);
     new_action.sa_flags = 0;
 
-    for (auto signum: { SIGINT, SIGHUP, SIGTERM })
+    for (auto signum: {SIGINT, SIGHUP, SIGTERM})
     {
         if (sigaction(signum, &new_action, NULL) != 0)
             throw std::system_error(errno, std::generic_category(), "setup_signal_handlers");
@@ -70,10 +67,7 @@ struct PyCliContext
     py::object eventCallback;
     py::object stopCallback;
 
-    PyCliContext()
-    {
-        mcpdPy = py::module_::import("_mesytec_mcpd");
-    }
+    PyCliContext() { mcpdPy = py::module_::import("_mesytec_mcpd"); }
 };
 
 bool setup_python_context(PyCliContext &pyCtx, const std::string &pythonScriptPath)
@@ -97,14 +91,16 @@ bool setup_python_context(PyCliContext &pyCtx, const std::string &pythonScriptPa
     }
     catch (const std::exception &e)
     {
-        spdlog::error("readout: Error executing Python script '{}': {}",
-                        pythonScriptPath, e.what());
+        spdlog::error("readout: Error executing Python script '{}': {}", pythonScriptPath,
+                      e.what());
         return false;
     }
 
     if (!(pyCtx.packetCallback || pyCtx.eventCallback))
     {
-        spdlog::error("readout: Python script '{}' defines neither 'process_packet' nor 'process_event'", pythonScriptPath);
+        spdlog::error(
+            "readout: Python script '{}' defines neither 'process_packet' nor 'process_event'",
+            pythonScriptPath);
         return false;
     }
 
@@ -169,7 +165,7 @@ struct BaseCommand
     bool active() const { return run_; };
     bool offline() const { return offline_; }
     virtual int runCommand(CliContext &ctx) = 0;
-    virtual ~BaseCommand() {};
+    virtual ~BaseCommand(){};
 };
 
 struct SetupCommand: public BaseCommand
@@ -179,42 +175,29 @@ struct SetupCommand: public BaseCommand
     std::string dataDestAddress_ = "0.0.0.0";
     u16 dataPort_ = McpdDefaultPort;
 
-
     SetupCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "setup",
-                 [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("MCPD base setup (MCPD-8_v1 only, for v2 only the data dest port can be changed)")
+            lyra::command("setup", [this](const lyra::group &) { this->run_ = true; })
+                .help("MCPD base setup (MCPD-8_v1 only, for v2 only the data dest port can be "
+                      "changed)")
 
-            //.add_argument(lyra::help(showHelp_)) This is broken in lyra
+                //.add_argument(lyra::help(showHelp_)) This is broken in lyra
 
-            .add_argument(
-                lyra::arg(newAddress_, "newAddress")
-                .required()
-                .help("new mcpd ip-address (0.0.0.0 to keep current setting)")
-                )
+                .add_argument(lyra::arg(newAddress_, "newAddress")
+                                  .required()
+                                  .help("new mcpd ip-address (0.0.0.0 to keep current setting)"))
 
-            .add_argument(
-                lyra::arg(newId_, "newId")
-                .required()
-                .help("new mcpd id")
-                )
+                .add_argument(lyra::arg(newId_, "newId").required().help("new mcpd id"))
 
-            .add_argument(
-                lyra::arg(dataDestAddress_, "[dataDestAddress]")
-                .optional()
-                .help("new mcpd data destination ip-address (0.0.0.0 to use this computers address)")
-                )
+                .add_argument(lyra::arg(dataDestAddress_, "[dataDestAddress]")
+                                  .optional()
+                                  .help("new mcpd data destination ip-address (0.0.0.0 to use this "
+                                        "computers address)"))
 
-            .add_argument(
-                lyra::arg(dataPort_, "[dataPort]")
-                .optional()
-                .help("mcpd data destination port (default=54321)")
-                )
-            );
+                .add_argument(lyra::arg(dataPort_, "[dataPort]")
+                                  .optional()
+                                  .help("mcpd data destination port (default=54321)")));
     }
 
     int runCommand(CliContext &ctx) override
@@ -222,8 +205,8 @@ struct SetupCommand: public BaseCommand
         if (newAddress_.empty())
             return 1;
 
-        spdlog::debug("{} {} {} {} {}",
-                      PRETTY_FUNCTION, newAddress_, newId_, dataDestAddress_, dataPort_);
+        spdlog::debug("{} {} {} {} {}", PRETTY_FUNCTION, newAddress_, newId_, dataDestAddress_,
+                      dataPort_);
 
         // Note: setting the new mcpd id is not part of the SetProtoParams
         // command. It was added here purely for convenience to have a single
@@ -232,7 +215,8 @@ struct SetupCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("Error setting mcpd id: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("Error setting mcpd id: {} (code={}, category={})", ec.message(),
+                          ec.value(), ec.category().name());
             return 1;
         }
 
@@ -240,11 +224,13 @@ struct SetupCommand: public BaseCommand
         // Note: we might not receive a response if the mcpd ip address is
         // changed by this call.
         ctx.mcpdId = newId_;
-        ec = mcpd_set_ip_address_and_data_dest(ctx.cmdSock, ctx.mcpdId, newAddress_, dataDestAddress_, dataPort_);
+        ec = mcpd_set_ip_address_and_data_dest(ctx.cmdSock, ctx.mcpdId, newAddress_,
+                                               dataDestAddress_, dataPort_);
 
         if (ec && ec != std::errc::timed_out)
         {
-            spdlog::error("Error from setup command: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("Error from setup command: {} (code={}, category={})", ec.message(),
+                          ec.value(), ec.category().name());
             return 1;
         }
 
@@ -259,18 +245,12 @@ struct SetDataDestPortCommand: public BaseCommand
     SetDataDestPortCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "set_data_port",
-                 [this] (const lyra::group &) { this->run_ = true; }
-            )
-            .help("Set the MCPD data destination port")
+            lyra::command("set_data_port", [this](const lyra::group &) { this->run_ = true; })
+                .help("Set the MCPD data destination port")
 
-            .add_argument(
-                lyra::arg(dataPort_, "data dest port")
-                .required()
-                .help("data destination port")
-            )
-        );
+                .add_argument(lyra::arg(dataPort_, "data dest port")
+                                  .required()
+                                  .help("data destination port")));
     }
 
     int runCommand(CliContext &ctx) override
@@ -297,18 +277,10 @@ struct SetIdCommand: public BaseCommand
     SetIdCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "setid",
-                [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("Set MCPD id (MCPD-8_v1 only, v2 mirrors the id given in command packets)")
+            lyra::command("setid", [this](const lyra::group &) { this->run_ = true; })
+                .help("Set MCPD id (MCPD-8_v1 only, v2 mirrors the id given in command packets)")
 
-            .add_argument(
-                lyra::arg(newId_, "newId")
-                .required()
-                .help("new mcpd id")
-                )
-            );
+                .add_argument(lyra::arg(newId_, "newId").required().help("new mcpd id")));
     }
 
     int runCommand(CliContext &ctx) override
@@ -319,8 +291,8 @@ struct SetIdCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("Error setting mcpdId: {} (code={}, category={})",
-                          ec.message(), ec.value(), ec.category().name());
+            spdlog::error("Error setting mcpdId: {} (code={}, category={})", ec.message(),
+                          ec.value(), ec.category().name());
             return 1;
         }
 
@@ -337,34 +309,23 @@ struct TimingCommand: public BaseCommand
 
     TimingCommand(lyra::cli &cli)
     {
-        cli.add_argument(
-            lyra::command(
-                "timing",
-                 [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("Bus master/slave setup")
+        cli.add_argument(lyra::command("timing", [this](const lyra::group &) { this->run_ = true; })
+                             .help("Bus master/slave setup")
 
-            .add_argument(
-                lyra::arg(role_, "role")
-                .required()
-                .choices("master", "slave", "1", "0")
-                .help("role=master|slave|1|0")
-                )
+                             .add_argument(lyra::arg(role_, "role")
+                                               .required()
+                                               .choices("master", "slave", "1", "0")
+                                               .help("role=master|slave|1|0"))
 
-            .add_argument(
-                lyra::arg(term_, "termination")
-                .required()
-                .choices("on", "off", "1", "0")
-                .help("termination=on|off|1|0")
-                )
+                             .add_argument(lyra::arg(term_, "termination")
+                                               .required()
+                                               .choices("on", "off", "1", "0")
+                                               .help("termination=on|off|1|0"))
 
-            .add_argument(
-                lyra::arg(extSync_, "[external sync]")
-                .optional()
-                .choices("on", "off", "1", "0")
-                .help("extSync=on|off|1|0 (default=off)")
-                )
-            );
+                             .add_argument(lyra::arg(extSync_, "[external sync]")
+                                               .optional()
+                                               .choices("on", "off", "1", "0")
+                                               .help("extSync=on|off|1|0 (default=off)")));
     }
 
     int runCommand(CliContext &ctx) override
@@ -406,8 +367,8 @@ struct TimingCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("Error setting timing options: {} (code={}, category={})",
-                          ec.message(), ec.value(), ec.category().name());
+            spdlog::error("Error setting timing options: {} (code={}, category={})", ec.message(),
+                          ec.value(), ec.category().name());
             return 1;
         }
 
@@ -421,19 +382,10 @@ struct RunIdCommand: public BaseCommand
 
     RunIdCommand(lyra::cli &cli)
     {
-        cli.add_argument(
-            lyra::command(
-                "runid",
-                 [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("Set the mcpd runId for the next DAQ run")
+        cli.add_argument(lyra::command("runid", [this](const lyra::group &) { this->run_ = true; })
+                             .help("Set the mcpd runId for the next DAQ run")
 
-            .add_argument(
-                lyra::arg(runId_, "runId")
-                .required()
-                .help("runId")
-                )
-            );
+                             .add_argument(lyra::arg(runId_, "runId").required().help("runId")));
     }
 
     int runCommand(CliContext &ctx) override
@@ -444,8 +396,8 @@ struct RunIdCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("Error setting runid: {} (code={}, category={})",
-                          ec.message(), ec.value(), ec.category().name());
+            spdlog::error("Error setting runid: {} (code={}, category={})", ec.message(),
+                          ec.value(), ec.category().name());
             return 1;
         }
 
@@ -462,45 +414,36 @@ struct CellCommand: public BaseCommand
     CellCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "cell",
-                 [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("Counter cell setup")
+            lyra::command("cell", [this](const lyra::group &) { this->run_ = true; })
+                .help("Counter cell setup")
 
-            .add_argument(
-                lyra::arg(cellId_, "cellId")
-                .required()
-                .help("0-3: Monitor/Chopper1-4, 4/5: Digital Input 1/2")
-                )
+                .add_argument(lyra::arg(cellId_, "cellId")
+                                  .required()
+                                  .help("0-3: Monitor/Chopper1-4, 4/5: Digital Input 1/2"))
 
-            .add_argument(
-                lyra::arg(trigger_, "triggerValue")
-                .required()
-                .help("0: NoTrigger, 1-4: AuxTimer0-3, 5/6: Digital Input 1/2, 7: Compare Register")
-                )
+                .add_argument(lyra::arg(trigger_, "triggerValue")
+                                  .required()
+                                  .help("0: NoTrigger, 1-4: AuxTimer0-3, 5/6: Digital Input 1/2, "
+                                        "7: Compare Register"))
 
-            .add_argument(
-                lyra::arg(compareReg_, "compareRegister")
-                .optional()
-                .help("0-20: trigger if bit n=1, 21: trigger on overflow, 22: trigger on rising edge of input")
-                )
-            );
+                .add_argument(lyra::arg(compareReg_, "compareRegister")
+                                  .optional()
+                                  .help("0-20: trigger if bit n=1, 21: trigger on overflow, 22: "
+                                        "trigger on rising edge of input")));
     }
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{}, cellId={}, trigger={}, compareReg={}",
-                      PRETTY_FUNCTION, cellId_, trigger_, compareReg_);
+        spdlog::debug("{}, cellId={}, trigger={}, compareReg={}", PRETTY_FUNCTION, cellId_,
+                      trigger_, compareReg_);
 
-        auto ec = mcpd_setup_cell(ctx.cmdSock, ctx.mcpdId,
-                                  static_cast<CellName>(cellId_),
-                                  static_cast<TriggerSource>(trigger_),
-                                  compareReg_);
+        auto ec = mcpd_setup_cell(ctx.cmdSock, ctx.mcpdId, static_cast<CellName>(cellId_),
+                                  static_cast<TriggerSource>(trigger_), compareReg_);
 
         if (ec)
         {
-            spdlog::error("cell: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("cell: {} (code={}, category={})", ec.message(), ec.value(),
+                          ec.category().name());
             return 1;
         }
 
@@ -516,36 +459,26 @@ struct TimerCommand: public BaseCommand
     TimerCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "timer",
-                 [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("Timer setup")
+            lyra::command("timer", [this](const lyra::group &) { this->run_ = true; })
+                .help("Timer setup")
 
-            .add_argument(
-                lyra::arg(timerId_, "timerId")
-                .required()
-                .help("timerId in [0, 3]")
-                )
+                .add_argument(lyra::arg(timerId_, "timerId").required().help("timerId in [0, 3]"))
 
-            .add_argument(
-                lyra::arg(captureValue_, "captureValue")
-                .required()
-                .help("capture register value")
-                )
-            );
+                .add_argument(lyra::arg(captureValue_, "captureValue")
+                                  .required()
+                                  .help("capture register value")));
     }
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{}, timerId={}, captureValue={}",
-                      PRETTY_FUNCTION, timerId_, captureValue_);
+        spdlog::debug("{}, timerId={}, captureValue={}", PRETTY_FUNCTION, timerId_, captureValue_);
 
         auto ec = mcpd_setup_auxtimer(ctx.cmdSock, ctx.mcpdId, timerId_, captureValue_);
 
         if (ec)
         {
-            spdlog::error("cell: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("cell: {} (code={}, category={})", ec.message(), ec.value(),
+                          ec.category().name());
             return 1;
         }
 
@@ -560,18 +493,12 @@ struct SetMasterClockCommand: public BaseCommand
     SetMasterClockCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "set_master_clock",
-                [this] (const lyra::group &) { this->run_ = true; }
-            )
-            .help("Set master clock value")
+            lyra::command("set_master_clock", [this](const lyra::group &) { this->run_ = true; })
+                .help("Set master clock value")
 
-            .add_argument(
-                lyra::arg(clockValue_, "clockValue")
-                .required()
-                .help("clock value (48 bit unsigned)")
-            )
-        );
+                .add_argument(lyra::arg(clockValue_, "clockValue")
+                                  .required()
+                                  .help("clock value (48 bit unsigned)")));
     }
 
     int runCommand(CliContext &ctx) override
@@ -582,7 +509,8 @@ struct SetMasterClockCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("set_master_clock: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("set_master_clock: {} (code={}, category={})", ec.message(), ec.value(),
+                          ec.category().name());
             return 1;
         }
 
@@ -598,37 +526,29 @@ struct ParamSourceCommand: public BaseCommand
     ParamSourceCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "param_source",
-                 [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("Set parameter source")
+            lyra::command("param_source", [this](const lyra::group &) { this->run_ = true; })
+                .help("Set parameter source")
 
-            .add_argument(
-                lyra::arg(param_, "paramId")
-                .required()
-                .help("paramId")
-                )
+                .add_argument(lyra::arg(param_, "paramId").required().help("paramId"))
 
-            .add_argument(
-                lyra::arg(source_, "paramSource")
-                .required()
-                .help("0-3: Monitor0-3, 4/5: Digital Input 1/2, 6: All digital and ADC inputs, "
-                      "7: event counter (not for V5 models), 8: master clock")
-                )
-            );
+                .add_argument(lyra::arg(source_, "paramSource")
+                                  .required()
+                                  .help("0-3: Monitor0-3, 4/5: Digital Input 1/2, 6: All digital "
+                                        "and ADC inputs, "
+                                        "7: event counter (not for V5 models), 8: master clock")));
     }
 
     int runCommand(CliContext &ctx)
     {
-        spdlog::debug("{}, param={}, source={}",
-                      PRETTY_FUNCTION, param_, source_);
+        spdlog::debug("{}, param={}, source={}", PRETTY_FUNCTION, param_, source_);
 
-        auto ec = mcpd_set_param_source(ctx.cmdSock, ctx.mcpdId, param_, static_cast<DataSource>(source_));
+        auto ec = mcpd_set_param_source(ctx.cmdSock, ctx.mcpdId, param_,
+                                        static_cast<DataSource>(source_));
 
         if (ec)
         {
-            spdlog::error("param_source: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("param_source: {} (code={}, category={})", ec.message(), ec.value(),
+                          ec.category().name());
             return 1;
         }
 
@@ -641,12 +561,8 @@ struct GetParametersCommand: public BaseCommand
     GetParametersCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "get_parameters",
-                 [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("Read and print the current parameter values")
-            );
+            lyra::command("get_parameters", [this](const lyra::group &) { this->run_ = true; })
+                .help("Read and print the current parameter values"));
     }
 
     int runCommand(CliContext &ctx) override
@@ -659,7 +575,8 @@ struct GetParametersCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("get_parameters: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("get_parameters: {} (code={}, category={})", ec.message(), ec.value(),
+                          ec.category().name());
             return 1;
         }
 
@@ -671,7 +588,7 @@ struct GetParametersCommand: public BaseCommand
         spdlog::info("  TTL out: {}", params.ttlOut);
         spdlog::info("  TTL in: {}", params.ttlIn);
 
-        for (size_t pi=0; pi<McpdParamCount; ++pi)
+        for (size_t pi = 0; pi < McpdParamCount; ++pi)
             spdlog::info("  Parameter{}: {}", pi, to_48bit_value(params.params[pi]));
 
         return 0;
@@ -683,12 +600,8 @@ struct VersionCommand: public BaseCommand
     VersionCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "version",
-                 [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("Read mcpd cpu and fpga version info")
-            );
+            lyra::command("version", [this](const lyra::group &) { this->run_ = true; })
+                .help("Read mcpd cpu and fpga version info"));
     }
 
     int runCommand(CliContext &ctx) override
@@ -700,7 +613,8 @@ struct VersionCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("version: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("version: {} (code={}, category={})", ec.message(), ec.value(),
+                          ec.category().name());
             return 1;
         }
 
@@ -715,19 +629,15 @@ struct McpdFindIdCommand: public BaseCommand
     McpdFindIdCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "find_id",
-                 [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("Find the 'id' value of MCPD-8_v1 (older) modules.")
-            );
+            lyra::command("find_id", [this](const lyra::group &) { this->run_ = true; })
+                .help("Find the 'id' value of MCPD-8_v1 (older) modules."));
     }
 
     int runCommand(CliContext &ctx) override
     {
         spdlog::debug("{}", PRETTY_FUNCTION);
 
-        for (u8 id=0; id<=std::numeric_limits<u8>::max(); ++id)
+        for (u8 id = 0; id <= std::numeric_limits<u8>::max(); ++id)
         {
             McpdVersionInfo vi = {};
             auto ec = mcpd_get_version(ctx.cmdSock, id, vi);
@@ -742,7 +652,8 @@ struct McpdFindIdCommand: public BaseCommand
 
             if (ec != make_error_code(CommandError::IdMismatch))
             {
-                spdlog::error("find_id: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
+                spdlog::error("find_id: {} (code={}, category={})", ec.message(), ec.value(),
+                              ec.category().name());
                 return 1;
             }
         }
@@ -760,24 +671,12 @@ struct DacSetupCommand: public BaseCommand
     DacSetupCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "dac_setup",
-                 [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("MCPD DAC unit setup")
+            lyra::command("dac_setup", [this](const lyra::group &) { this->run_ = true; })
+                .help("MCPD DAC unit setup")
 
-            .add_argument(
-                lyra::arg(dac0_, "dac0")
-                .required()
-                .help("dac0 value (12 bit)")
-                )
+                .add_argument(lyra::arg(dac0_, "dac0").required().help("dac0 value (12 bit)"))
 
-            .add_argument(
-                lyra::arg(dac1_, "dac1")
-                .required()
-                .help("dac1 value (12 bit)")
-                )
-            );
+                .add_argument(lyra::arg(dac1_, "dac1").required().help("dac1 value (12 bit)")));
     }
 
     int runCommand(CliContext &ctx) override
@@ -788,7 +687,8 @@ struct DacSetupCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("dac_setup: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("dac_setup: {} (code={}, category={})", ec.message(), ec.value(),
+                          ec.category().name());
             return 1;
         }
 
@@ -801,12 +701,8 @@ struct ScanBussesCommand: public BaseCommand
     ScanBussesCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "scan_busses",
-                 [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("Scan MCPD busses for connected MPSD modules")
-            );
+            lyra::command("scan_busses", [this](const lyra::group &) { this->run_ = true; })
+                .help("Scan MCPD busses for connected MPSD modules"));
     }
 
     int runCommand(CliContext &ctx) override
@@ -818,13 +714,14 @@ struct ScanBussesCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("scan_busses: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("scan_busses: {} (code={}, category={})", ec.message(), ec.value(),
+                          ec.category().name());
             return 1;
         }
 
         spdlog::info("scan_busses result:");
 
-        for (size_t bus=0; bus<scanDest.size(); ++bus)
+        for (size_t bus = 0; bus < scanDest.size(); ++bus)
             spdlog::info("  [{}]: {}", bus, scanDest[bus]);
 
         return 0;
@@ -835,13 +732,9 @@ struct GetBusCapabilitiesCommand: public BaseCommand
 {
     GetBusCapabilitiesCommand(lyra::cli &cli)
     {
-        cli.add_argument(
-            lyra::command(
-                "get_bus_capabilities",
-                 [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("Get MCPD bus transmit capabilities")
-            );
+        cli.add_argument(lyra::command("get_bus_capabilities",
+                                       [this](const lyra::group &) { this->run_ = true; })
+                             .help("Get MCPD bus transmit capabilities"));
     }
 
     int runCommand(CliContext &ctx) override
@@ -853,11 +746,13 @@ struct GetBusCapabilitiesCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mcpd_get_bus_capabilities: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mcpd_get_bus_capabilities: {} (code={}, category={})", ec.message(),
+                          ec.value(), ec.category().name());
             return 1;
         }
 
-        spdlog::info("mcpd_get_bus_capabilities: available=\"{}\" (0x{:02X}), current=\"{}\" (0x{:02X})",
+        spdlog::info(
+            "mcpd_get_bus_capabilities: available=\"{}\" (0x{:02X}), current=\"{}\" (0x{:02X})",
             bus_capabilities_to_string(caps.available), caps.available,
             bus_capabilities_to_string(caps.selected), caps.selected);
 
@@ -871,25 +766,19 @@ struct SetBusCapabilitiesCommand: public BaseCommand
 
     SetBusCapabilitiesCommand(lyra::cli &cli)
     {
-        cli.add_argument(
-            lyra::command(
-                "set_bus_capabilities",
-                 [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("Set MCPD bus transmit capabilities")
+        cli.add_argument(lyra::command("set_bus_capabilities",
+                                       [this](const lyra::group &) { this->run_ = true; })
+                             .help("Set MCPD bus transmit capabilities")
 
-            .add_argument(
-                lyra::arg(capsValue_, "value")
-                .required()
-                .help("new bus transmit capabilities value")
-                )
-            );
+                             .add_argument(lyra::arg(capsValue_, "value")
+                                               .required()
+                                               .help("new bus transmit capabilities value")));
     }
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{} capsValue={} (\"{}\")", PRETTY_FUNCTION,
-            capsValue_, bus_capabilities_to_string(capsValue_));
+        spdlog::debug("{} capsValue={} (\"{}\")", PRETTY_FUNCTION, capsValue_,
+                      bus_capabilities_to_string(capsValue_));
 
         u8 result = {};
 
@@ -897,13 +786,14 @@ struct SetBusCapabilitiesCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mcpd_set_bus_capabilities: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mcpd_set_bus_capabilities: {} (code={}, category={})", ec.message(),
+                          ec.value(), ec.category().name());
             return 1;
         }
 
-        spdlog::info("mcpd_set_bus_capabilities: wanted={} ({}), got={} ({})",
-            capsValue_, bus_capabilities_to_string(capsValue_),
-            result, bus_capabilities_to_string(result));
+        spdlog::info("mcpd_set_bus_capabilities: wanted={} ({}), got={} ({})", capsValue_,
+                     bus_capabilities_to_string(capsValue_), result,
+                     bus_capabilities_to_string(result));
 
         return 0;
     }
@@ -914,22 +804,21 @@ namespace
 
 // Helper function using std::stoul() with base=0 to allow parsing decimal, hex
 // and octal values.
-template<typename T>
-lyra::parser_result parse_unsigned_value(T &dest, const std::string &input)
+template <typename T> lyra::parser_result parse_unsigned_value(T &dest, const std::string &input)
 {
     try
     {
         dest = std::stoul(input, nullptr, 0);
         return lyra::parser_result::ok(lyra::parser_result_type::matched);
     }
-    catch(const std::exception& e)
+    catch (const std::exception &e)
     {
         auto msg = fmt::format("Error parsing unsigned value from \"{}\"", input);
         return lyra::parser_result::error(lyra::parser_result_type::short_circuit_all, msg);
     }
 }
 
-}
+} // namespace
 
 struct WriteRegisterCommand: public BaseCommand
 {
@@ -939,35 +828,30 @@ struct WriteRegisterCommand: public BaseCommand
     WriteRegisterCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "write_register",
-                 [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("write MCPD/MDLL internal register (modern versions only)")
+            lyra::command("write_register", [this](const lyra::group &) { this->run_ = true; })
+                .help("write MCPD/MDLL internal register (modern versions only)")
 
-            .add_argument(
-                lyra::arg([&] (const std::string &str) { return parse_unsigned_value(address_, str); }, "address")
-                .required()
-                )
+                .add_argument(lyra::arg([&](const std::string &str)
+                                        { return parse_unsigned_value(address_, str); },
+                                        "address")
+                                  .required())
 
-            .add_argument(
-                lyra::arg([&] (const std::string &str) { return parse_unsigned_value(value_, str); }, "value")
-                .required()
-                )
-            );
+                .add_argument(lyra::arg([&](const std::string &str)
+                                        { return parse_unsigned_value(value_, str); },
+                                        "value")
+                                  .required()));
     }
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{}: address=0x{:04X}, value=0x{:08X}",
-                      PRETTY_FUNCTION, address_, value_);
+        spdlog::debug("{}: address=0x{:04X}, value=0x{:08X}", PRETTY_FUNCTION, address_, value_);
 
         auto ec = mcpd_write_register(ctx.cmdSock, ctx.mcpdId, address_, value_);
 
         if (ec)
         {
-            spdlog::error("mcpd_write_register: {} (code={}, category={})",
-                          ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mcpd_write_register: {} (code={}, category={})", ec.message(),
+                          ec.value(), ec.category().name());
             return 1;
         }
 
@@ -982,17 +866,13 @@ struct ReadRegisterCommand: public BaseCommand
     ReadRegisterCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "read_register",
-                 [this] (const lyra::group &) { this->run_ = true; }
-                 )
-            .help("read MCPD/MDLL internal register (modern versions only)")
+            lyra::command("read_register", [this](const lyra::group &) { this->run_ = true; })
+                .help("read MCPD/MDLL internal register (modern versions only)")
 
-            .add_argument(
-                lyra::arg([&] (const std::string &str) { return parse_unsigned_value(address_, str); }, "address")
-                .required()
-                )
-            );
+                .add_argument(lyra::arg([&](const std::string &str)
+                                        { return parse_unsigned_value(address_, str); },
+                                        "address")
+                                  .required()));
     }
 
     int runCommand(CliContext &ctx) override
@@ -1004,8 +884,8 @@ struct ReadRegisterCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mcpd_read_register: {} (code={}, category={})",
-                          ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mcpd_read_register: {} (code={}, category={})", ec.message(), ec.value(),
+                          ec.category().name());
             return 1;
         }
 
@@ -1022,17 +902,14 @@ struct DecodeAllInputsParameter: public BaseCommand
     DecodeAllInputsParameter(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "decode_all_inputs_parameter",
-                 [this] (const lyra::group &) { this->run_ = true; }
-                 )
-            .help("decode a param_source=6 (All digital inputs+ADCs) parameter value")
+            lyra::command("decode_all_inputs_parameter",
+                          [this](const lyra::group &) { this->run_ = true; })
+                .help("decode a param_source=6 (All digital inputs+ADCs) parameter value")
 
-            .add_argument(
-                lyra::arg([&] (const std::string &str) { return parse_unsigned_value(value_, str); }, "value")
-                .required()
-                )
-            );
+                .add_argument(lyra::arg([&](const std::string &str)
+                                        { return parse_unsigned_value(value_, str); },
+                                        "value")
+                                  .required()));
     }
 
     int runCommand(CliContext &ctx) override
@@ -1040,19 +917,20 @@ struct DecodeAllInputsParameter: public BaseCommand
         spdlog::debug("{}: value=0x{:012x}", PRETTY_FUNCTION, value_);
 
         auto [lo, mid, hi] = from_48bit_value(value_);
-        spdlog::info("param=0x{:012x}, lo=0x{:04x}, mid=0x{:04x}, hi=0x{:04x}", value_, lo, mid, hi);
+        spdlog::info("param=0x{:012x}, lo=0x{:04x}, mid=0x{:04x}, hi=0x{:04x}", value_, lo, mid,
+                     hi);
 
         // lo contains the 4 monitor/chopper input status bits
         // parameter_Lo             = xb00,xxxxxxxx,11,m/c[3:0]
-        const u16 LoMatchMask       = 0b00'00000000'11'0000;
-        const u16 LoExctractMask    = 0b00'00000000'00'1111;
+        const u16 LoMatchMask = 0b00'00000000'11'0000;
+        const u16 LoExctractMask = 0b00'00000000'00'1111;
 
-        if ((lo & LoMatchMask) !=  LoMatchMask)
+        if ((lo & LoMatchMask) != LoMatchMask)
             spdlog::warn("lo does not match execpted bitmask! garbage in -> garbage out");
 
         const u16 inputsStatus = lo & LoExctractMask;
-        spdlog::info("lo=0x{:04x} -> inputsStatus={:#04x} -> {:#06b}", lo, inputsStatus, inputsStatus);
-
+        spdlog::info("lo=0x{:04x} -> inputsStatus={:#04x} -> {:#06b}", lo, inputsStatus,
+                     inputsStatus);
 
         return 0;
     }
@@ -1066,29 +944,22 @@ struct ReadPeripheralRegisterCommand: public BaseCommand
     ReadPeripheralRegisterCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "read_peripheral_register",
-                [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("read peripheral module (MCPD/MSTD) register")
+            lyra::command("read_peripheral_register",
+                          [this](const lyra::group &) { this->run_ = true; })
+                .help("read peripheral module (MCPD/MSTD) register")
 
-            .add_argument(
-                lyra::arg(mpsdId_, "mpsdId")
-                .required()
-                .help("MPSD/MSTD ID (bus number)")
-            )
+                .add_argument(
+                    lyra::arg(mpsdId_, "mpsdId").required().help("MPSD/MSTD ID (bus number)"))
 
-            .add_argument(
-                lyra::arg(registerNumber_, "registerNumber")
-                .required()
-                .help("register to read")
-            )
-        );
+                .add_argument(lyra::arg(registerNumber_, "registerNumber")
+                                  .required()
+                                  .help("register to read")));
     }
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{}, mpsdId={}, registerNumber={}", PRETTY_FUNCTION, mpsdId_, registerNumber_);
+        spdlog::debug("{}, mpsdId={}, registerNumber={}", PRETTY_FUNCTION, mpsdId_,
+                      registerNumber_);
 
         u16 dest{};
 
@@ -1097,11 +968,12 @@ struct ReadPeripheralRegisterCommand: public BaseCommand
         if (ec)
         {
             spdlog::error("Error reading peripheral register: {} (code={}, category={})",
-                ec.message(), ec.value(), ec.category().name());
+                          ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
-        spdlog::info("read_peripheral_register: mpsdId={0:}, register={1:}, value=0x{2:04X} ({2:} decimal)",
+        spdlog::info(
+            "read_peripheral_register: mpsdId={0:}, register={1:}, value=0x{2:04X} ({2:} decimal)",
             mpsdId_, registerNumber_, dest);
 
         return 0;
@@ -1117,47 +989,38 @@ struct WritePeripheralRegisterCommand: public BaseCommand
     WritePeripheralRegisterCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "write_peripheral_register",
-                [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("write peripheral module (MPSD/MSTD) register")
+            lyra::command("write_peripheral_register",
+                          [this](const lyra::group &) { this->run_ = true; })
+                .help("write peripheral module (MPSD/MSTD) register")
 
-            .add_argument(
-                lyra::arg(mpsdId_, "mpsdId")
-                .required()
-                .help("MPSD/MSTD ID (bus number)")
-            )
+                .add_argument(
+                    lyra::arg(mpsdId_, "mpsdId").required().help("MPSD/MSTD ID (bus number)"))
 
-            .add_argument(
-                lyra::arg(registerNumber_, "registerNumber")
-                .required()
-                .help("register to write")
-            )
+                .add_argument(lyra::arg(registerNumber_, "registerNumber")
+                                  .required()
+                                  .help("register to write"))
 
-            .add_argument(
-                lyra::arg(registerValue_, "registerValue")
-                .required()
-                .help("value to write")
-            )
-        );
+                .add_argument(
+                    lyra::arg(registerValue_, "registerValue").required().help("value to write")));
     }
 
     int runCommand(CliContext &ctx) override
     {
-        spdlog::debug("{}, mpsdId={}, registerNumber={}, registerValue={}",
-            PRETTY_FUNCTION, mpsdId_, registerNumber_, registerValue_);
+        spdlog::debug("{}, mpsdId={}, registerNumber={}, registerValue={}", PRETTY_FUNCTION,
+                      mpsdId_, registerNumber_, registerValue_);
 
-        auto ec = write_peripheral_register(ctx.cmdSock, ctx.mcpdId, mpsdId_, registerNumber_, registerValue_);
+        auto ec = write_peripheral_register(ctx.cmdSock, ctx.mcpdId, mpsdId_, registerNumber_,
+                                            registerValue_);
 
         if (ec)
         {
             spdlog::error("Error writing peripheral register: {} (code={}, category={})",
-                ec.message(), ec.value(), ec.category().name());
+                          ec.message(), ec.value(), ec.category().name());
             return 1;
         }
 
-        spdlog::info("write_peripheral_register: mpsdId={0:}, register={1:}, value=0x{2:04X} ({2:} decimal)",
+        spdlog::info(
+            "write_peripheral_register: mpsdId={0:}, register={1:}, value=0x{2:04X} ({2:} decimal)",
             mpsdId_, registerNumber_, registerValue_);
 
         return 0;
@@ -1172,25 +1035,15 @@ struct MpsdSetMode: public BaseCommand
     MpsdSetMode(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "mpsd_set_mode",
-                [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("set mpsd mode")
+            lyra::command("mpsd_set_mode", [this](const lyra::group &) { this->run_ = true; })
+                .help("set mpsd mode")
 
-            .add_argument(
-                lyra::arg(mpsdId_, "mpsdid")
-                .required()
-                .help("mpsd id")
-                )
+                .add_argument(lyra::arg(mpsdId_, "mpsdid").required().help("mpsd id"))
 
-            .add_argument(
-                lyra::arg(mode_, "mode")
-                .required()
-                .choices("0", "pos", "position", "1", "amp", "amplitude")
-                .help("mode: 0|pos|position|1|amp|amplitude")
-                )
-            );
+                .add_argument(lyra::arg(mode_, "mode")
+                                  .required()
+                                  .choices("0", "pos", "position", "1", "amp", "amplitude")
+                                  .help("mode: 0|pos|position|1|amp|amplitude")));
     }
 
     int runCommand(CliContext &ctx)
@@ -1209,7 +1062,8 @@ struct MpsdSetMode: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mpsd_set_mode: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mpsd_set_mode: {} (code={}, category={})", ec.message(), ec.value(),
+                          ec.category().name());
             return 1;
         }
 
@@ -1225,24 +1079,14 @@ struct MpsdSetTxFormat: public BaseCommand
     MpsdSetTxFormat(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "mpsd_set_tx_format",
-                [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("set mpsd bus tx format")
+            lyra::command("mpsd_set_tx_format", [this](const lyra::group &) { this->run_ = true; })
+                .help("set mpsd bus tx format")
 
-            .add_argument(
-                lyra::arg(mpsdId_, "mpsdid")
-                .required()
-                .help("mpsd id")
-                )
+                .add_argument(lyra::arg(mpsdId_, "mpsdid").required().help("mpsd id"))
 
-            .add_argument(
-                lyra::arg(txFormat_, "txFormat")
-                .required()
-                .help("bus transmit format (1|2|4)")
-                )
-            );
+                .add_argument(lyra::arg(txFormat_, "txFormat")
+                                  .required()
+                                  .help("bus transmit format (1|2|4)")));
     }
 
     int runCommand(CliContext &ctx)
@@ -1253,7 +1097,8 @@ struct MpsdSetTxFormat: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mpsd_set_tx_format: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mpsd_set_tx_format: {} (code={}, category={})", ec.message(), ec.value(),
+                          ec.category().name());
             return 1;
         }
 
@@ -1270,42 +1115,27 @@ struct MpsdSetGainCommand: public BaseCommand
     MpsdSetGainCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "mpsd_set_gain",
-                 [this] (const lyra::group &) { this->run_ = true; }
-                 )
-            .help("set per-channel mpsd gain")
+            lyra::command("mpsd_set_gain", [this](const lyra::group &) { this->run_ = true; })
+                .help("set per-channel mpsd gain")
 
-            .add_argument(
-                lyra::arg(mpsdId_, "mpsdid")
-                .required()
-                .help("mpsd id")
-                )
+                .add_argument(lyra::arg(mpsdId_, "mpsdid").required().help("mpsd id"))
 
-            .add_argument(
-                lyra::arg(channel_, "channel")
-                .required()
-                .help("mpsd channel")
-                )
+                .add_argument(lyra::arg(channel_, "channel").required().help("mpsd channel"))
 
-            .add_argument(
-                lyra::arg(gain_, "gain")
-                .required()
-                .help("gain value")
-                )
-            );
+                .add_argument(lyra::arg(gain_, "gain").required().help("gain value")));
     }
 
     int runCommand(CliContext &ctx)
     {
-        spdlog::debug("{} mpsdId={}, channel={}, gain={}",
-                      PRETTY_FUNCTION, mpsdId_, channel_, gain_);
+        spdlog::debug("{} mpsdId={}, channel={}, gain={}", PRETTY_FUNCTION, mpsdId_, channel_,
+                      gain_);
 
         auto ec = mpsd_set_gain(ctx.cmdSock, ctx.mcpdId, mpsdId_, channel_, gain_);
 
         if (ec)
         {
-            spdlog::error("mpsd_set_gain: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mpsd_set_gain: {} (code={}, category={})", ec.message(), ec.value(),
+                          ec.category().name());
             return 1;
         }
 
@@ -1321,36 +1151,25 @@ struct MpsdSetTresholdCommand: public BaseCommand
     MpsdSetTresholdCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "mpsd_set_threshold",
-                 [this] (const lyra::group &) { this->run_ = true; }
-                 )
-            .help("set mpsd threshold")
+            lyra::command("mpsd_set_threshold", [this](const lyra::group &) { this->run_ = true; })
+                .help("set mpsd threshold")
 
-            .add_argument(
-                lyra::arg(mpsdId_, "mpsdid")
-                .required()
-                .help("mpsd id")
-                )
+                .add_argument(lyra::arg(mpsdId_, "mpsdid").required().help("mpsd id"))
 
-            .add_argument(
-                lyra::arg(threshold_, "treshold")
-                .required()
-                .help("threshold value")
-                )
-            );
+                .add_argument(
+                    lyra::arg(threshold_, "treshold").required().help("threshold value")));
     }
 
     int runCommand(CliContext &ctx)
     {
-        spdlog::debug("{} mpsdId={}, threshold={}",
-                      PRETTY_FUNCTION, mpsdId_, threshold_);
+        spdlog::debug("{} mpsdId={}, threshold={}", PRETTY_FUNCTION, mpsdId_, threshold_);
 
         auto ec = mpsd_set_threshold(ctx.cmdSock, ctx.mcpdId, mpsdId_, threshold_);
 
         if (ec)
         {
-            spdlog::error("mpsd_set_threshold: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mpsd_set_threshold: {} (code={}, category={})", ec.message(), ec.value(),
+                          ec.category().name());
             return 1;
         }
 
@@ -1369,43 +1188,23 @@ struct MpsdSetPulserCommand: public BaseCommand
     MpsdSetPulserCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "mpsd_set_pulser",
-                 [this] (const lyra::group &) { this->run_ = true; }
-                 )
-            .help("set per-channel mpsd pulser settings")
+            lyra::command("mpsd_set_pulser", [this](const lyra::group &) { this->run_ = true; })
+                .help("set per-channel mpsd pulser settings")
 
-            .add_argument(
-                lyra::arg(mpsdId_, "mpsdId")
-                .required()
-                .help("mpsd id")
-                )
+                .add_argument(lyra::arg(mpsdId_, "mpsdId").required().help("mpsd id"))
 
-            .add_argument(
-                lyra::arg(channel_, "channel")
-                .required()
-                .help("mpsd channel")
-                )
+                .add_argument(lyra::arg(channel_, "channel").required().help("mpsd channel"))
 
-            .add_argument(
-                lyra::arg(pos_, "position")
-                .required()
-                .help("0: left, 1: right, 2: middle")
-                )
+                .add_argument(
+                    lyra::arg(pos_, "position").required().help("0: left, 1: right, 2: middle"))
 
-            .add_argument(
-                lyra::arg(amplitude_, "amplitude")
-                .required()
-                .help("pulser amplitude")
-                )
+                .add_argument(
+                    lyra::arg(amplitude_, "amplitude").required().help("pulser amplitude"))
 
-            .add_argument(
-                lyra::arg(state_, "state")
-                .required()
-                .choices("on", "off")
-                .help("pulser state, on|off")
-                )
-            );
+                .add_argument(lyra::arg(state_, "state")
+                                  .required()
+                                  .choices("on", "off")
+                                  .help("pulser state, on|off")));
     }
 
     int runCommand(CliContext &ctx)
@@ -1415,13 +1214,13 @@ struct MpsdSetPulserCommand: public BaseCommand
 
         auto state = state_ == "on" ? PulserState::On : PulserState::Off;
 
-        auto ec = mpsd_set_pulser(
-            ctx.cmdSock, ctx.mcpdId,
-            mpsdId_, channel_, static_cast<ChannelPosition>(pos_), amplitude_, state);
+        auto ec = mpsd_set_pulser(ctx.cmdSock, ctx.mcpdId, mpsdId_, channel_,
+                                  static_cast<ChannelPosition>(pos_), amplitude_, state);
 
         if (ec)
         {
-            spdlog::error("mpsd_set_pulser: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mpsd_set_pulser: {} (code={}, category={})", ec.message(), ec.value(),
+                          ec.category().name());
             return 1;
         }
 
@@ -1436,18 +1235,10 @@ struct MpsdGetParametersCommand: public BaseCommand
     MpsdGetParametersCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "mpsd_get_parameters",
-                 [this] (const lyra::group &) { this->run_ = true; }
-                 )
-            .help("get mpsd parameters")
+            lyra::command("mpsd_get_parameters", [this](const lyra::group &) { this->run_ = true; })
+                .help("get mpsd parameters")
 
-            .add_argument(
-                lyra::arg(mpsdId_, "mpsdid")
-                .required()
-                .help("mpsd id")
-                )
-            );
+                .add_argument(lyra::arg(mpsdId_, "mpsdid").required().help("mpsd id")));
     }
 
     int runCommand(CliContext &ctx)
@@ -1460,7 +1251,8 @@ struct MpsdGetParametersCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("mpsd_get_parameters: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mpsd_get_parameters: {} (code={}, category={})", ec.message(),
+                          ec.value(), ec.category().name());
             return 1;
         }
 
@@ -1482,42 +1274,29 @@ struct MstdSetGainCommand: public BaseCommand
     MstdSetGainCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "mstd_set_gain",
-                [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("set per-channel mstd gain")
+            lyra::command("mstd_set_gain", [this](const lyra::group &) { this->run_ = true; })
+                .help("set per-channel mstd gain")
 
-            .add_argument(
-                lyra::arg(mstdId_, "mstdId")
-                .required()
-                .help("mstd id")
-                )
+                .add_argument(lyra::arg(mstdId_, "mstdId").required().help("mstd id"))
 
-            .add_argument(
-                lyra::arg(channel_, "channel")
-                .required()
-                .help("channel within mstd (0..15, 16=all channels)")
-                )
+                .add_argument(lyra::arg(channel_, "channel")
+                                  .required()
+                                  .help("channel within mstd (0..15, 16=all channels)"))
 
-            .add_argument(
-                lyra::arg(gain_, "gain")
-                .required()
-                .help("gain value (0..255)")
-                )
-            );
+                .add_argument(lyra::arg(gain_, "gain").required().help("gain value (0..255)")));
     }
 
     int runCommand(CliContext &ctx)
     {
-        spdlog::debug("{} mstdId_={}, channel={}, gain={}",
-                      PRETTY_FUNCTION, mstdId_, channel_, gain_);
+        spdlog::debug("{} mstdId_={}, channel={}, gain={}", PRETTY_FUNCTION, mstdId_, channel_,
+                      gain_);
 
         auto ec = mstd_set_gain(ctx.cmdSock, ctx.mcpdId, mstdId_, channel_, gain_);
 
         if (ec)
         {
-            spdlog::error("mstd_set_gain: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mstd_set_gain: {} (code={}, category={})", ec.message(), ec.value(),
+                          ec.category().name());
             return 1;
         }
 
@@ -1531,20 +1310,13 @@ struct DaqCommand: public BaseCommand
 
     DaqCommand(lyra::cli &cli)
     {
-        cli.add_argument(
-            lyra::command(
-                "daq",
-                [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("DAQ control commands")
+        cli.add_argument(lyra::command("daq", [this](const lyra::group &) { this->run_ = true; })
+                             .help("DAQ control commands")
 
-            .add_argument(
-                lyra::arg(subCommand_, "command")
-                .required()
-                .choices("start", "stop", "continue", "reset")
-                .help("start|stop|continue|reset")
-                )
-            );
+                             .add_argument(lyra::arg(subCommand_, "command")
+                                               .required()
+                                               .choices("start", "stop", "continue", "reset")
+                                               .help("start|stop|continue|reset")));
     }
 
     int runCommand(CliContext &ctx) override
@@ -1564,7 +1336,8 @@ struct DaqCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("daq {}: {} (code={}, category={})", subCommand_, ec.message(), ec.value(), ec.category().name());
+            spdlog::error("daq {}: {} (code={}, category={})", subCommand_, ec.message(),
+                          ec.value(), ec.category().name());
             return 1;
         }
 
@@ -1613,10 +1386,10 @@ void report_counters(const CountersReportInfo &info, const std::string &title = 
 
     if (info.flags & CountersReportInfo::ReportValues)
     {
-        spdlog::info("{}: counters: packets={}, bytes={}, timeouts={}, events={}",
-                    title, counters.packets, counters.bytes, counters.timeouts,
-                    counters.events
-                    );
+        spdlog::info(
+            "{}: counters: packets={} (mcpd={}, mdll={}), bytes={}, timeouts={}, events={}", title,
+            counters.packets, counters.eventsByType[1], counters.eventsByType[2], counters.bytes,
+            counters.timeouts, counters.events);
     }
 
     ReadoutCounters deltas;
@@ -1624,13 +1397,14 @@ void report_counters(const CountersReportInfo &info, const std::string &title = 
     deltas.bytes = counters.bytes - prevCounters.bytes;
     deltas.timeouts = counters.timeouts - prevCounters.timeouts;
     deltas.events = counters.events - prevCounters.events;
+    deltas.eventsByType[1] = counters.eventsByType[1] - prevCounters.eventsByType[1];
+    deltas.eventsByType[2] = counters.eventsByType[2] - prevCounters.eventsByType[2];
 
     if (info.flags & CountersReportInfo::ReportDeltas)
     {
-        spdlog::info("{}: deltas: packets={}, bytes={}, timeouts={}, events={}",
-                    title, deltas.packets, deltas.bytes, deltas.timeouts,
-                    deltas.events
-                    );
+        spdlog::info("{}: deltas: packets={} (mcpd={}, mdll={}), bytes={}, timeouts={}, events={}",
+                     title, deltas.packets, deltas.eventsByType[1], deltas.eventsByType[2],
+                     deltas.bytes, deltas.timeouts, deltas.events);
     }
 
     if (info.flags & CountersReportInfo::ReportPacketTypes)
@@ -1649,24 +1423,21 @@ void report_counters(const CountersReportInfo &info, const std::string &title = 
 
     if (dt_s > 0)
     {
-        spdlog::info("{}: rates: packets/s={:.2f}, MiB/s={:.2f}, events/s={:.0f}",
-                     title,
-                     deltas.packets / dt_s,
-                     deltas.bytes / dt_s / (1u << 20),
-                     deltas.events / dt_s
-                    );
+        spdlog::info("{}: rates: dt_s={}, packets/s={:.2f} (mcpd={}, mdll={}), MiB/s={:.2f}, "
+                     "events/s={:.0f}",
+                     title, dt_s, deltas.packets / dt_s, deltas.eventsByType[1] / dt_s,
+                     deltas.eventsByType[2] / dt_s, deltas.bytes / dt_s / (1u << 20),
+                     deltas.events / dt_s);
     }
-
 }
 
-// TODO: get rid of this and only use the one above instead
 void report_counters(const ReadoutCounters &counters, const std::string &title = "readout")
 {
     CountersReportInfo info;
     info.counters = counters;
+    info.flags = CountersReportInfo::All;
     report_counters(info, title);
 }
-
 
 struct ReadoutCommand: public BaseCommand
 {
@@ -1693,91 +1464,63 @@ struct ReadoutCommand: public BaseCommand
     ReadoutCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "readout",
-                [this](const lyra::group &)
-                { this->run_ = true; })
+            lyra::command("readout", [this](const lyra::group &) { this->run_ = true; })
                 .help("DAQ readout to listfile")
 
                 .add_argument(
-                    lyra::opt(listfilePath_, "listfilePath")
-                        ["--listfile"]
-                            .optional()
-                            .help("Path to the output listfile"))
+                    lyra::opt(listfilePath_, "listfilePath")["--listfile"].optional().help(
+                        "Path to the output listfile"))
+
+                .add_argument(lyra::opt([this](const bool &b)
+                                        { overWriteListfile_ = b; })["--overwrite-listfile"]
+                                  .optional()
+                                  .help("Overwrite the output listfile if it already exists"))
+
+                .add_argument(lyra::opt([this](const bool &b) { noListfile_ = b; })["--no-listfile"]
+                                  .optional()
+                                  .help("Do not write an output listfile."))
+
+                .add_argument(lyra::opt(duration_s_, "duration [s]")["--duration"].optional().help(
+                    "DAQ run duration in seconds. Runs forever if not specified or 0."))
+
+                .add_argument(lyra::opt(dataPort_, "dataPort")["--dataport"].optional().help(
+                    "mcpd data port (also the local listening port)"))
+
+                .add_argument(lyra::opt(reportInterval_ms_, "interval [ms]")["--report-interval"]
+                                  .optional()
+                                  .help("Time in ms between logging readout stats"))
+
+                .add_argument(lyra::opt([this](const bool &b)
+                                        { printPacketSummary_ = b; })["--print-packet-summary"]
+                                  .optional()
+                                  .help("Print readout packet summaries"))
 
                 .add_argument(
-                    lyra::opt([this](const bool &b)
-                              { overWriteListfile_ = b; })
-                        ["--overwrite-listfile"]
-                            .optional()
-                            .help("Overwrite the output listfile if it already exists"))
-
-                .add_argument(
-                    lyra::opt([this](const bool &b)
-                              { noListfile_ = b; })
-                        ["--no-listfile"]
-                            .optional()
-                            .help("Do not write an output listfile."))
-
-                .add_argument(
-                    lyra::opt(duration_s_, "duration [s]")
-                        ["--duration"]
-                            .optional()
-                            .help("DAQ run duration in seconds. Runs forever if not specified or 0."))
-
-                .add_argument(
-                    lyra::opt(dataPort_, "dataPort")
-                        ["--dataport"]
-                            .optional()
-                            .help("mcpd data port (also the local listening port)"))
-
-                .add_argument(
-                    lyra::opt(reportInterval_ms_, "interval [ms]")
-                        ["--report-interval"]
-                            .optional()
-                            .help("Time in ms between logging readout stats"))
-
-                .add_argument(
-                    lyra::opt([this](const bool &b)
-                              { printPacketSummary_ = b; })
-                        ["--print-packet-summary"]
-                            .optional()
-                            .help("Print readout packet summaries"))
-
-                .add_argument(
-                    lyra::opt([this](const bool &b)
-                              { printEventData_ = b; })
-                        ["--print-event-data"]
-                            .optional()
-                            .help("Print readout event data"))
+                    lyra::opt([this](const bool &b) { printEventData_ = b; })["--print-event-data"]
+                        .optional()
+                        .help("Print readout event data"))
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
                 .add_argument(
-                    lyra::opt(rootHistoPath_, "rootfile")
-                        ["--root-histo-file"]
-                            .optional()
-                            .help("ROOT histo output file path"))
+                    lyra::opt(rootHistoPath_, "rootfile")["--root-histo-file"].optional().help(
+                        "ROOT histo output file path"))
 
                 .add_argument(
-                    lyra::opt(rootFlushInterval_ms_, "flushInterval [ms]")
-                        ["--root-flush-interval"]
-                            .optional()
-                            .help("ROOT file flush interval in ms"))
+                    lyra::opt(rootFlushInterval_ms_, "flushInterval [ms]")["--root-flush-interval"]
+                        .optional()
+                        .help("ROOT file flush interval in ms"))
 
-                .add_argument(
-                    lyra::opt([this](const bool &b)
-                              { rootEnableMdllGraphs_ = b; })
-                        ["--root-enable-mdll-graphs"]
-                            .optional()
-                            .help("Create TGraphs of MDLL amplitude and position values vs time in the ROOT ouptut file. Eats lots of memory!"))
+                .add_argument(lyra::opt([this](const bool &b)
+                                        { rootEnableMdllGraphs_ = b; })["--root-enable-mdll-graphs"]
+                                  .optional()
+                                  .help("Create TGraphs of MDLL amplitude and position values vs "
+                                        "time in the ROOT ouptut file. Eats lots of memory!"))
 #endif
 
 #ifdef MESYTEC_MCPD_ENABLE_PYTHON
                 .add_argument(
-                    lyra::opt(pythonScriptPath_, "python file")
-                        ["--python-script"]
-                            .optional()
-                            .help("Path to a Python script to execute for each event."))
+                    lyra::opt(pythonScriptPath_, "python file")["--python-script"].optional().help(
+                        "Path to a Python script to execute for each event."))
 #endif
         );
     }
@@ -1815,8 +1558,7 @@ struct ReadoutCommand: public BaseCommand
         {
             if (!overWriteListfile_ && file_exists(listfilePath_.c_str()))
             {
-                spdlog::error("readout: Output listfile '{}' already exists",
-                              listfilePath_);
+                spdlog::error("readout: Output listfile '{}' already exists", listfilePath_);
                 return 1;
             }
 
@@ -1826,8 +1568,7 @@ struct ReadoutCommand: public BaseCommand
             }
             catch (const std::exception &e)
             {
-                spdlog::error("readout: Error opening listfile '{}': {}",
-                              listfilePath_, e.what());
+                spdlog::error("readout: Error opening listfile '{}': {}", listfilePath_, e.what());
                 return 1;
             }
         }
@@ -1856,7 +1597,8 @@ struct ReadoutCommand: public BaseCommand
 
             if (!setup_python_context(pyCtx, pythonScriptPath_))
             {
-                spdlog::error("readout: Failed to set up Python context for script '{}'", pythonScriptPath_);
+                spdlog::error("readout: Failed to set up Python context for script '{}'",
+                              pythonScriptPath_);
                 return 1;
             }
 
@@ -1890,10 +1632,9 @@ struct ReadoutCommand: public BaseCommand
             size_t bytesTransferred = 0u;
             sockaddr_in srcAddr = {};
 
-            auto ec = receive_one_packet(
-                dataSock,
-                reinterpret_cast<u8 *>(&dataPacket), sizeof(dataPacket),
-                bytesTransferred, DefaultReadTimeout_ms, &srcAddr);
+            auto ec = receive_one_packet(dataSock, reinterpret_cast<u8 *>(&dataPacket),
+                                         sizeof(dataPacket), bytesTransferred,
+                                         DefaultReadTimeout_ms, &srcAddr);
 
             if (ec)
             {
@@ -1920,12 +1661,13 @@ struct ReadoutCommand: public BaseCommand
                 {
                     try
                     {
-                        listfile.write(reinterpret_cast<const char *>(&dataPacket), sizeof(dataPacket));
+                        listfile.write(reinterpret_cast<const char *>(&dataPacket),
+                                       sizeof(dataPacket));
                     }
                     catch (const std::exception &e)
                     {
-                        spdlog::error("readout: Error writing to listfile '{}': {}",
-                                      listfilePath_, e.what());
+                        spdlog::error("readout: Error writing to listfile '{}': {}", listfilePath_,
+                                      e.what());
                         return 1;
                     }
                 }
@@ -1938,26 +1680,25 @@ struct ReadoutCommand: public BaseCommand
 
                     inet_ntop(AF_INET, &srcAddr.sin_addr, srcAddrBuf, sizeof(srcAddrBuf));
 
-                    spdlog::info(
-                        "packet#{}: bufferType=0x{:04x}, bufferNumber={}, runId={}, "
-                        "devStatus=0x{:04x}, deviceId={}, timestamp={}, srcAddr={}",
-                        counters.packets, dataPacket.bufferType, dataPacket.bufferNumber,
-                        dataPacket.runId, dataPacket.deviceStatus, dataPacket.deviceId,
-                        get_header_timestamp(dataPacket), srcAddrBuf);
+                    spdlog::info("packet#{}: bufferLength={}, bufferType=0x{:04x}, "
+                                 "bufferNumber={}, headerLength={},runId={}, "
+                                 "devStatus=0x{:04x}, deviceId={}, timestamp={}, srcAddr={}",
+                                 counters.packets, dataPacket.bufferLength, dataPacket.bufferType,
+                                 dataPacket.bufferNumber, dataPacket.headerLength, dataPacket.runId,
+                                 dataPacket.deviceStatus, dataPacket.deviceId,
+                                 get_header_timestamp(dataPacket), srcAddrBuf);
 
-                    spdlog::info("  parameters: 0x{:012x}, {}, {}, {}",
-                                 to_48bit_value(dataPacket.param[0]),
-                                 to_48bit_value(dataPacket.param[1]),
-                                 to_48bit_value(dataPacket.param[2]),
-                                 to_48bit_value(dataPacket.param[3])
-                                 );
+                    spdlog::info(
+                        "  parameters: 0x{:012x}, {}, {}, {}", to_48bit_value(dataPacket.param[0]),
+                        to_48bit_value(dataPacket.param[1]), to_48bit_value(dataPacket.param[2]),
+                        to_48bit_value(dataPacket.param[3]));
 
                     spdlog::info("  packet contains {} events", eventCount);
                 }
 
                 if (printEventData_)
                 {
-                    for(size_t ei=0; ei<eventCount; ++ei)
+                    for (size_t ei = 0; ei < eventCount; ++ei)
                     {
                         auto event = decode_event(dataPacket, ei);
                         u64 rawevent = get_event(dataPacket, ei);
@@ -1977,6 +1718,8 @@ struct ReadoutCommand: public BaseCommand
                 ++counters.packets;
                 counters.bytes += bytesTransferred;
                 counters.events += eventCount;
+                if (dataPacket.bufferType < counters.eventsByType.size())
+                    ++counters.eventsByType[dataPacket.bufferType];
             }
 
             const auto now = std::chrono::steady_clock::now();
@@ -2076,70 +1819,50 @@ struct ReplayCommand: public BaseCommand
         offline_ = true;
 
         cli.add_argument(
-            lyra::command(
-                "replay",
-                [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("DAQ replay from listfile")
+            lyra::command("replay", [this](const lyra::group &) { this->run_ = true; })
+                .help("DAQ replay from listfile")
 
-            .add_argument(
-                lyra::opt(listfilePath_, "listfilePath")
-                ["--listfile"]
-                .required()
-                .help("Path to the input listfile")
-                )
+                .add_argument(
+                    lyra::opt(listfilePath_, "listfilePath")["--listfile"].required().help(
+                        "Path to the input listfile"))
 
-            .add_argument(
-                lyra::opt(reportInterval_ms_, "interval [ms]")
-                ["--report-interval"]
-                .optional()
-                .help("Time in ms between logging readout stats")
-                )
+                .add_argument(lyra::opt(reportInterval_ms_, "interval [ms]")["--report-interval"]
+                                  .optional()
+                                  .help("Time in ms between logging readout stats"))
 
-            .add_argument(
-                lyra::opt([this] (const bool &b) { printPacketSummary_ = b; })
-                ["--print-packet-summary"]
-                .optional()
-                .help("Print readout packet summaries")
-                )
+                .add_argument(lyra::opt([this](const bool &b)
+                                        { printPacketSummary_ = b; })["--print-packet-summary"]
+                                  .optional()
+                                  .help("Print readout packet summaries"))
 
-            .add_argument(
-                lyra::opt([this] (const bool &b) { printEventData_ = b; })
-                ["--print-event-data"]
-                .optional()
-                .help("Print readout event data")
-                )
+                .add_argument(
+                    lyra::opt([this](const bool &b) { printEventData_ = b; })["--print-event-data"]
+                        .optional()
+                        .help("Print readout event data"))
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
-            .add_argument(
-                lyra::opt(rootHistoPath_, "rootfile")
-                ["--root-histo-file"]
-                .optional()
-                .help("ROOT histo output file path")
-                )
+                .add_argument(
+                    lyra::opt(rootHistoPath_, "rootfile")["--root-histo-file"].optional().help(
+                        "ROOT histo output file path"))
 
-            .add_argument(
-                lyra::opt(rootFlushInterval_ms_, "flushInterval [ms]")
-                    ["--root-flush-interval"]
+                .add_argument(
+                    lyra::opt(rootFlushInterval_ms_, "flushInterval [ms]")["--root-flush-interval"]
                         .optional()
                         .help("ROOT file flush interval in ms"))
 
-            .add_argument(
-                lyra::opt([this](const bool &b)
-                            { rootEnableMdllGraphs_ = b; })
-                    ["--root-enable-mdll-graphs"]
-                        .optional()
-                        .help("Create TGraphs of MDLL amplitude and position values vs time in the ROOT ouptut file. Eats lots of memory!"))
+                .add_argument(lyra::opt([this](const bool &b)
+                                        { rootEnableMdllGraphs_ = b; })["--root-enable-mdll-graphs"]
+                                  .optional()
+                                  .help("Create TGraphs of MDLL amplitude and position values vs "
+                                        "time in the ROOT ouptut file. Eats lots of memory!"))
 #endif
 
 #ifdef MESYTEC_MCPD_ENABLE_PYTHON
                 .add_argument(
-                    lyra::opt(pythonScriptPath_, "python file")
-                        ["--python-script"]
-                            .optional()
-                            .help("Path to a Python script to execute for each event."))
+                    lyra::opt(pythonScriptPath_, "python file")["--python-script"].optional().help(
+                        "Path to a Python script to execute for each event."))
 #endif
-            );
+        );
     }
 
     int runCommand(CliContext &ctx) override
@@ -2200,7 +1923,8 @@ struct ReplayCommand: public BaseCommand
 
             if (!setup_python_context(pyCtx, pythonScriptPath_))
             {
-                spdlog::error("readout: Failed to set up Python context for script '{}'", pythonScriptPath_);
+                spdlog::error("readout: Failed to set up Python context for script '{}'",
+                              pythonScriptPath_);
                 return 1;
             }
 
@@ -2241,8 +1965,8 @@ struct ReplayCommand: public BaseCommand
             }
             catch (const std::exception &e)
             {
-                spdlog::error("replay: Error reading from listfile '{}': {}",
-                              listfilePath_, e.what());
+                spdlog::error("replay: Error reading from listfile '{}': {}", listfilePath_,
+                              e.what());
                 return 1;
             }
 
@@ -2250,19 +1974,18 @@ struct ReplayCommand: public BaseCommand
 
             if (printPacketSummary_)
             {
-                spdlog::info(
-                    "packet#{}: bufferType=0x{:04x}, bufferNumber={}, runId={}, "
-                    "devStatus={}, deviceId={}, timestamp={}",
-                    counters.packets, dataPacket.bufferType, dataPacket.bufferNumber,
-                    dataPacket.runId, dataPacket.deviceStatus, dataPacket.deviceId,
-                    get_header_timestamp(dataPacket));
+                spdlog::info("packet#{}: bufferLength={}, bufferType=0x{:04x}, bufferNumber={}, "
+                             "headerLength={}, runId={}, "
+                             "devStatus={}, deviceId={}, timestamp={:#0x}",
+                             counters.packets, dataPacket.bufferLength, dataPacket.bufferType,
+                             dataPacket.bufferNumber, dataPacket.headerLength, dataPacket.runId,
+                             dataPacket.deviceStatus, dataPacket.deviceId,
+                             get_header_timestamp(dataPacket));
 
-                spdlog::info("  parameters: 0x{:012x}, {}, {}, {}",
-                                to_48bit_value(dataPacket.param[0]),
-                                to_48bit_value(dataPacket.param[1]),
-                                to_48bit_value(dataPacket.param[2]),
-                                to_48bit_value(dataPacket.param[3])
-                                );
+                spdlog::info(
+                    "  parameters: 0x{:012x}, {}, {}, {}", to_48bit_value(dataPacket.param[0]),
+                    to_48bit_value(dataPacket.param[1]), to_48bit_value(dataPacket.param[2]),
+                    to_48bit_value(dataPacket.param[3]));
 
                 spdlog::info("  packet contains {} events", eventCount);
             }
@@ -2284,12 +2007,14 @@ struct ReplayCommand: public BaseCommand
 #endif
 
 #ifdef MESYTEC_MCPD_ENABLE_PYTHON
-                python_context_handle_packet(ctx.pyContext, dataPacket);
+            python_context_handle_packet(ctx.pyContext, dataPacket);
 #endif
 
             ++counters.packets;
             counters.bytes += sizeof(dataPacket);
             counters.events += eventCount;
+            if (dataPacket.bufferType < counters.eventsByType.size())
+                ++counters.eventsByType[dataPacket.bufferType];
 
             const auto now = std::chrono::steady_clock::now();
 
@@ -2354,31 +2079,26 @@ struct CustomCommand: public BaseCommand
     CustomCommand(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "custom",
-                [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("Send a custom command to the MCPD")
+            lyra::command("custom", [this](const lyra::group &) { this->run_ = true; })
+                .help("Send a custom command to the MCPD")
 
-            .add_argument(
-                lyra::arg(commandId_, "commandId")
-                .required()
-                .help("The command id to send to the MCPD (CommandPacket::id)")
-                )
+                .add_argument(lyra::arg(commandId_, "commandId")
+                                  .required()
+                                  .help("The command id to send to the MCPD (CommandPacket::id)"))
 
-            .add_argument(
-                lyra::arg(commandData_, "commandData")
-                .cardinality(0, CommandPacketMaxDataWords)
-                .help("Custom uint16_t data to send with the command (CommandPacket::data)")
-                )
+                .add_argument(
+                    lyra::arg(commandData_, "commandData")
+                        .cardinality(0, CommandPacketMaxDataWords)
+                        .help(
+                            "Custom uint16_t data to send with the command (CommandPacket::data)"))
 
-            );
+        );
     }
 
     int runCommand(CliContext &ctx)
     {
-        spdlog::debug("{}: cmdId={}, cmdData=[{}]",
-                      PRETTY_FUNCTION, commandId_, fmt::join(commandData_, ", "));
+        spdlog::debug("{}: cmdId={}, cmdData=[{}]", PRETTY_FUNCTION, commandId_,
+                      fmt::join(commandData_, ", "));
 
         std::vector<u16> data;
 
@@ -2390,16 +2110,15 @@ struct CustomCommand: public BaseCommand
 
                 if (parsedValue > std::numeric_limits<u16>::max())
                 {
-                    throw std::out_of_range(fmt::format(
-                            "data value '{}' is out of the uint16_t range", dataStr));
+                    throw std::out_of_range(
+                        fmt::format("data value '{}' is out of the uint16_t range", dataStr));
                 }
 
                 data.push_back(parsedValue);
             }
             catch (const std::exception &e)
             {
-                spdlog::error("Error parsing data value '{}': {}",
-                              dataStr, e.what());
+                spdlog::error("Error parsing data value '{}': {}", dataStr, e.what());
                 return 1;
             }
         }
@@ -2415,7 +2134,8 @@ struct CustomCommand: public BaseCommand
 
         if (ec)
         {
-            spdlog::error("custom: {} (code={}, category={})", ec.message(), ec.value(), ec.category().name());
+            spdlog::error("custom: {} (code={}, category={})", ec.message(), ec.value(),
+                          ec.category().name());
             return 1;
         }
 
@@ -2434,41 +2154,28 @@ struct MdllSetThresholds: public BaseCommand
     MdllSetThresholds(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "mdll_set_thresholds",
-                [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("Set MDLL thresholds")
+            lyra::command("mdll_set_thresholds", [this](const lyra::group &) { this->run_ = true; })
+                .help("Set MDLL thresholds")
 
-            .add_argument(
-                lyra::arg(thresholdX_, "thresholdX")
-                .required()
-                )
+                .add_argument(lyra::arg(thresholdX_, "thresholdX").required())
 
-            .add_argument(
-                lyra::arg(thresholdY_, "thresholdY")
-                .required()
-                )
+                .add_argument(lyra::arg(thresholdY_, "thresholdY").required())
 
-            .add_argument(
-                lyra::arg(thresholdAnode_, "thresholdAnode")
-                .required()
-                )
-            );
+                .add_argument(lyra::arg(thresholdAnode_, "thresholdAnode").required()));
     }
 
     int runCommand(CliContext &ctx)
     {
-        spdlog::debug("{}: thresholdX={}, thresholdY={}, thresholdAnode={} ",
-                      PRETTY_FUNCTION, thresholdX_, thresholdY_, thresholdAnode_);
+        spdlog::debug("{}: thresholdX={}, thresholdY={}, thresholdAnode={} ", PRETTY_FUNCTION,
+                      thresholdX_, thresholdY_, thresholdAnode_);
 
-        auto ec = mdll_set_thresholds(
-            ctx.cmdSock, ctx.mcpdId, thresholdX_, thresholdY_, thresholdAnode_);
+        auto ec =
+            mdll_set_thresholds(ctx.cmdSock, ctx.mcpdId, thresholdX_, thresholdY_, thresholdAnode_);
 
         if (ec)
         {
-            spdlog::error("mdll_set_thresholds: {} (code={}, category={})",
-                          ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mdll_set_thresholds: {} (code={}, category={})", ec.message(),
+                          ec.value(), ec.category().name());
             return 1;
         }
 
@@ -2486,46 +2193,29 @@ struct MdllSetSpectrum: public BaseCommand
     MdllSetSpectrum(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "mdll_set_spectrum",
-                [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("Set MDLL spectrum")
+            lyra::command("mdll_set_spectrum", [this](const lyra::group &) { this->run_ = true; })
+                .help("Set MDLL spectrum")
 
-            .add_argument(
-                lyra::arg(shiftX_, "shiftX")
-                .required()
-                )
+                .add_argument(lyra::arg(shiftX_, "shiftX").required())
 
-            .add_argument(
-                lyra::arg(shiftY_, "shiftY")
-                .required()
-                )
+                .add_argument(lyra::arg(shiftY_, "shiftY").required())
 
-            .add_argument(
-                lyra::arg(scaleX_, "scaleX")
-                .required()
-                )
+                .add_argument(lyra::arg(scaleX_, "scaleX").required())
 
-            .add_argument(
-                lyra::arg(scaleY_, "scaleY")
-                .required()
-                )
-            );
+                .add_argument(lyra::arg(scaleY_, "scaleY").required()));
     }
 
     int runCommand(CliContext &ctx)
     {
-        spdlog::debug("{}: shiftX={}, shiftY={}, scaleX={}, scaleY={} ",
-                      PRETTY_FUNCTION, shiftX_, shiftY_, scaleX_, scaleY_);
+        spdlog::debug("{}: shiftX={}, shiftY={}, scaleX={}, scaleY={} ", PRETTY_FUNCTION, shiftX_,
+                      shiftY_, scaleX_, scaleY_);
 
-        auto ec = mdll_set_spectrum(
-            ctx.cmdSock, ctx.mcpdId, shiftX_, shiftY_, scaleX_, scaleY_);
+        auto ec = mdll_set_spectrum(ctx.cmdSock, ctx.mcpdId, shiftX_, shiftY_, scaleX_, scaleY_);
 
         if (ec)
         {
-            spdlog::error("mdll_set_spectrum: {} (code={}, category={})",
-                          ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mdll_set_spectrum: {} (code={}, category={})", ec.message(), ec.value(),
+                          ec.category().name());
             return 1;
         }
 
@@ -2542,52 +2232,38 @@ struct MdllSetPulser: public BaseCommand
     MdllSetPulser(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "mdll_set_pulser",
-                [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("Set MDLL pulser")
+            lyra::command("mdll_set_pulser", [this](const lyra::group &) { this->run_ = true; })
+                .help("Set MDLL pulser")
 
-            .add_argument(
-                lyra::arg(enable_, "enable")
-                .required()
-                )
+                .add_argument(lyra::arg(enable_, "enable").required())
 
-            .add_argument(
-                lyra::arg(amplitude_, "amplitude")
-                .required()
-                .help("amplitude: 0-3")
-                )
+                .add_argument(lyra::arg(amplitude_, "amplitude").required().help("amplitude: 0-3"))
 
-            .add_argument(
-                lyra::arg(position_, "position")
-                .required()
-                .help("0: lower-left, 1: middle, 2: upper-right")
-                )
+                .add_argument(lyra::arg(position_, "position")
+                                  .required()
+                                  .help("0: lower-left, 1: middle, 2: upper-right"))
 
-            );
+        );
     }
 
     int runCommand(CliContext &ctx)
     {
-        spdlog::debug("{}: enable={}, amplitude={}, position={} ",
-                      PRETTY_FUNCTION, enable_, amplitude_, position_);
+        spdlog::debug("{}: enable={}, amplitude={}, position={} ", PRETTY_FUNCTION, enable_,
+                      amplitude_, position_);
 
-        auto ec = mdll_set_pulser(
-            ctx.cmdSock, ctx.mcpdId, enable_, amplitude_,
-            static_cast<MdllChannelPosition>(position_));
+        auto ec = mdll_set_pulser(ctx.cmdSock, ctx.mcpdId, enable_, amplitude_,
+                                  static_cast<MdllChannelPosition>(position_));
 
         if (ec)
         {
-            spdlog::error("mdll_set_pulser: {} (code={}, category={})",
-                          ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mdll_set_pulser: {} (code={}, category={})", ec.message(), ec.value(),
+                          ec.category().name());
             return 1;
         }
 
         return 0;
     }
 };
-
 
 struct MdllSetTxDataSet: public BaseCommand
 {
@@ -2596,31 +2272,23 @@ struct MdllSetTxDataSet: public BaseCommand
     MdllSetTxDataSet(lyra::cli &cli)
     {
         cli.add_argument(
-            lyra::command(
-                "mdll_set_tx_data_set",
-                [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("Set MDLL TX data set")
+            lyra::command("mdll_set_tx_data_set",
+                          [this](const lyra::group &) { this->run_ = true; })
+                .help("Set MDLL TX data set")
 
-            .add_argument(
-                lyra::arg(ds_, "dataset")
-                .required()
-                .help("0: Default, 1: Timings")
-                )
-            );
+                .add_argument(lyra::arg(ds_, "dataset").required().help("0: Default, 1: Timings")));
     }
 
     int runCommand(CliContext &ctx)
     {
         spdlog::debug("{}: ds={} ", PRETTY_FUNCTION, ds_);
 
-        auto ec = mdll_set_tx_data_set(
-            ctx.cmdSock, ctx.mcpdId, static_cast<MdllTxDataSet>(ds_));
+        auto ec = mdll_set_tx_data_set(ctx.cmdSock, ctx.mcpdId, static_cast<MdllTxDataSet>(ds_));
 
         if (ec)
         {
-            spdlog::error("mdll_set_tx_data_set: {} (code={}, category={})",
-                          ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mdll_set_tx_data_set: {} (code={}, category={})", ec.message(),
+                          ec.value(), ec.category().name());
             return 1;
         }
 
@@ -2637,54 +2305,31 @@ struct MdllSetTimingWindow: public BaseCommand
 
     MdllSetTimingWindow(lyra::cli &cli)
     {
-        cli.add_argument(
-            lyra::command(
-                "mdll_set_timing_window",
-                [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("Set MDLL timing window")
+        cli.add_argument(lyra::command("mdll_set_timing_window",
+                                       [this](const lyra::group &) { this->run_ = true; })
+                             .help("Set MDLL timing window")
 
-            .add_argument(
-                lyra::arg(tSumLimitXLow_, "X low")
-                .required()
-                )
+                             .add_argument(lyra::arg(tSumLimitXLow_, "X low").required())
 
-            .add_argument(
-                lyra::arg(tSumLimitXHigh_, "X high")
-                .required()
-                )
+                             .add_argument(lyra::arg(tSumLimitXHigh_, "X high").required())
 
-            .add_argument(
-                lyra::arg(tSumLimitYLow_, "Y low")
-                .required()
-                )
+                             .add_argument(lyra::arg(tSumLimitYLow_, "Y low").required())
 
-            .add_argument(
-                lyra::arg(tSumLimitYHigh_, "Y high")
-                .required()
-                )
-            );
+                             .add_argument(lyra::arg(tSumLimitYHigh_, "Y high").required()));
     }
 
     int runCommand(CliContext &ctx)
     {
-        spdlog::debug("{}: xLow={}, xHigh={}, yLow={}, yHigh={} ",
-                      PRETTY_FUNCTION,
-                      tSumLimitXLow_, tSumLimitXHigh_,
-                      tSumLimitYLow_, tSumLimitYHigh_);
+        spdlog::debug("{}: xLow={}, xHigh={}, yLow={}, yHigh={} ", PRETTY_FUNCTION, tSumLimitXLow_,
+                      tSumLimitXHigh_, tSumLimitYLow_, tSumLimitYHigh_);
 
-        auto ec = mdll_set_timing_window(
-            ctx.cmdSock,
-            ctx.mcpdId,
-            tSumLimitXLow_,
-            tSumLimitXHigh_,
-            tSumLimitYLow_,
-            tSumLimitYHigh_);
+        auto ec = mdll_set_timing_window(ctx.cmdSock, ctx.mcpdId, tSumLimitXLow_, tSumLimitXHigh_,
+                                         tSumLimitYLow_, tSumLimitYHigh_);
 
         if (ec)
         {
-            spdlog::error("mdll_set_timing_window: {} (code={}, category={})",
-                          ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mdll_set_timing_window: {} (code={}, category={})", ec.message(),
+                          ec.value(), ec.category().name());
             return 1;
         }
 
@@ -2699,41 +2344,28 @@ struct MdllSetEnergyWindow: public BaseCommand
 
     MdllSetEnergyWindow(lyra::cli &cli)
     {
-        cli.add_argument(
-            lyra::command(
-                "mdll_set_energy_window",
-                [this] (const lyra::group &) { this->run_ = true; }
-                )
-            .help("Set MDLL energy window")
+        cli.add_argument(lyra::command("mdll_set_energy_window",
+                                       [this](const lyra::group &) { this->run_ = true; })
+                             .help("Set MDLL energy window")
 
-            .add_argument(
-                lyra::arg(lowerThreshold_, "lower threshold")
-                .required()
-                )
+                             .add_argument(lyra::arg(lowerThreshold_, "lower threshold").required())
 
-            .add_argument(
-                lyra::arg(upperThreshold_, "upper threshold")
-                .required()
-                )
+                             .add_argument(lyra::arg(upperThreshold_, "upper threshold").required())
 
-            );
+        );
     }
 
     int runCommand(CliContext &ctx)
     {
-        spdlog::debug("{}: lowerThreshold={}, upperThreshold={} ",
-                      PRETTY_FUNCTION, lowerThreshold_, upperThreshold_);
+        spdlog::debug("{}: lowerThreshold={}, upperThreshold={} ", PRETTY_FUNCTION, lowerThreshold_,
+                      upperThreshold_);
 
-        auto ec = mdll_set_energy_window(
-            ctx.cmdSock,
-            ctx.mcpdId,
-            lowerThreshold_,
-            upperThreshold_);
+        auto ec = mdll_set_energy_window(ctx.cmdSock, ctx.mcpdId, lowerThreshold_, upperThreshold_);
 
         if (ec)
         {
-            spdlog::error("mdll_set_energy_window: {} (code={}, category={})",
-                          ec.message(), ec.value(), ec.category().name());
+            spdlog::error("mdll_set_energy_window: {} (code={}, category={})", ec.message(),
+                          ec.value(), ec.category().name());
             return 1;
         }
 
@@ -2753,32 +2385,22 @@ int main(int argc, char *argv[])
     bool logTrace = false;
     bool showVersion = false;
 
-    auto cli = (
-        lyra::help(showHelp)
+    auto cli =
+        (lyra::help(showHelp)
 
-        | lyra::opt(ctx.mcpdAddress, "mcpdAddress")
-        ["--address"]("mcpd ip-address/hostname")
-        .optional()
+         | lyra::opt(ctx.mcpdAddress, "mcpdAddress")["--address"]("mcpd ip-address/hostname")
+               .optional()
 
-        | lyra::opt(ctx.mcpdId, "mcpdId")
-        ["--id"]("mcpd id")
-        .optional()
+         | lyra::opt(ctx.mcpdId, "mcpdId")["--id"]("mcpd id").optional()
 
-        | lyra::opt(ctx.mcpdPort, "port")
-        ["--port"]("mcpd command port")
-        .optional()
+         | lyra::opt(ctx.mcpdPort, "port")["--port"]("mcpd command port").optional()
 
-        | lyra::opt([&] (bool b) { logDebug = b; })
-        ["--debug"]("set log level to debug")
-        .optional()
+         | lyra::opt([&](bool b) { logDebug = b; })["--debug"]("set log level to debug").optional()
 
-        | lyra::opt([&] (bool b) { logTrace = b; })
-        ["--trace"]("set log level to trace")
-        .optional()
+         | lyra::opt([&](bool b) { logTrace = b; })["--trace"]("set log level to trace").optional()
 
-        | lyra::opt([&] (bool b) { showVersion = b; })
-        ["--version"]("show mcpd-cli version info")
-        .optional()
+         | lyra::opt([&](bool b) { showVersion = b; })["--version"]("show mcpd-cli version info")
+               .optional()
 
         );
 
@@ -2854,13 +2476,16 @@ int main(int argc, char *argv[])
 
     if (showVersion)
     {
-        std::cout << fmt::format("mcpd-cli {}\nCopyright (c) 2021-23 mesytec GmbH & Co. KG\nLicense: Boost Software License - Version 1.0 - August 17th, 2003",
-                                 library_version()) << std::endl;
+        std::cout << fmt::format(
+                         "mcpd-cli {}\nCopyright (c) 2021-23 mesytec GmbH & Co. KG\nLicense: Boost "
+                         "Software License - Version 1.0 - August 17th, 2003",
+                         library_version())
+                  << std::endl;
         return 0;
     }
 
     // hack around the lyra subgroup parsing issue with --help
-    for (int arg=1; arg<argc; ++arg)
+    for (int arg = 1; arg < argc; ++arg)
     {
         std::string s = argv[arg];
         if (s == "-h" || s == "--help" || s == "-?")
@@ -2873,7 +2498,9 @@ int main(int argc, char *argv[])
     if (showHelp)
     {
         std::cout << cli << std::endl;
-        std::cout << "MCPD address and id can also be specified via the environment variables MCPD_ADDRESS and MCPD_ID." << std::endl;
+        std::cout << "MCPD address and id can also be specified via the environment variables "
+                     "MCPD_ADDRESS and MCPD_ID."
+                  << std::endl;
         return 0;
     }
 
@@ -2898,9 +2525,8 @@ int main(int argc, char *argv[])
         ctx.mcpdId = 0;
 
     // Find the active command.
-    auto activeCommand = std::find_if(
-        std::begin(commands), std::end(commands),
-        [] (const auto &cmd) { return cmd->active(); });
+    auto activeCommand = std::find_if(std::begin(commands), std::end(commands),
+                                      [](const auto &cmd) { return cmd->active(); });
 
     if (activeCommand == std::end(commands))
     {
@@ -2915,15 +2541,15 @@ int main(int argc, char *argv[])
 
     if (!(*activeCommand)->offline())
     {
-        spdlog::debug("Connecting to mcpd @ {}:{}, mcpdId={} ...",
-                      ctx.mcpdAddress, ctx.mcpdPort, ctx.mcpdId);
+        spdlog::debug("Connecting to mcpd @ {}:{}, mcpdId={} ...", ctx.mcpdAddress, ctx.mcpdPort,
+                      ctx.mcpdId);
 
         ctx.cmdSock = connect_udp_socket(ctx.mcpdAddress, ctx.mcpdPort, &ec);
 
         if (ec)
         {
-            spdlog::error("Error connecting to mcpd@{}:{}: {}",
-                          ctx.mcpdAddress, ctx.mcpdPort, ec.message());
+            spdlog::error("Error connecting to mcpd@{}:{}: {}", ctx.mcpdAddress, ctx.mcpdPort,
+                          ec.message());
             return 1;
         }
 
@@ -2945,7 +2571,6 @@ int main(int argc, char *argv[])
         }
 #endif
     }
-
 
     return (*activeCommand)->runCommand(ctx);
 }
