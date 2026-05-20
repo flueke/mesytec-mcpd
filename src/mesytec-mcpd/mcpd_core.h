@@ -281,8 +281,10 @@ enum class EventType
 {
     Neutron,
     Trigger,
-    MdllNeutron
+    MdllNeutron,
 };
+
+static const unsigned EventTypeCount = static_cast<unsigned>(EventType::MdllNeutron) + 1;
 
 enum class MdllChannelPosition
 {
@@ -533,8 +535,10 @@ struct MESYTEC_MCPD_EXPORT DecodedEvent
         MdllNeutron mdllNeutron;
     };
 
-    u64 timestamp;      // The full event timestamp calculated by adding up the 48 bit
-                        // packet header timestamp and the 19 bit event timestamp.
+    u64 packet_timestamp;   // raw packet timestamp
+    u32 event_timestamp;    // raw event timestamp
+    u64 timestamp;          // The full event timestamp calculated by adding up the 48 bit
+                            // packet header timestamp and the 19 bit event timestamp.
 };
 
 inline DecodedEvent decode_event(const DataPacket &packet, size_t eventNum)
@@ -579,9 +583,10 @@ inline DecodedEvent decode_event(const DataPacket &packet, size_t eventNum)
             break;
     }
 
-    result.timestamp = (event >> ec::TimestampShift) & ec::TimestampMask;
+    result.packet_timestamp = get_header_timestamp(packet);
+    result.event_timestamp = (event >> ec::TimestampShift) & ec::TimestampMask;
     // Add the 48 bit header timestamp to the events 19 bit timestamp value.
-    result.timestamp += get_header_timestamp(packet);
+    result.timestamp = result.packet_timestamp + result.event_timestamp;
 
     return result;
 }

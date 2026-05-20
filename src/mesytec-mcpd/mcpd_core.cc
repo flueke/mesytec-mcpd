@@ -221,7 +221,8 @@ Out &format(Out &out, const DecodedEvent &event)
             break;
     }
 
-    out << fmt::format(", full_timestamp={}", event.timestamp);
+    out << fmt::format(", timestamps: packet={}, event={}, full={}",
+        event.packet_timestamp, event.event_timestamp, event.timestamp);
 
     return out;
 }
