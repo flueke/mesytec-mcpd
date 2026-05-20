@@ -1578,16 +1578,27 @@ struct ReadoutCounters
     size_t bytes = 0u;
     size_t timeouts = 0u;
     size_t events = 0u;
+    std::array<size_t, EventTypeCount> eventsByType = {};
+
+    void reset()
+    {
+        packets = 0;
+        bytes = 0;
+        timeouts = 0;
+        events = 0;
+        eventsByType.fill(0);
+    }
 };
 
 struct CountersReportInfo
 {
     enum Flags
     {
-        ReportValues = 1u << 0,
-        ReportDeltas = 1u << 1,
-        ReportRates  = 1u << 2,
-        All = ReportValues | ReportDeltas | ReportRates,
+        ReportValues      = 1u << 0,
+        ReportDeltas      = 1u << 1,
+        ReportRates       = 1u << 2,
+        ReportPacketTypes = 1u << 3,
+        All = ReportValues | ReportDeltas | ReportRates | ReportPacketTypes,
     };
     ReadoutCounters counters;
     ReadoutCounters prevCounters;
@@ -1620,6 +1631,18 @@ void report_counters(const CountersReportInfo &info, const std::string &title = 
                     title, deltas.packets, deltas.bytes, deltas.timeouts,
                     deltas.events
                     );
+    }
+
+    if (info.flags & CountersReportInfo::ReportPacketTypes)
+    {
+        for (size_t i=0; i<counters.eventsByType.size(); ++i)
+        {
+            auto &count = counters.eventsByType[i];
+            auto &prevCount = prevCounters.eventsByType[i];
+            auto delta = count - prevCount;
+
+            spdlog::info("{}: event type {}: count={}, delta={}", title, to_string(static_cast<EventType>(i)), count, delta);
+        }
     }
 
     auto dt_s = std::chrono::duration<double>(info.dt).count();
@@ -1859,6 +1882,9 @@ struct ReadoutCommand: public BaseCommand
         auto tRootFlush = tStart;
 #endif
 
+        CountersReportInfo reportInfo;
+        reportInfo.flags = CountersReportInfo::All;
+
         while (!g_interrupted)
         {
             size_t bytesTransferred = 0u;
@@ -1986,12 +2012,10 @@ struct ReadoutCommand: public BaseCommand
 
                 if (elapsed >= std::chrono::milliseconds(reportInterval_ms_))
                 {
-                    CountersReportInfo info;
-                    info.counters = counters;
-                    info.prevCounters = prevCounters;
-                    info.dt = std::chrono::duration_cast<std::chrono::microseconds>(elapsed);
-                    info.flags = CountersReportInfo::ReportValues | CountersReportInfo::ReportRates;
-                    report_counters(info); fmt::print("\n");
+                    reportInfo.counters = counters;
+                    reportInfo.prevCounters = prevCounters;
+                    reportInfo.dt = std::chrono::duration_cast<std::chrono::microseconds>(elapsed);
+                    report_counters(reportInfo, "readout"); fmt::print("\n");
                     tReport = now;
                     prevCounters = counters;
                 }
@@ -2014,7 +2038,16 @@ struct ReadoutCommand: public BaseCommand
         }
 #endif
 
-        report_counters(counters);
+        // final counters report over the whole run duration
+        {
+            const auto now = std::chrono::steady_clock::now();
+            auto elapsed = now - tStart;
+            reportInfo.counters = counters;
+            reportInfo.prevCounters = {};
+            reportInfo.dt = std::chrono::duration_cast<std::chrono::microseconds>(elapsed);
+            reportInfo.flags &= ~CountersReportInfo::ReportDeltas;
+            report_counters(reportInfo, "readout (full run)"); fmt::print("\n");
+        }
 
         return 0;
     }
@@ -2120,7 +2153,7 @@ struct ReplayCommand: public BaseCommand
         spdlog::debug("{} {}", PRETTY_FUNCTION, listfilePath_);
 
         std::ifstream listfile;
-        listfile.exceptions(std::ios::badbit);
+        listfile.exceptions(std::ios::badbit | std::ios::failbit);
 
         try
         {
@@ -2128,10 +2161,20 @@ struct ReplayCommand: public BaseCommand
         }
         catch (const std::exception &e)
         {
-            spdlog::error("replay: Error opening listfile '{}': {}",
-                          listfilePath_, e.what());
+            if (!std::filesystem::exists(listfilePath_))
+            {
+                spdlog::error("replay: Error opening listfile '{}': file does not exist", listfilePath_);
+            }
+            else
+            {
+                spdlog::error("replay: Error opening listfile '{}': {}",
+                            listfilePath_, e.what());
+            }
             return 1;
         }
+
+        // no more failbit. don't want reads to throw.
+        listfile.exceptions(std::ios::badbit);
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
         if (!rootHistoPath_.empty())
@@ -2172,6 +2215,8 @@ struct ReplayCommand: public BaseCommand
 #endif
 
         ReadoutCounters counters = {};
+        ReadoutCounters prevCounters = {};
+        counters.reset();
         DataPacket dataPacket = {};
 
         spdlog::info("Replaying from {}", listfilePath_);
@@ -2182,14 +2227,17 @@ struct ReplayCommand: public BaseCommand
         auto tRootFlush = tStart;
 #endif
 
+        CountersReportInfo reportInfo;
+        reportInfo.flags = CountersReportInfo::All;
+
         while (!listfile.eof() && !g_interrupted)
         {
             try
             {
-                listfile.read(reinterpret_cast<char *>(&dataPacket), sizeof(dataPacket));
-
                 if (listfile.eof())
                     break;
+
+                listfile.read(reinterpret_cast<char *>(&dataPacket), sizeof(dataPacket));
             }
             catch (const std::exception &e)
             {
@@ -2219,13 +2267,15 @@ struct ReplayCommand: public BaseCommand
                 spdlog::info("  packet contains {} events", eventCount);
             }
 
-            if (printEventData_)
+            for(size_t ei=0; ei<eventCount; ++ei)
             {
-                for(size_t ei=0; ei<eventCount; ++ei)
-                {
-                    auto event = decode_event(dataPacket, ei);
+                auto event = decode_event(dataPacket, ei);
+
+                if (event.type <= EventType::MdllNeutron)
+                    ++counters.eventsByType[static_cast<unsigned>(event.type)];
+
+                if (printEventData_)
                     spdlog::info("{}", to_string(event));
-                }
             }
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
@@ -2263,8 +2313,12 @@ struct ReplayCommand: public BaseCommand
 
                 if (elapsed >= std::chrono::milliseconds(reportInterval_ms_))
                 {
-                    report_counters(counters, "replay");
+                    reportInfo.counters = counters;
+                    reportInfo.prevCounters = prevCounters;
+                    reportInfo.dt = std::chrono::duration_cast<std::chrono::microseconds>(elapsed);
+                    report_counters(reportInfo, "replay"); fmt::print("\n");
                     tReport = now;
+                    prevCounters = counters;
                 }
             }
         }
@@ -2277,7 +2331,16 @@ struct ReplayCommand: public BaseCommand
         }
 #endif
 
-        report_counters(counters, "replay");
+        // final counters report over the whole run duration
+        {
+            const auto now = std::chrono::steady_clock::now();
+            auto elapsed = now - tStart;
+            reportInfo.counters = counters;
+            reportInfo.prevCounters = {};
+            reportInfo.dt = std::chrono::duration_cast<std::chrono::microseconds>(elapsed);
+            reportInfo.flags &= ~CountersReportInfo::ReportDeltas;
+            report_counters(reportInfo, "replay (full run)"); fmt::print("\n");
+        }
 
         return 0;
     }
