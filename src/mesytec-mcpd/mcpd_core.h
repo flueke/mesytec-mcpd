@@ -541,22 +541,20 @@ struct MESYTEC_MCPD_EXPORT DecodedEvent
                             // packet header timestamp and the 19 bit event timestamp.
 };
 
-inline DecodedEvent decode_event(const DataPacket &packet, size_t eventNum)
+inline DecodedEvent decode_event(u64 event, u8 packetDeviceId, u16 packetBufferType, u64 packetHeaderTimestamp)
 {
     namespace ec = event_constants;
 
-    u64 event = get_event(packet, eventNum);
-
     DecodedEvent result = {};
 
-    result.deviceId = packet.deviceId;
+    result.deviceId = packetDeviceId;
 
     result.type = static_cast<EventType>((event >> ec::IdShift) & ec::IdMask);
 
     // MDLL has its own format for neutron event data. Its type bit is 0, the
     // same as for mcpd/mpsd neutron events but the outer packet buffer type is
     // different.
-    if (result.type == EventType::Neutron && packet.bufferType == MdllDataBufferType)
+    if (result.type == EventType::Neutron && packetBufferType == MdllDataBufferType)
     {
         result.type = EventType::MdllNeutron;
     }
@@ -583,12 +581,18 @@ inline DecodedEvent decode_event(const DataPacket &packet, size_t eventNum)
             break;
     }
 
-    result.packet_timestamp = get_header_timestamp(packet);
+    result.packet_timestamp = packetHeaderTimestamp;
     result.event_timestamp = (event >> ec::TimestampShift) & ec::TimestampMask;
     // Add the 48 bit header timestamp to the events 19 bit timestamp value.
     result.timestamp = result.packet_timestamp + result.event_timestamp;
 
     return result;
+}
+
+
+inline DecodedEvent decode_event(const DataPacket &packet, size_t eventNum)
+{
+    return decode_event(get_event(packet, eventNum), packet.deviceId, packet.bufferType, get_header_timestamp(packet));
 }
 
 MESYTEC_MCPD_EXPORT std::string to_string(const DecodedEvent &event);
