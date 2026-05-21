@@ -124,6 +124,9 @@ void init_py_module(py::module_ &m)
                                    );
                                })
 
+        .def_property_readonly("header_timestamp", [](const DataPacket &packet)
+                               { return get_header_timestamp(packet); })
+
         .def_property_readonly("params",
                                [](const DataPacket &packet)
                                {
