@@ -1367,9 +1367,9 @@ struct CountersReportInfo
 {
     enum Flags
     {
-        ReportValues      = 1u << 0,
-        ReportDeltas      = 1u << 1,
-        ReportRates       = 1u << 2,
+        ReportValues = 1u << 0,
+        ReportDeltas = 1u << 1,
+        ReportRates = 1u << 2,
         ReportPacketTypes = 1u << 3,
         All = ReportValues | ReportDeltas | ReportRates | ReportPacketTypes,
     };
@@ -1409,13 +1409,14 @@ void report_counters(const CountersReportInfo &info, const std::string &title = 
 
     if (info.flags & CountersReportInfo::ReportPacketTypes)
     {
-        for (size_t i=0; i<counters.eventsByType.size(); ++i)
+        for (size_t i = 0; i < counters.eventsByType.size(); ++i)
         {
             auto &count = counters.eventsByType[i];
             auto &prevCount = prevCounters.eventsByType[i];
             auto delta = count - prevCount;
 
-            spdlog::info("{}: event type {}: count={}, delta={}", title, to_string(static_cast<EventType>(i)), count, delta);
+            spdlog::info("{}: event type {}: count={}, delta={}", title,
+                         to_string(static_cast<EventType>(i)), count, delta);
         }
     }
 
@@ -1448,7 +1449,8 @@ struct ReadoutCommand: public BaseCommand
     size_t reportInterval_ms_ = 1000u;
     bool printPacketSummary_ = false;
     bool printEventData_ = false;
-    bool overWriteListfile_ = false;
+    bool printRawPacketData_ = false;
+    bool overwriteListfile_ = false;
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
     RootHistoContext rootHistoContext_ = {};
@@ -1472,7 +1474,7 @@ struct ReadoutCommand: public BaseCommand
                         "Path to the output listfile"))
 
                 .add_argument(lyra::opt([this](const bool &b)
-                                        { overWriteListfile_ = b; })["--overwrite-listfile"]
+                                        { overwriteListfile_ = b; })["--overwrite-listfile"]
                                   .optional()
                                   .help("Overwrite the output listfile if it already exists"))
 
@@ -1499,6 +1501,11 @@ struct ReadoutCommand: public BaseCommand
                     lyra::opt([this](const bool &b) { printEventData_ = b; })["--print-event-data"]
                         .optional()
                         .help("Print readout event data"))
+
+                .add_argument(lyra::opt([this](const bool &b)
+                                        { printRawPacketData_ = b; })["--print-raw-packet-data"]
+                                  .optional()
+                                  .help("Print raw packet event data as 16 bit hex values"))
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
                 .add_argument(
@@ -1556,7 +1563,7 @@ struct ReadoutCommand: public BaseCommand
 
         if (!noListfile_)
         {
-            if (!overWriteListfile_ && file_exists(listfilePath_.c_str()))
+            if (!overwriteListfile_ && file_exists(listfilePath_.c_str()))
             {
                 spdlog::error("readout: Output listfile '{}' already exists", listfilePath_);
                 return 1;
@@ -1681,7 +1688,7 @@ struct ReadoutCommand: public BaseCommand
                     inet_ntop(AF_INET, &srcAddr.sin_addr, srcAddrBuf, sizeof(srcAddrBuf));
 
                     spdlog::info("packet#{}: bufferLength={}, bufferType=0x{:04x}, "
-                                 "bufferNumber={}, headerLength={},runId={}, "
+                                 "bufferNumber={}, headerLength={}, runId={}, "
                                  "devStatus=0x{:04x}, deviceId={}, timestamp={}, srcAddr={}",
                                  counters.packets, dataPacket.bufferLength, dataPacket.bufferType,
                                  dataPacket.bufferNumber, dataPacket.headerLength, dataPacket.runId,
@@ -1704,6 +1711,13 @@ struct ReadoutCommand: public BaseCommand
                         u64 rawevent = get_event(dataPacket, ei);
                         spdlog::info("{} (raw_value={:#x})", to_string(event), rawevent);
                     }
+                }
+
+                if (printRawPacketData_)
+                {
+                    spdlog::error("  raw packet.data: {:#04x}",
+                                 fmt::join(dataPacket.data,
+                                           dataPacket.data + dataPacket.bufferLength, ", "));
                 }
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
@@ -1758,7 +1772,8 @@ struct ReadoutCommand: public BaseCommand
                     reportInfo.counters = counters;
                     reportInfo.prevCounters = prevCounters;
                     reportInfo.dt = std::chrono::duration_cast<std::chrono::microseconds>(elapsed);
-                    report_counters(reportInfo, "readout"); fmt::print("\n");
+                    report_counters(reportInfo, "readout");
+                    fmt::print("\n");
                     tReport = now;
                     prevCounters = counters;
                 }
@@ -1789,7 +1804,8 @@ struct ReadoutCommand: public BaseCommand
             reportInfo.prevCounters = {};
             reportInfo.dt = std::chrono::duration_cast<std::chrono::microseconds>(elapsed);
             reportInfo.flags &= ~CountersReportInfo::ReportDeltas;
-            report_counters(reportInfo, "readout (full run)"); fmt::print("\n");
+            report_counters(reportInfo, "readout (full run)");
+            fmt::print("\n");
         }
 
         return 0;
@@ -1886,12 +1902,12 @@ struct ReplayCommand: public BaseCommand
         {
             if (!std::filesystem::exists(listfilePath_))
             {
-                spdlog::error("replay: Error opening listfile '{}': file does not exist", listfilePath_);
+                spdlog::error("replay: Error opening listfile '{}': file does not exist",
+                              listfilePath_);
             }
             else
             {
-                spdlog::error("replay: Error opening listfile '{}': {}",
-                            listfilePath_, e.what());
+                spdlog::error("replay: Error opening listfile '{}': {}", listfilePath_, e.what());
             }
             return 1;
         }
@@ -1990,7 +2006,7 @@ struct ReplayCommand: public BaseCommand
                 spdlog::info("  packet contains {} events", eventCount);
             }
 
-            for(size_t ei=0; ei<eventCount; ++ei)
+            for (size_t ei = 0; ei < eventCount; ++ei)
             {
                 auto event = decode_event(dataPacket, ei);
 
@@ -2041,7 +2057,8 @@ struct ReplayCommand: public BaseCommand
                     reportInfo.counters = counters;
                     reportInfo.prevCounters = prevCounters;
                     reportInfo.dt = std::chrono::duration_cast<std::chrono::microseconds>(elapsed);
-                    report_counters(reportInfo, "replay"); fmt::print("\n");
+                    report_counters(reportInfo, "replay");
+                    fmt::print("\n");
                     tReport = now;
                     prevCounters = counters;
                 }
@@ -2064,7 +2081,8 @@ struct ReplayCommand: public BaseCommand
             reportInfo.prevCounters = {};
             reportInfo.dt = std::chrono::duration_cast<std::chrono::microseconds>(elapsed);
             reportInfo.flags &= ~CountersReportInfo::ReportDeltas;
-            report_counters(reportInfo, "replay (full run)"); fmt::print("\n");
+            report_counters(reportInfo, "replay (full run)");
+            fmt::print("\n");
         }
 
         return 0;

@@ -61,10 +61,11 @@ endif()
 
 # converter from qmesydaq .mdat to our .mcpdlst format
 add_executable(mdat2mcpdlst mdat2mcpdlst.cc)
-target_link_libraries(mdat2mcpdlst
-    PRIVATE mesytec-mcpd
-    PRIVATE spdlog::spdlog
-    )
+target_link_libraries(mdat2mcpdlst PRIVATE mesytec-mcpd spdlog::spdlog)
+
+# parse hex data copied e.g. from wireshark, interpret the data as a MCPD packet, decode it and print all the info.
+add_executable(parse_mcpd_packet_from_hex_string parse_mcpd_packet_from_hex_string.cc)
+target_link_libraries(parse_mcpd_packet_from_hex_string PRIVATE mesytec-mcpd spdlog::spdlog)
 
 if (WIN32)
     target_compile_definitions(mdat2mcpdlst PRIVATE -DNOMINMAX)
