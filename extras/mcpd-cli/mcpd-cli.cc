@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <signal.h>
 
 #include <lyra/lyra.hpp>
