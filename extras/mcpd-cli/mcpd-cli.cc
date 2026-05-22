@@ -1351,7 +1351,9 @@ struct ReadoutCounters
     size_t bytes = 0u;
     size_t timeouts = 0u;
     size_t events = 0u;
-    std::array<size_t, EventTypeCount> eventsByType = {};
+    std::map<u16, size_t> packetsByType =
+        {}; // CommandPacketBufferType, McpdDataBufferType, MdllDataBufferType
+    std::array<size_t, EventTypeCount> eventsByType = {}; // Neutron, Trigger, MdllNeutron
 
     void reset()
     {
@@ -1359,9 +1361,24 @@ struct ReadoutCounters
         bytes = 0;
         timeouts = 0;
         events = 0;
+        packetsByType.clear();
         eventsByType.fill(0);
     }
 };
+
+std::string counters_packet_buffer_types_to_string(const std::map<u16, size_t> &packetsByType)
+{
+    std::string result;
+
+    for (const auto &[type, count]: packetsByType)
+    {
+        if (!result.empty())
+            result += ", ";
+        result += fmt::format("{}={}", packet_buffer_type_to_string(type), count);
+    }
+
+    return result;
+}
 
 struct CountersReportInfo
 {
@@ -1386,10 +1403,12 @@ void report_counters(const CountersReportInfo &info, const std::string &title = 
 
     if (info.flags & CountersReportInfo::ReportValues)
     {
-        spdlog::info(
-            "{}: counters: packets={} (mcpd={}, mdll={}), bytes={}, timeouts={}, events={}", title,
-            counters.packets, counters.eventsByType[1], counters.eventsByType[2], counters.bytes,
-            counters.timeouts, counters.events);
+        spdlog::info("{}: counters: packets={} (buffer types: {}), events={} (trigger={}, mcpd={}, "
+                     "mdll={}), bytes={}, timeouts={}, events={}",
+                     title, counters.packets,
+                     counters_packet_buffer_types_to_string(counters.packetsByType),
+                     counters.events, counters.eventsByType[0], counters.eventsByType[1],
+                     counters.eventsByType[2], counters.bytes, counters.timeouts, counters.events);
     }
 
     ReadoutCounters deltas;
@@ -1397,14 +1416,17 @@ void report_counters(const CountersReportInfo &info, const std::string &title = 
     deltas.bytes = counters.bytes - prevCounters.bytes;
     deltas.timeouts = counters.timeouts - prevCounters.timeouts;
     deltas.events = counters.events - prevCounters.events;
+    deltas.eventsByType[0] = counters.eventsByType[0] - prevCounters.eventsByType[0];
     deltas.eventsByType[1] = counters.eventsByType[1] - prevCounters.eventsByType[1];
     deltas.eventsByType[2] = counters.eventsByType[2] - prevCounters.eventsByType[2];
 
     if (info.flags & CountersReportInfo::ReportDeltas)
     {
-        spdlog::info("{}: deltas: packets={} (mcpd={}, mdll={}), bytes={}, timeouts={}, events={}",
-                     title, deltas.packets, deltas.eventsByType[1], deltas.eventsByType[2],
-                     deltas.bytes, deltas.timeouts, deltas.events);
+        spdlog::info("{}: deltas: packets={}, events={}, (trigger={}, mcpd={}, mdll={}), bytes={}, "
+                     "timeouts={}, events={}",
+                     title, deltas.packets, deltas.events, deltas.eventsByType[0],
+                     deltas.eventsByType[1], deltas.eventsByType[2], deltas.bytes, deltas.timeouts,
+                     deltas.events);
     }
 
     if (info.flags & CountersReportInfo::ReportPacketTypes)
@@ -1424,11 +1446,12 @@ void report_counters(const CountersReportInfo &info, const std::string &title = 
 
     if (dt_s > 0)
     {
-        spdlog::info("{}: rates: dt_s={}, packets/s={:.2f} (mcpd={}, mdll={}), MiB/s={:.2f}, "
-                     "events/s={:.0f}",
-                     title, dt_s, deltas.packets / dt_s, deltas.eventsByType[1] / dt_s,
-                     deltas.eventsByType[2] / dt_s, deltas.bytes / dt_s / (1u << 20),
-                     deltas.events / dt_s);
+        spdlog::info(
+            "{}: rates: dt_s={}, packets/s={:.2f} (trigger={}, mcpd={}, mdll={}), MiB/s={:.2f}, "
+            "events/s={:.0f}",
+            title, dt_s, deltas.packets / dt_s, deltas.eventsByType[0] / dt_s,
+            deltas.eventsByType[1] / dt_s, deltas.eventsByType[2] / dt_s,
+            deltas.bytes / dt_s / (1u << 20), deltas.events / dt_s);
     }
 }
 
@@ -1451,6 +1474,7 @@ struct ReadoutCommand: public BaseCommand
     bool printEventData_ = false;
     bool printRawPacketData_ = false;
     bool overwriteListfile_ = false;
+    bool sendStartDaqCommand_ = true;
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
     RootHistoContext rootHistoContext_ = {};
@@ -1496,6 +1520,11 @@ struct ReadoutCommand: public BaseCommand
                                         { printPacketSummary_ = b; })["--print-packet-summary"]
                                   .optional()
                                   .help("Print readout packet summaries"))
+
+                .add_argument(
+                    lyra::opt([this](const bool &b) { sendStartDaqCommand_ = b; })["--no-start-daq"]
+                        .optional()
+                        .help("Do not send the DAQ start command prior to data taking"))
 
                 .add_argument(
                     lyra::opt([this](const bool &b) { printEventData_ = b; })["--print-event-data"]
@@ -1634,6 +1663,19 @@ struct ReadoutCommand: public BaseCommand
         CountersReportInfo reportInfo;
         reportInfo.flags = CountersReportInfo::All;
 
+        if (sendStartDaqCommand_)
+        {
+            spdlog::debug("readout: sending DAQ start command to {}", ctx.mcpdAddress);
+            ec = mcpd_start_daq(ctx.cmdSock, ctx.mcpdId);
+
+            if (ec)
+            {
+                spdlog::error("readout: error sending DAQ start command: {} (code={}, category={})",
+                              ec.message(), ec.value(), ec.category().name());
+                return 1;
+            }
+        }
+
         while (!g_interrupted)
         {
             size_t bytesTransferred = 0u;
@@ -1703,19 +1745,23 @@ struct ReadoutCommand: public BaseCommand
                     spdlog::info("  packet contains {} events", eventCount);
                 }
 
-                if (printEventData_)
+                for (size_t ei = 0; ei < eventCount; ++ei)
                 {
-                    for (size_t ei = 0; ei < eventCount; ++ei)
-                    {
-                        auto event = decode_event(dataPacket, ei);
-                        u64 rawevent = get_event(dataPacket, ei);
-                        spdlog::info("{} (raw_value={:#x})", to_string(event), rawevent);
-                    }
+                    auto event = decode_event(dataPacket, ei);
+
+                    if (event.type <= EventType::MdllNeutron)
+                        ++counters.eventsByType[static_cast<unsigned>(event.type)];
+                    else
+                        spdlog::error("readout: unknown event type {} in packet#{}",
+                                      static_cast<unsigned>(event.type), counters.packets);
+
+                    if (printEventData_)
+                        spdlog::info("{}", to_string(event));
                 }
 
                 if (printRawPacketData_)
                 {
-                    spdlog::error("  raw packet.data: {:#04x}",
+                    spdlog::info("  raw packet.data: {:#04x}",
                                  fmt::join(dataPacket.data,
                                            dataPacket.data + dataPacket.bufferLength, ", "));
                 }
@@ -1732,8 +1778,7 @@ struct ReadoutCommand: public BaseCommand
                 ++counters.packets;
                 counters.bytes += bytesTransferred;
                 counters.events += eventCount;
-                if (dataPacket.bufferType < counters.eventsByType.size())
-                    ++counters.eventsByType[dataPacket.bufferType];
+                ++counters.packetsByType[dataPacket.bufferType];
             }
 
             const auto now = std::chrono::steady_clock::now();
@@ -1818,6 +1863,7 @@ struct ReplayCommand: public BaseCommand
     size_t reportInterval_ms_ = 1000u;
     bool printPacketSummary_ = false;
     bool printEventData_ = false;
+    bool printRawPacketData_ = false;
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
     RootHistoContext rootHistoContext_ = {};
@@ -1855,6 +1901,11 @@ struct ReplayCommand: public BaseCommand
                     lyra::opt([this](const bool &b) { printEventData_ = b; })["--print-event-data"]
                         .optional()
                         .help("Print readout event data"))
+
+                .add_argument(lyra::opt([this](const bool &b)
+                                        { printRawPacketData_ = b; })["--print-raw-packet-data"]
+                                  .optional()
+                                  .help("Print raw packet event data as 16 bit hex values"))
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
                 .add_argument(
@@ -2012,9 +2063,19 @@ struct ReplayCommand: public BaseCommand
 
                 if (event.type <= EventType::MdllNeutron)
                     ++counters.eventsByType[static_cast<unsigned>(event.type)];
+                else
+                    spdlog::error("replay: unknown event type {} in packet#{}",
+                                  static_cast<unsigned>(event.type), counters.packets);
 
                 if (printEventData_)
                     spdlog::info("{}", to_string(event));
+
+                if (printRawPacketData_)
+                {
+                    spdlog::info("  raw packet.data: {:#04x}",
+                                 fmt::join(dataPacket.data,
+                                           dataPacket.data + dataPacket.bufferLength, ", "));
+                }
             }
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
@@ -2029,8 +2090,7 @@ struct ReplayCommand: public BaseCommand
             ++counters.packets;
             counters.bytes += sizeof(dataPacket);
             counters.events += eventCount;
-            if (dataPacket.bufferType < counters.eventsByType.size())
-                ++counters.eventsByType[dataPacket.bufferType];
+            ++counters.packetsByType[dataPacket.bufferType];
 
             const auto now = std::chrono::steady_clock::now();
 
