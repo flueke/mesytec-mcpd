@@ -189,6 +189,20 @@ std::string to_string(const DataPacket &packet)
     return ss.str();
 }
 
+std::string packet_buffer_type_to_string(u16 bufferType)
+{
+    switch (bufferType)
+    {
+        case CommandPacketBufferType: return "CommandPacket";
+        case McpdDataBufferType: return "McpdData";
+        case MdllDataBufferType: return "MdllData";
+        default:
+            break;
+    }
+
+    return fmt::format("<unknown> (0x{:04X})", bufferType);
+}
+
 template<typename Out>
 Out &format(Out &out, const DecodedEvent &event)
 {

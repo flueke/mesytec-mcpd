@@ -501,6 +501,8 @@ inline u64 get_event(const DataPacket &packet, size_t eventNum)
         packet.data[idx + 2]);
 }
 
+std::string packet_buffer_type_to_string(u16 bufferType);
+
 struct MESYTEC_MCPD_EXPORT DecodedEvent
 {
     struct Neutron
