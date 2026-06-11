@@ -2462,6 +2462,7 @@ int main(int argc, char *argv[])
     CliContext ctx = {};
     bool logDebug = false;
     bool logTrace = false;
+    bool showLogTimestamps = false;
     bool showVersion = false;
 
     auto cli =
@@ -2477,6 +2478,10 @@ int main(int argc, char *argv[])
          | lyra::opt([&](bool b) { logDebug = b; })["--debug"]("set log level to debug").optional()
 
          | lyra::opt([&](bool b) { logTrace = b; })["--trace"]("set log level to trace").optional()
+
+         | lyra::opt([&](bool b)
+                     { showLogTimestamps = b; })["--show-log-timestamps"]("show log timestamps")
+               .optional()
 
          | lyra::opt([&](bool b) { showVersion = b; })["--version"]("show mcpd-cli version info")
                .optional()
@@ -2552,6 +2557,11 @@ int main(int argc, char *argv[])
 
     if (logTrace)
         spdlog::set_level(spdlog::level::trace);
+
+    if (!showLogTimestamps)
+        spdlog::set_pattern("[%^%l%$] %v");
+    else
+        spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
 
     if (showVersion)
     {
