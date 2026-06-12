@@ -29,6 +29,7 @@ struct RootHistoContext
     std::vector<TH1D *> positions;
     std::vector<TH1D *> timestamps;
 
+    // Hacky place to store MDLL histos, graphs and values. This should be redesigned at some point.
     struct MdllHistos
     {
         TH1D *amplitudes = nullptr;
@@ -36,14 +37,28 @@ struct RootHistoContext
         TH1D *yPositions = nullptr;
         TH2D *xyPositions = nullptr;
 
+        TH1D *packetTimestamps = nullptr;
+        TH1D *eventTimestamps = nullptr;
+        TH1D *fullTimestamps = nullptr;
+
+        TH1D *packetTimestampDeltas = nullptr;
+        TH1D *eventTimestampDeltas = nullptr;
+        TH1D *fullTimestampDeltas = nullptr;
+
+        std::optional<uint64_t> lastPacketTimestamp;
+        std::optional<uint64_t> lastEventTimestamp;
+        std::optional<uint64_t> lastFullTimestamp;
+
         // Used to create value-over-time graphs at the end of a run.
         // This can grow indefinitely. Makes the OOM-killer happy.
         struct GraphStorage
         {
-            std::vector<float> timestamps;
-            std::vector<float> amplitudes;
-            std::vector<float> xPositions;
-            std::vector<float> yPositions;
+            std::vector<double> packet_timestamps; // packet stamp, aka buffer stamp
+            std::vector<double> event_timestamps;  // the relative timestamp transmitted with each event
+            std::vector<double> full_timestamps;   // calculated full event stamp: packet stamp + event stamp
+            std::vector<double> amplitudes;
+            std::vector<double> xPositions;
+            std::vector<double> yPositions;
         };
 
         GraphStorage graphStorage;

@@ -1349,6 +1349,7 @@ struct DaqCommand: public BaseCommand
 struct ReadoutCounters
 {
     size_t packets = 0u;
+    size_t packetsLost = 0u;
     size_t bytes = 0u;
     size_t timeouts = 0u;
     size_t events = 0u;
@@ -1359,6 +1360,7 @@ struct ReadoutCounters
     void reset()
     {
         packets = 0;
+        packetsLost = 0;
         bytes = 0;
         timeouts = 0;
         events = 0;
@@ -1397,6 +1399,21 @@ struct CountersReportInfo
     u32 flags = ReportValues; // same behavior as the old report_counters()
 };
 
+s32 calc_packet_loss(u16 lastPacketNumber, u16 packetNumber)
+{
+    static const s32 PacketNumberMax = std::numeric_limits<u16>::max();
+
+    s32 diff = packetNumber - lastPacketNumber;
+
+    if (diff < 1)
+    {
+        diff = PacketNumberMax + diff;
+        return diff;
+    }
+
+    return diff - 1;
+}
+
 void report_counters(const CountersReportInfo &info, const std::string &title = "readout")
 {
     auto &counters = info.counters;
@@ -1404,16 +1421,16 @@ void report_counters(const CountersReportInfo &info, const std::string &title = 
 
     if (info.flags & CountersReportInfo::ReportValues)
     {
-        spdlog::info("{}: counters: packets={} (buffer types: {}), events={} (trigger={}, mcpd={}, "
-                     "mdll={}), bytes={}, timeouts={}, events={}",
-                     title, counters.packets,
+        spdlog::info("{}: counters: packets={}, packetsLost={}, (buffer types: {}), events={} (Neutron={}, Trigger={}, MdllNeutron={}), bytes={}, timeouts={}",
+                     title, counters.packets, counters.packetsLost,
                      counters_packet_buffer_types_to_string(counters.packetsByType),
                      counters.events, counters.eventsByType[0], counters.eventsByType[1],
-                     counters.eventsByType[2], counters.bytes, counters.timeouts, counters.events);
+                     counters.eventsByType[2], counters.bytes, counters.timeouts);
     }
 
     ReadoutCounters deltas;
     deltas.packets = counters.packets - prevCounters.packets;
+    deltas.packetsLost = counters.packetsLost - prevCounters.packetsLost;
     deltas.bytes = counters.bytes - prevCounters.bytes;
     deltas.timeouts = counters.timeouts - prevCounters.timeouts;
     deltas.events = counters.events - prevCounters.events;
@@ -1423,9 +1440,9 @@ void report_counters(const CountersReportInfo &info, const std::string &title = 
 
     if (info.flags & CountersReportInfo::ReportDeltas)
     {
-        spdlog::info("{}: deltas: packets={}, events={}, (trigger={}, mcpd={}, mdll={}), bytes={}, "
+        spdlog::info("{}: deltas: packets={}, packetsLost={}, events={}, (Neutron={}, Trigger={}, MdllNeutron={}), bytes={}, "
                      "timeouts={}, events={}",
-                     title, deltas.packets, deltas.events, deltas.eventsByType[0],
+                     title, deltas.packets, deltas.packetsLost, deltas.events, deltas.eventsByType[0],
                      deltas.eventsByType[1], deltas.eventsByType[2], deltas.bytes, deltas.timeouts,
                      deltas.events);
     }
@@ -1448,7 +1465,7 @@ void report_counters(const CountersReportInfo &info, const std::string &title = 
     if (dt_s > 0)
     {
         spdlog::info(
-            "{}: rates: dt_s={}, packets/s={:.2f} (trigger={}, mcpd={}, mdll={}), MiB/s={:.2f}, "
+            "{}: rates: dt_s={}, packets/s={:.2f} (Neutron={}, Trigger={}, MdllNeutron={}), MiB/s={:.2f}, "
             "events/s={:.0f}",
             title, dt_s, deltas.packets / dt_s, deltas.eventsByType[0] / dt_s,
             deltas.eventsByType[1] / dt_s, deltas.eventsByType[2] / dt_s,
@@ -1652,6 +1669,7 @@ struct ReadoutCommand: public BaseCommand
         ReadoutCounters counters = {};
         ReadoutCounters prevCounters = {};
         DataPacket dataPacket = {};
+        std::optional<u16> lastBufferNumber;
 
         spdlog::info("readout: entering readout loop, press ctrl-c to quit");
 
@@ -1721,6 +1739,18 @@ struct ReadoutCommand: public BaseCommand
                         return 1;
                     }
                 }
+
+                if (lastBufferNumber)
+                {
+                    auto lost = calc_packet_loss(*lastBufferNumber, dataPacket.bufferNumber);
+                    counters.packetsLost += lost;
+                    if (lost > 0)
+                    {
+                        spdlog::warn("readout: detected packet loss: last buffer number {}, current buffer number {}, lost packets {}",
+                                     *lastBufferNumber, dataPacket.bufferNumber, lost);
+                    }
+                }
+                lastBufferNumber = dataPacket.bufferNumber;
 
                 const auto eventCount = get_event_count(dataPacket);
 
