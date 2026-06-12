@@ -239,6 +239,7 @@ void Readout::workerLoop(std::promise<bool> promise)
                 {
                     augPacket->srcAddr = ntohl(srcAddr.sin_addr.s_addr);
                     augPacket->srcPort = ntohs(srcAddr.sin_port);
+
                     auto counters = getCounters_().lock();
                     counters->packets++;
                     counters->bytes += sizeof(augPacket->packet);
