@@ -11,25 +11,25 @@ namespace mesytec::mcpd
 
 struct RootHistoContext
 {
-    std::unique_ptr<TFile> histoOutFile;
+    struct McpdHistos
+    {
+        // neutron events [mcpdId][mpsdId][channel]["amplitude"]
+        // bits             8       3       5        10
+        //
+        // neutron event: [mcpdId][mpsdId][channel]["position"]
+        // bits             8       3       5        10
+        //
+        // Maybe:
+        // any event:     [mcpdId][mpsdId][channel]["timestamp"]
+        // bits             8       3       5        19
 
-    // neutron events [mcpdId][mpsdId][channel]["amplitude"]
-    // bits             8       3       5        10
-    //
-    // neutron event: [mcpdId][mpsdId][channel]["position"]
-    // bits             8       3       5        10
-    //
-    // Maybe:
-    // any event:     [mcpdId][mpsdId][channel]["timestamp"]
-    // bits             8       3       5        19
+        // These use a linear index consisting of mcpd, mpsd and channel ids. See
+        // get_histo(), etc below.
+        std::vector<TH1D *> amplitudes;
+        std::vector<TH1D *> positions;
+        std::vector<TH1D *> timestamps;
+    };
 
-    // These use a linear index consisting of mcpd, mpsd and channel ids. See
-    // get_histo(), etc below.
-    std::vector<TH1D *> amplitudes;
-    std::vector<TH1D *> positions;
-    std::vector<TH1D *> timestamps;
-
-    // Hacky place to store MDLL histos, graphs and values. This should be redesigned at some point.
     struct MdllHistos
     {
         TH1D *amplitudes = nullptr;
@@ -37,7 +37,22 @@ struct RootHistoContext
         TH1D *yPositions = nullptr;
         TH2D *xyPositions = nullptr;
 
+        // Used to create value-over-time graphs at the end of a run.
+        // This can grow indefinitely. Makes the OOM-killer happy.
+        struct GraphStorage
+        {
+            std::vector<double> amplitudes;
+            std::vector<double> xPositions;
+            std::vector<double> yPositions;
+        };
+
+        GraphStorage graphStorage;
+    };
+
+    struct GeneralHistos
+    {
         TH1D *packetTimestamps = nullptr;
+        TH1D *eventsPerPacket = nullptr;
         TH1D *eventTimestamps = nullptr;
         TH1D *fullTimestamps = nullptr;
 
@@ -50,24 +65,32 @@ struct RootHistoContext
         std::optional<uint64_t> lastFullTimestamp;
 
         // Used to create value-over-time graphs at the end of a run.
-        // This can grow indefinitely. Makes the OOM-killer happy.
+        // These can grow indefinitely. Makes the OOM-killer happy.
         struct GraphStorage
         {
-            std::vector<double> packet_timestamps; // packet stamp, aka buffer stamp
-            std::vector<double> event_timestamps;  // the relative timestamp transmitted with each event
-            std::vector<double> full_timestamps;   // calculated full event stamp: packet stamp + event stamp
-            std::vector<double> amplitudes;
-            std::vector<double> xPositions;
-            std::vector<double> yPositions;
+            std::vector<double> packetTimestamps; // packet stamp, aka buffer stamp
+            std::vector<double> eventTimestamps;  // the relative timestamp transmitted with each event
+            std::vector<double> fullTimestamps;   // calculated full event stamp: packet stamp + event stamp
         };
 
         GraphStorage graphStorage;
     };
 
+    // The ROOT ouptut file.
+    std::unique_ptr<TFile> histoOutFile;
+
+    // For MCPD data.
+    std::unique_ptr<McpdHistos> mcpdHistos;
+
     // For MDLL data. Indexed by MDLL device id.
     std::vector<std::unique_ptr<MdllHistos>> mdllHistos;
 
-    bool enableMdllGraphs = false;
+    // General histograms indexed by device id (MCPD or MDLL).
+    std::vector<std::unique_ptr<GeneralHistos>> generalHistos;
+
+    // Set to true if value over time graphs should be created. Eats memory and
+    // will crash on long runs.
+    bool enableGraphs = false;
 
     RootHistoContext(RootHistoContext &&) = default;
     RootHistoContext &operator=(RootHistoContext &&) = default;
@@ -94,17 +117,17 @@ inline TH1D *get_histo(const std::vector<TH1D *> histos, unsigned mcpdId, unsign
 
 inline TH1D *get_amplitude_histo(RootHistoContext &ctx, unsigned mcpdId, unsigned mpsdId, unsigned channel)
 {
-    return get_histo(ctx.amplitudes, mcpdId, mpsdId, channel);
+    return get_histo(ctx.mcpdHistos->amplitudes, mcpdId, mpsdId, channel);
 }
 
 inline TH1D *get_position_histo(RootHistoContext &ctx, unsigned mcpdId, unsigned mpsdId, unsigned channel)
 {
-    return get_histo(ctx.positions, mcpdId, mpsdId, channel);
+    return get_histo(ctx.mcpdHistos->positions, mcpdId, mpsdId, channel);
 }
 
 inline TH1D *get_timestamp_histo(RootHistoContext &ctx, unsigned mcpdId, unsigned mpsdId, unsigned channel)
 {
-    return get_histo(ctx.timestamps, mcpdId, mpsdId, channel);
+    return get_histo(ctx.mcpdHistos->timestamps, mcpdId, mpsdId, channel);
 }
 
 }

@@ -1498,7 +1498,7 @@ struct ReadoutCommand: public BaseCommand
     RootHistoContext rootHistoContext_ = {};
     std::string rootHistoPath_;
     size_t rootFlushInterval_ms_ = 500u;
-    bool rootEnableMdllGraphs_ = false;
+    bool rootEnableGraphs_ = false;
 #endif
 
 #ifdef MESYTEC_MCPD_ENABLE_PYTHON
@@ -1565,9 +1565,9 @@ struct ReadoutCommand: public BaseCommand
                         .help("ROOT file flush interval in ms"))
 
                 .add_argument(lyra::opt([this](const bool &b)
-                                        { rootEnableMdllGraphs_ = b; })["--root-enable-mdll-graphs"]
+                                        { rootEnableGraphs_ = b; })["--root-enable-graphs"]
                                   .optional()
-                                  .help("Create TGraphs of MDLL amplitude and position values vs "
+                                  .help("Create TGraphs of timestamps, MDLL amplitudes and positions vs "
                                         "time in the ROOT ouptut file. Eats lots of memory!"))
 #endif
 
@@ -1633,7 +1633,7 @@ struct ReadoutCommand: public BaseCommand
             try
             {
                 rootHistoContext_ = create_histo_context(rootHistoPath_);
-                rootHistoContext_.enableMdllGraphs = rootEnableMdllGraphs_;
+                rootHistoContext_.enableGraphs = rootEnableGraphs_;
                 spdlog::info("Writing ROOT histograms to {}", rootHistoPath_);
             }
             catch (const std::runtime_error &e)
@@ -1762,11 +1762,11 @@ struct ReadoutCommand: public BaseCommand
 
                     spdlog::info("packet#{}: bufferLength={}, bufferType=0x{:04x}, "
                                  "bufferNumber={}, headerLength={}, runId={}, "
-                                 "devStatus=0x{:04x}, deviceId={}, timestamp={}, srcAddr={}",
+                                 "devStatus=0x{:04x}, deviceId={}, timestamp={}, srcAddr={}, eventCount={}",
                                  counters.packets, dataPacket.bufferLength, dataPacket.bufferType,
                                  dataPacket.bufferNumber, dataPacket.headerLength, dataPacket.runId,
                                  dataPacket.deviceStatus, dataPacket.deviceId,
-                                 get_header_timestamp(dataPacket), srcAddrBuf);
+                                 get_header_timestamp(dataPacket), srcAddrBuf, eventCount);
 
                     spdlog::info(
                         "  parameters: 0x{:012x}, {}, {}, {}", to_48bit_value(dataPacket.param[0]),
@@ -1900,7 +1900,7 @@ struct ReplayCommand: public BaseCommand
     RootHistoContext rootHistoContext_ = {};
     std::string rootHistoPath_;
     size_t rootFlushInterval_ms_ = 500u;
-    bool rootEnableMdllGraphs_ = false;
+    bool rootEnableGraphs_ = false;
 #endif
 
 #ifdef MESYTEC_MCPD_ENABLE_PYTHON
@@ -1949,7 +1949,7 @@ struct ReplayCommand: public BaseCommand
                         .help("ROOT file flush interval in ms"))
 
                 .add_argument(lyra::opt([this](const bool &b)
-                                        { rootEnableMdllGraphs_ = b; })["--root-enable-mdll-graphs"]
+                                        { rootEnableGraphs_ = b; })["--root-enable-mdll-graphs"]
                                   .optional()
                                   .help("Create TGraphs of MDLL amplitude and position values vs "
                                         "time in the ROOT ouptut file. Eats lots of memory!"))
@@ -2003,7 +2003,7 @@ struct ReplayCommand: public BaseCommand
             try
             {
                 rootHistoContext_ = create_histo_context(rootHistoPath_);
-                rootHistoContext_.enableMdllGraphs = rootEnableMdllGraphs_;
+                rootHistoContext_.enableGraphs = rootEnableGraphs_;
                 spdlog::info("Writing ROOT histograms to {}", rootHistoPath_);
             }
             catch (const std::runtime_error &e)
@@ -2074,11 +2074,11 @@ struct ReplayCommand: public BaseCommand
             {
                 spdlog::info("packet#{}: bufferLength={}, bufferType=0x{:04x}, bufferNumber={}, "
                              "headerLength={}, runId={}, "
-                             "devStatus={}, deviceId={}, timestamp={:#0x}",
+                             "devStatus={}, deviceId={}, timestamp={:#0x}, eventCount={}",
                              counters.packets, dataPacket.bufferLength, dataPacket.bufferType,
                              dataPacket.bufferNumber, dataPacket.headerLength, dataPacket.runId,
                              dataPacket.deviceStatus, dataPacket.deviceId,
-                             get_header_timestamp(dataPacket));
+                             get_header_timestamp(dataPacket), eventCount);
 
                 spdlog::info(
                     "  parameters: 0x{:012x}, {}, {}, {}", to_48bit_value(dataPacket.param[0]),

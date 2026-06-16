@@ -102,7 +102,7 @@ RootHistoContext::MdllHistos* get_or_create_mdll_histos(
 
     spdlog::debug("No mdll histos yet, creating for MDLL {}", mdllId);
 
-    mdllHistos.resize(mdllId + 1);
+    mdllHistos.resize(std::max(static_cast<size_t>(mdllId + 1), mdllHistos.size()));
 
     if (!mdllHistos[mdllId])
     {
@@ -132,28 +132,6 @@ RootHistoContext::MdllHistos* get_or_create_mdll_histos(
             1u << mn::xPosBits, 0, (1u << mn::xPosBits) + 1.0,
             1u << mn::yPosBits, 0, (1u << mn::yPosBits) + 1.0);
 
-        histos->packetTimestamps = new TH1D("mdll_packetTimestamps", fmt::format("MDLL{} Packet Timestamps", mdllId).c_str(),
-            20, 0, 1llu << 48);
-
-        histos->eventTimestamps = new TH1D("mdll_eventTimestamps", fmt::format("MDLL{} Event Timestamps", mdllId).c_str(),
-            1u << event_constants::TimestampBits, 0, (1u << event_constants::TimestampBits) + 1.0);
-
-        histos->fullTimestamps = new TH1D("mdll_fullTimestamps", fmt::format("MDLL{} Full Timestamps", mdllId).c_str(),
-            20, 0, 1llu << 48);
-
-        static const size_t deltaHistoBins = 1u << 16;
-        static const double deltaHistoMin = - (1u << 16) * 0.5;
-        static const double deltaHistoMax = + (1u << 16) * 0.5;
-
-        histos->packetTimestampDeltas = new TH1D("mdll_packetTimestampDeltas", fmt::format("MDLL{} Packet Timestamp Deltas", mdllId).c_str(),
-            deltaHistoBins, deltaHistoMin, deltaHistoMax);
-
-        histos->eventTimestampDeltas = new TH1D("mdll_eventTimestampDeltas", fmt::format("MDLL{} Event Timestamp Deltas", mdllId).c_str(),
-            deltaHistoBins, deltaHistoMin, deltaHistoMax);
-
-        histos->fullTimestampDeltas = new TH1D("mdll_fullTimestampDeltas", fmt::format("MDLL{} Full Timestamp Deltas", mdllId).c_str(),
-            deltaHistoBins, deltaHistoMin, deltaHistoMax);
-
         spdlog::info("Created histograms for MDLL {}: amplitude, xPosition, yPosition, xyPosition, ...", mdllId);
     }
 
@@ -161,26 +139,139 @@ RootHistoContext::MdllHistos* get_or_create_mdll_histos(
     return mdllHistos[mdllId].get();
 }
 
+RootHistoContext::GeneralHistos* get_or_create_general_histos(
+    TFile *outfile,
+    std::vector<std::unique_ptr<RootHistoContext::GeneralHistos>> &generalHistos,
+    unsigned deviceId)
+{
+    if (deviceId < generalHistos.size() && generalHistos[deviceId])
+    {
+        spdlog::trace("Returning existing general histograms for device {}", deviceId);
+        return generalHistos[deviceId].get();
+    }
+
+    spdlog::debug("No general histos yet, creating for device {}", deviceId);
+
+    generalHistos.resize(std::max(static_cast<size_t>(deviceId + 1), generalHistos.size()));
+
+    assert(deviceId < generalHistos.size());
+
+    if (!generalHistos[deviceId])
+    {
+        generalHistos[deviceId] = std::make_unique<RootHistoContext::GeneralHistos>();
+        auto histos = generalHistos[deviceId].get();
+
+        if (auto dir = outfile->mkdir(fmt::format("device{}", deviceId).c_str(), "", true))
+        {
+            dir->cd();
+        }
+        else
+        {
+            spdlog::error("Failed to create directory for device {}", deviceId);
+            return {};
+        }
+
+        // timestamp and events per packet histos
+        histos->packetTimestamps = new TH1D("packetTimestamps", fmt::format("Device{} Packet Timestamps", deviceId).c_str(),
+            20, 0, 1llu << 48);
+
+        histos->eventTimestamps = new TH1D("eventTimestamps", fmt::format("Device{} Event Timestamps", deviceId).c_str(),
+            1u << event_constants::TimestampBits, 0, (1u << event_constants::TimestampBits) + 1.0);
+
+        histos->fullTimestamps = new TH1D("fullTimestamps", fmt::format("Device{} Full Timestamps", deviceId).c_str(),
+            20, 0, 1llu << 48);
+
+        histos->eventsPerPacket = new TH1D("eventsPerPacket", fmt::format("Device{} Events per Packet", deviceId).c_str(),
+            1u << 8, 0, (1u << 8) + 1.0);
+
+        // delta histos
+        static const size_t deltaHistoBins = 1u << 16;
+        static const double deltaHistoMin = - (1u << 16) * 0.5;
+        static const double deltaHistoMax = + (1u << 16) * 0.5;
+
+        histos->packetTimestampDeltas = new TH1D("packetTimestampDeltas", fmt::format("Device{} Packet Timestamp Deltas", deviceId).c_str(),
+            deltaHistoBins, deltaHistoMin, deltaHistoMax);
+
+        histos->eventTimestampDeltas = new TH1D("eventTimestampDeltas", fmt::format("Device{} Event Timestamp Deltas", deviceId).c_str(),
+            deltaHistoBins, deltaHistoMin, deltaHistoMax);
+
+        histos->fullTimestampDeltas = new TH1D("fullTimestampDeltas", fmt::format("Device{} Full Timestamp Deltas", deviceId).c_str(),
+            deltaHistoBins, deltaHistoMin, deltaHistoMax);
+
+        spdlog::info("Created general histograms for device {}", deviceId);
+    }
+
+    outfile->cd();
+    return generalHistos[deviceId].get();
+}
+
 void root_histos_process_packet(RootHistoContext &ctx, const DataPacket &packet)
 {
+    const auto packetTimestamp = get_header_timestamp(packet);
     const auto eventCount = get_event_count(packet);
+
+    auto generalHistos = get_or_create_general_histos(ctx.histoOutFile.get(), ctx.generalHistos, packet.deviceId);
+    generalHistos->packetTimestamps->Fill(packetTimestamp);
+    generalHistos->eventsPerPacket->Fill(eventCount);
+
+    RootHistoContext::MdllHistos *mdllHistos = nullptr;
+
+    if (packet.bufferType == MdllDataBufferType)
+        mdllHistos = get_or_create_mdll_histos(ctx.histoOutFile.get(), ctx.mdllHistos, packet.deviceId);
+
+    if (generalHistos->lastPacketTimestamp)
+    {
+        auto delta = packetTimestamp - *generalHistos->lastPacketTimestamp;
+        generalHistos->packetTimestampDeltas->Fill(delta);
+    }
+
+    generalHistos->lastPacketTimestamp = packetTimestamp;
+
+    if (ctx.enableGraphs)
+    {
+        generalHistos->graphStorage.packetTimestamps.push_back(packetTimestamp);
+    }
 
     for(size_t ei=0; ei<eventCount; ++ei)
     {
         auto event = decode_event(packet, ei);
 
+        generalHistos->eventTimestamps->Fill(event.event_timestamp);
+        generalHistos->fullTimestamps->Fill(event.timestamp);
+
+        if (generalHistos->lastEventTimestamp)
+        {
+            auto delta = event.event_timestamp - *generalHistos->lastEventTimestamp;
+            generalHistos->eventTimestampDeltas->Fill(delta);
+        }
+
+        if (generalHistos->lastFullTimestamp)
+        {
+            auto delta = event.timestamp - *generalHistos->lastFullTimestamp;
+            generalHistos->fullTimestampDeltas->Fill(delta);
+        }
+
+        generalHistos->lastEventTimestamp = event.event_timestamp;
+        generalHistos->lastFullTimestamp = event.timestamp;
+
+        if (ctx.enableGraphs)
+        {
+            generalHistos->graphStorage.eventTimestamps.push_back(event.event_timestamp);
+            generalHistos->graphStorage.fullTimestamps.push_back(event.timestamp);
+        }
+
         if (event.type == EventType::Neutron)
         {
             auto histoAmp = get_maybe_create(
-                ctx.histoOutFile.get(), ctx.amplitudes,
+                ctx.histoOutFile.get(), ctx.mcpdHistos->amplitudes,
                 packet, event, 1u << 10, "amplitude");
 
             auto histoPos = get_maybe_create(
-                ctx.histoOutFile.get(), ctx.positions,
+                ctx.histoOutFile.get(), ctx.mcpdHistos->positions,
                 packet, event, 1u << 10, "position");
 
             auto histoTimestamp = get_maybe_create(
-                ctx.histoOutFile.get(), ctx.timestamps,
+                ctx.histoOutFile.get(), ctx.mcpdHistos->timestamps,
                 packet, event, 1u << 19, "timestamp");
 
             if (histoAmp)
@@ -194,8 +285,12 @@ void root_histos_process_packet(RootHistoContext &ctx, const DataPacket &packet)
         }
         else if (event.type == EventType::MdllNeutron)
         {
-            auto mdllHistos = get_or_create_mdll_histos(
-                ctx.histoOutFile.get(), ctx.mdllHistos, packet.deviceId);
+            assert(mdllHistos);
+            if (!mdllHistos)
+            {
+                spdlog::error("MDLL neutron event but no histograms for MDLL {}. This should not happen.", packet.deviceId);
+                continue;
+            }
 
             if (mdllHistos->amplitudes)
                 mdllHistos->amplitudes->Fill(event.mdllNeutron.amplitude);
@@ -206,78 +301,79 @@ void root_histos_process_packet(RootHistoContext &ctx, const DataPacket &packet)
             if (mdllHistos->xyPositions)
                 mdllHistos->xyPositions->Fill(event.mdllNeutron.xPos, event.mdllNeutron.yPos);
 
-            if (mdllHistos->eventTimestamps)
-                mdllHistos->eventTimestamps->Fill(event.event_timestamp);
-
-            if (mdllHistos->fullTimestamps)
-                mdllHistos->fullTimestamps->Fill(event.timestamp);
-
-            if (mdllHistos->lastEventTimestamp)
+            if (ctx.enableGraphs)
             {
-                auto delta = event.event_timestamp - *mdllHistos->lastEventTimestamp;
-                mdllHistos->eventTimestampDeltas->Fill(delta);
-            }
-
-            if (mdllHistos->lastFullTimestamp)
-            {
-                auto delta = event.timestamp - *mdllHistos->lastFullTimestamp;
-                mdllHistos->fullTimestampDeltas->Fill(delta);
-            }
-
-            mdllHistos->lastEventTimestamp = event.event_timestamp;
-            mdllHistos->lastFullTimestamp = event.timestamp;
-
-            if (ctx.enableMdllGraphs)
-            {
-                mdllHistos->graphStorage.full_timestamps.push_back(event.timestamp);
-                mdllHistos->graphStorage.event_timestamps.push_back(event.event_timestamp);
                 mdllHistos->graphStorage.amplitudes.push_back(event.mdllNeutron.amplitude);
                 mdllHistos->graphStorage.xPositions.push_back(event.mdllNeutron.xPos);
                 mdllHistos->graphStorage.yPositions.push_back(event.mdllNeutron.yPos);
             }
         }
-    }
-
-    if (packet.bufferType == MdllDataBufferType)
-    {
-        auto mdllHistos = get_or_create_mdll_histos(
-            ctx.histoOutFile.get(), ctx.mdllHistos, packet.deviceId);
-
-        const auto headerTimestamp = get_header_timestamp(packet);
-
-        if (ctx.enableMdllGraphs)
-            mdllHistos->graphStorage.packet_timestamps.push_back(headerTimestamp);
-
-        if (mdllHistos->packetTimestamps)
-            mdllHistos->packetTimestamps->Fill(headerTimestamp);
-
-        if (mdllHistos->lastPacketTimestamp)
+        else if (event.type == EventType::Trigger)
         {
-            auto delta = headerTimestamp - *mdllHistos->lastPacketTimestamp;
-            mdllHistos->packetTimestampDeltas->Fill(delta);
+            // TODO: maybe do add some trigger specific histograms or graphs.
         }
-
-        mdllHistos->lastPacketTimestamp = headerTimestamp;
     }
 }
 
 void root_histos_finalize(RootHistoContext &ctx)
 {
-    for (size_t mdllId = 0; mdllId < ctx.mdllHistos.size(); ++mdllId)
+    // general
+    for (size_t deviceId = 0; deviceId < ctx.generalHistos.size(); ++deviceId)
     {
-        auto histos = ctx.mdllHistos[mdllId].get();
+        auto histos = ctx.generalHistos[deviceId].get();
 
         if (!histos)
+        {
+            // can happen if we have a hole in the id ranges, e.g. device0, then
+            // device2, so device1 will not have any histos created
+            continue;
+        }
+
+        if (histos->graphStorage.fullTimestamps.empty())
+        {
+            // did not get any events from this device
+            continue;
+        }
+
+        if (auto dir = ctx.histoOutFile->mkdir(fmt::format("device{}", deviceId).c_str(), "", true))
+        {
+            dir->cd();
+        }
+
+        auto graphPacketTimestamps = new TGraph(histos->graphStorage.packetTimestamps.size(), histos->graphStorage.packetTimestamps.data());
+        graphPacketTimestamps->SetName("packet_timestamps_in_recv_order");
+        graphPacketTimestamps->SetTitle(fmt::format("Device{} Packet Timestamps in Receive Order;Recv Order;Packet Timestamp", deviceId).c_str());
+        graphPacketTimestamps->Write("", TObject::kOverwrite);
+
+        auto graphEventTimestamps = new TGraph(histos->graphStorage.eventTimestamps.size(), histos->graphStorage.eventTimestamps.data());
+        graphEventTimestamps->SetName("event_timestamps_in_recv_order");
+        graphEventTimestamps->SetTitle(fmt::format("Device{} Event Timestamps in Receive Order;Recv Order;Event Timestamp", deviceId).c_str());
+        graphEventTimestamps->Write("", TObject::kOverwrite);
+
+        auto graphFullTimestamps = new TGraph(histos->graphStorage.fullTimestamps.size(), histos->graphStorage.fullTimestamps.data());
+        graphFullTimestamps->SetName("full_timestamps_in_recv_order");
+        graphFullTimestamps->SetTitle(fmt::format("Device{} Full Timestamps in Receive Order;Recv Order;Full Timestamp", deviceId).c_str());
+        graphFullTimestamps->Write("", TObject::kOverwrite);
+
+        spdlog::info("Wrote graphs for device {} with {} points", deviceId, histos->graphStorage.fullTimestamps.size());
+    }
+
+    // mdll
+    for (size_t mdllId = 0; mdllId < ctx.mdllHistos.size(); ++mdllId)
+    {
+        auto mdllHistos = ctx.mdllHistos[mdllId].get();
+        auto generalHistos = ctx.generalHistos[mdllId].get();
+
+        if (!mdllHistos || !generalHistos)
         {
             // can happen if we have a hole in the id ranges, e.g. mdll0, then
             // mdll2, so mdll1 will not have any histos created
             continue;
         }
 
-        assert(histos);
-
-        if (histos->graphStorage.full_timestamps.empty())
+        if (mdllHistos->graphStorage.amplitudes.empty())
         {
+            // did not receive any events from this mdll
             continue;
         }
 
@@ -286,37 +382,32 @@ void root_histos_finalize(RootHistoContext &ctx)
             dir->cd();
         }
 
-        auto graphAmplitude = new TGraph(histos->graphStorage.full_timestamps.size(), histos->graphStorage.full_timestamps.data(), histos->graphStorage.amplitudes.data());
+        auto graphAmplitude = new TGraph(
+            generalHistos->graphStorage.fullTimestamps.size(),
+            generalHistos->graphStorage.fullTimestamps.data(),
+            mdllHistos->graphStorage.amplitudes.data());
+
         graphAmplitude->SetName(fmt::format("mdll{}_amplitude_over_time", mdllId).c_str());
         graphAmplitude->SetTitle(fmt::format("MDLL{} Amplitude over Time;Timestamp;Amplitude", mdllId).c_str());
         graphAmplitude->Write("", TObject::kOverwrite);
 
-        auto graphXPos = new TGraph(histos->graphStorage.full_timestamps.size(), histos->graphStorage.full_timestamps.data(), histos->graphStorage.xPositions.data());
+        auto graphXPos = new TGraph(
+            generalHistos->graphStorage.fullTimestamps.size(),
+            generalHistos->graphStorage.fullTimestamps.data(),
+            mdllHistos->graphStorage.xPositions.data());
         graphXPos->SetName(fmt::format("mdll{}_xpos_over_time", mdllId).c_str());
         graphXPos->SetTitle(fmt::format("MDLL{} X Position over Time;Timestamp;X Position", mdllId).c_str());
         graphXPos->Write("", TObject::kOverwrite);
 
-        auto graphYPos = new TGraph(histos->graphStorage.full_timestamps.size(), histos->graphStorage.full_timestamps.data(), histos->graphStorage.yPositions.data());
+        auto graphYPos = new TGraph(
+            generalHistos->graphStorage.fullTimestamps.size(),
+            generalHistos->graphStorage.fullTimestamps.data(),
+            mdllHistos->graphStorage.yPositions.data());
         graphYPos->SetName(fmt::format("mdll{}_ypos_over_time", mdllId).c_str());
         graphYPos->SetTitle(fmt::format("MDLL{} Y Position over Time;Timestamp;Y Position", mdllId).c_str());
         graphYPos->Write("", TObject::kOverwrite);
 
-        auto graphFullTimestamps = new TGraph(histos->graphStorage.full_timestamps.size(), histos->graphStorage.full_timestamps.data());
-        graphFullTimestamps->SetName(fmt::format("mdll{}_full_timestamps_in_recv_order", mdllId).c_str());
-        graphFullTimestamps->SetTitle(fmt::format("MDLL{} Full Timestamps in Receive Order;Recv Order;Full Timestamp", mdllId).c_str());
-        graphFullTimestamps->Write("", TObject::kOverwrite);
-
-        auto graphPacketTimestamps = new TGraph(histos->graphStorage.packet_timestamps.size(), histos->graphStorage.packet_timestamps.data());
-        graphPacketTimestamps->SetName(fmt::format("mdll{}_packet_timestamps_in_recv_order", mdllId).c_str());
-        graphPacketTimestamps->SetTitle(fmt::format("MDLL{} Packet Timestamps in Receive Order;Recv Order;Packet Timestamp", mdllId).c_str());
-        graphPacketTimestamps->Write("", TObject::kOverwrite);
-
-        auto graphEventTimestamps = new TGraph(histos->graphStorage.event_timestamps.size(), histos->graphStorage.event_timestamps.data());
-        graphEventTimestamps->SetName(fmt::format("mdll{}_event_timestamps_in_recv_order", mdllId).c_str());
-        graphEventTimestamps->SetTitle(fmt::format("MDLL{} Event Timestamps in Receive Order;Recv Order;Event Timestamp", mdllId).c_str());
-        graphEventTimestamps->Write("", TObject::kOverwrite);
-
-        spdlog::info("Wrote graphs for MDLL {} with {} points", mdllId, histos->graphStorage.full_timestamps.size());
+        spdlog::info("Wrote graphs for MDLL {} with {} points", mdllId, generalHistos->graphStorage.fullTimestamps.size());
     }
 
     ctx.histoOutFile->Write("", TObject::kOverwrite);
