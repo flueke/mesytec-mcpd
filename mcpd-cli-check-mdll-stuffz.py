@@ -22,9 +22,8 @@ class Context:
     csv_writer = None
     n_packets = 0
     n_events = 0
-    prev_event_ts = None
-    prev_packet_ts = None
-    prev_packet_recv_time_ns = None
+    prev_packet_timestamp = None
+    prev_full_timestamp = None
 
 ctx = Context()
 
@@ -41,9 +40,13 @@ def start(listfilePath: str, args: list[str]):
 
     ctx.csv_out = open(csv_output_name, 'w', newline='', encoding='utf-8')
     ctx.csv_writer = csv.writer(ctx.csv_out)
-    ctx.csv_writer.writerow(("type", "packet#", "dt_packet_recv_time_s", "packet_ts", "prev_packet_ts",\
-                             "dt_packet_ts", "rel_event#", "abs_event#", "event_ts", "prev_event_ts",\
-                             "dt_event_ts"))
+
+    ctx.csv_writer.writerow(("type", "packet#", "event#", "rel_event#",
+                              "packet_header_timestamp", "dt_packet_header_timestamp",
+                              "event_timestamp", "dt_event_timestamp",
+                              "full_timestamp", "dt_full_timestamp",
+                              "raw_packet_words"
+                              ))
 
 def stop():
     global ctx
@@ -57,33 +60,44 @@ def stop():
 def process_packet(packet: mcpd.DataPacket):
     global ctx
 
-    now_ns = time.perf_counter_ns()
-    dt_packet_recv_time_ns = None
+    dt_packet_timestamp = None
+    if ctx.prev_packet_timestamp is not None:
+        dt_packet_timestamp = packet.packet_timestamp - ctx.prev_packet_timestamp
+    ctx.prev_packet_timestamp = packet.packet_timestamp
 
-    if ctx.prev_packet_recv_time_ns is not None:
-        dt_packet_recv_time_ns = now_ns - ctx.prev_packet_recv_time_ns
-        dt_packet_recv_time_s = dt_packet_recv_time_ns / 1e9
+    raw_words = packet.get_raw_words()
+    formatted_raw_words = " ".join(f"{w:#06x}" for w in raw_words)
 
-    ctx.prev_packet_recv_time_ns = now_ns
+    ctx.csv_writer.writerow(("packet", ctx.n_packets, None, None,
+                              packet.packet_timestamp, dt_packet_timestamp,
+                              None, None,
+                              None, None,
+                              formatted_raw_words))
 
-    if ctx.prev_packet_ts is not None:
-        dt_packet_ts = packet.header_timestamp - ctx.prev_packet_ts
-
-        #print(f"packet#{ctx.n_packets}, dt_packet_recv_time_s={dt_packet_recv_time_s}, packet_ts={packet.header_timestamp}, prev_packet_ts={ctx.prev_packet_ts}, dt_packet_ts={dt_packet_ts}", flush=True)
-
-        if ctx.csv_writer is not None:
-            ctx.csv_writer.writerow(("packet", ctx.n_packets, dt_packet_recv_time_s, packet.header_timestamp, ctx.prev_packet_ts, dt_packet_ts, None, None, None, None, None))
-
-    ctx.prev_packet_ts = packet.header_timestamp
+    prev_event_timestamp = None
 
     for event_idx, event in enumerate(packet.get_decoded_events()):
-        if ctx.prev_event_ts is not None:
-            dt_event_ts = event.timestamp - ctx.prev_event_ts
-            #print(f"  packet#{ctx.n_packets}, event#{event_idx}: event_ts={event.timestamp}, prev_event_ts={ctx.prev_event_timestamp}, dt={dt_event_ts}", flush=True)
-            if ctx.csv_writer is not None:
-                ctx.csv_writer.writerow(("event", ctx.n_packets, None, None, None, None, event_idx, ctx.n_events, event.timestamp, ctx.prev_event_ts, dt_event_ts))
 
-        ctx.prev_event_ts = event.timestamp
+        # packet relative event timestamp delta
+        dt_event_timestamp = None
+        if prev_event_timestamp is not None:
+            dt_event_timestamp = event.event_timestamp - prev_event_timestamp
+        prev_event_timestamp = event.event_timestamp
+
+        # full event timestamp delta
+        dt_full_timestamp = None
+        if ctx.prev_full_timestamp is not None:
+            dt_full_timestamp = event.timestamp - ctx.prev_full_timestamp
+        ctx.prev_full_timestamp = event.timestamp
+
+        ctx.csv_writer.writerow((str(event.type), ctx.n_packets, ctx.n_events, event_idx,
+                                 #event.packet_timestamp, dt_packet_timestamp,
+                                 None, None,
+                                 event.event_timestamp, dt_event_timestamp,
+                                 event.timestamp, dt_full_timestamp,
+                                 None))
+
+
         ctx.n_events = ctx.n_events + 1
 
     ctx.n_packets = ctx.n_packets + 1
