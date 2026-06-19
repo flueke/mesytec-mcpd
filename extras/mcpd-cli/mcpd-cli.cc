@@ -1483,6 +1483,16 @@ void report_counters(const ReadoutCounters &counters, const std::string &title =
     report_counters(info, title);
 }
 
+// Prints the raw 16 bit words making up the packet.
+void print_raw_packet(const DataPacket &packet)
+{
+    auto data = reinterpret_cast<const u16 *>(&packet);
+    auto wordCount = packet.bufferLength;
+
+    spdlog::info("  raw packet ({} words): {:#06x}",
+                    wordCount, fmt::join(data, data + wordCount, ", "));
+}
+
 struct ReadoutCommand: public BaseCommand
 {
     u16 dataPort_ = McpdDefaultPort;
@@ -1555,7 +1565,7 @@ struct ReadoutCommand: public BaseCommand
                 .add_argument(lyra::opt([this](const bool &b)
                                         { printRawPacketData_ = b; })["--print-raw-packet-data"]
                                   .optional()
-                                  .help("Print raw packet event data as 16 bit hex values"))
+                                  .help("Print raw packet data as 16 bit hex values"))
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
                 .add_argument(
@@ -1780,7 +1790,15 @@ struct ReadoutCommand: public BaseCommand
                         to_48bit_value(dataPacket.param[1]), to_48bit_value(dataPacket.param[2]),
                         to_48bit_value(dataPacket.param[3]));
 
-                    spdlog::info("  packet contains {} events", eventCount);
+                    bool isBufferLengthOk = bytesTransferred == dataPacket.bufferLength * sizeof(u16);
+
+                    spdlog::info("  packet contains {} events, bufferLengthOk={}", eventCount, isBufferLengthOk);
+
+                }
+
+                if (printRawPacketData_)
+                {
+                    print_raw_packet(dataPacket);
                 }
 
                 for (size_t ei = 0; ei < eventCount; ++ei)
@@ -1795,13 +1813,6 @@ struct ReadoutCommand: public BaseCommand
 
                     if (printEventData_)
                         spdlog::info("{}", to_string(event));
-                }
-
-                if (printRawPacketData_)
-                {
-                    spdlog::info("  raw packet.data: {:#04x}",
-                                 fmt::join(dataPacket.data,
-                                           dataPacket.data + dataPacket.bufferLength, ", "));
                 }
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
@@ -1944,7 +1955,7 @@ struct ReplayCommand: public BaseCommand
                 .add_argument(lyra::opt([this](const bool &b)
                                         { printRawPacketData_ = b; })["--print-raw-packet-data"]
                                   .optional()
-                                  .help("Print raw packet event data as 16 bit hex values"))
+                                  .help("Print raw packet data as 16 bit hex values"))
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
                 .add_argument(
@@ -2100,6 +2111,11 @@ struct ReplayCommand: public BaseCommand
                 spdlog::info("  packet contains {} events", eventCount);
             }
 
+            if (printRawPacketData_)
+            {
+                print_raw_packet(dataPacket);
+            }
+
             for (size_t ei = 0; ei < eventCount; ++ei)
             {
                 auto event = decode_event(dataPacket, ei);
@@ -2112,13 +2128,6 @@ struct ReplayCommand: public BaseCommand
 
                 if (printEventData_)
                     spdlog::info("{}", to_string(event));
-
-                if (printRawPacketData_)
-                {
-                    spdlog::info("  raw packet.data: {:#04x}",
-                                 fmt::join(dataPacket.data,
-                                           dataPacket.data + dataPacket.bufferLength, ", "));
-                }
             }
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
