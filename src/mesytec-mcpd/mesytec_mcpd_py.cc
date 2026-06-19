@@ -78,7 +78,9 @@ void init_py_module(py::module_ &m)
         .def(py::init<>())
         .def_readonly("deviceId", &DecodedEvent::deviceId)
         .def_readonly("type", &DecodedEvent::type)
-        .def_readonly("timestamp", &DecodedEvent::timestamp)
+        .def_readonly("timestamp", &DecodedEvent::timestamp)                // full stamp
+        .def_readonly("event_timestamp", &DecodedEvent::event_timestamp)    // relative event stamp
+        .def_readonly("packet_timestamp", &DecodedEvent::packet_timestamp)  // packet header stamp
         .def("neutron",
              [](const DecodedEvent &event) -> py::object
              {
@@ -124,7 +126,7 @@ void init_py_module(py::module_ &m)
                                    );
                                })
 
-        .def_property_readonly("header_timestamp", [](const DataPacket &packet)
+        .def_property_readonly("packet_timestamp", [](const DataPacket &packet)
                                { return get_header_timestamp(packet); })
 
         .def_property_readonly("params",
@@ -181,7 +183,25 @@ void init_py_module(py::module_ &m)
                      ptr[i] = get_event(packet, i);
 
                  return result;
-             });
+             })
+
+        .def("get_raw_words",
+             [](const DataPacket &packet)
+             {
+                auto data = reinterpret_cast<const u16 *>(&packet);
+                auto wordCount = packet.bufferLength;
+                auto result = py::array_t<u16>(wordCount); // allocates storage
+                py::buffer_info info = result.request();
+                u16 *ptr = static_cast<u16 *>(info.ptr);
+
+                for (size_t i = 0; i < wordCount; ++i)
+                    ptr[i] = data[i];
+
+                return result;
+             })
+
+             ;
+
 
     py::class_<AugmentedDataPacket>(m, "AugmentedDataPacket", py::buffer_protocol())
         .def(py::init<>())
