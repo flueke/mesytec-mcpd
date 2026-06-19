@@ -56,6 +56,7 @@ void setup_signal_handlers()
 
 #ifdef MESYTEC_MCPD_ENABLE_PYTHON
 #include <pybind11/embed.h>
+#include <pybind11/stl.h>
 namespace py = pybind11;
 
 struct PyCliContext
@@ -76,10 +77,11 @@ bool setup_python_context(PyCliContext &pyCtx, const std::string &pythonScriptPa
     try
     {
         auto scope = py::module_::import("__main__").attr("__dict__");
-        scope["mcpd"] = pyCtx.mcpdPy;
-        py::eval_file(pythonScriptPath, scope);
+        scope["mcpd"] = pyCtx.mcpdPy; // this is a handle to the embedded 'mcpd' module, not a handle to a device
 
-        spdlog::warn("After py::eval_file!");
+        spdlog::debug("Before py::eval_file!");
+        py::eval_file(pythonScriptPath, scope);
+        spdlog::debug("After py::eval_file!");
 
         if (scope.contains("start"))
             pyCtx.startCallback = scope["start"];
@@ -1503,6 +1505,7 @@ struct ReadoutCommand: public BaseCommand
 
 #ifdef MESYTEC_MCPD_ENABLE_PYTHON
     std::string pythonScriptPath_;
+    std::vector<std::string> pythonScriptArgs_;
 #endif
 
     ReadoutCommand(lyra::cli &cli)
@@ -1575,6 +1578,10 @@ struct ReadoutCommand: public BaseCommand
                 .add_argument(
                     lyra::opt(pythonScriptPath_, "python file")["--python-script"].optional().help(
                         "Path to a Python script to execute for each event."))
+                .add_argument(lyra::group()
+                    .add_argument(lyra::literal("--"))
+                    .add_argument(lyra::arg(pythonScriptArgs_, "python script args"))
+                )
 #endif
         );
     }
@@ -1661,7 +1668,7 @@ struct ReadoutCommand: public BaseCommand
             if (pyCtx.startCallback)
             {
                 spdlog::debug("readout: calling Python start() callback");
-                pyCtx.startCallback();
+                pyCtx.startCallback(listfilePath_, pythonScriptArgs_);
             }
         }
 #endif
@@ -1856,19 +1863,19 @@ struct ReadoutCommand: public BaseCommand
             }
         }
 
-#ifdef MESYTEC_MCPD_ENABLE_ROOT
-        if (rootHistoContext_.histoOutFile)
-        {
-            root_histos_finalize(rootHistoContext_);
-            spdlog::debug("readout: flushed ROOT histograms to file");
-        }
-#endif
-
 #ifdef MESYTEC_MCPD_ENABLE_PYTHON
         if (ctx.pyContext.stopCallback)
         {
             spdlog::debug("readout: calling Python stop() callback");
             ctx.pyContext.stopCallback();
+        }
+#endif
+
+#ifdef MESYTEC_MCPD_ENABLE_ROOT
+        if (rootHistoContext_.histoOutFile)
+        {
+            root_histos_finalize(rootHistoContext_);
+            spdlog::debug("readout: flushed ROOT histograms to file");
         }
 #endif
 
@@ -1905,6 +1912,7 @@ struct ReplayCommand: public BaseCommand
 
 #ifdef MESYTEC_MCPD_ENABLE_PYTHON
     std::string pythonScriptPath_;
+    std::vector<std::string> pythonScriptArgs_;
 #endif
 
     ReplayCommand(lyra::cli &cli)
@@ -1959,6 +1967,10 @@ struct ReplayCommand: public BaseCommand
                 .add_argument(
                     lyra::opt(pythonScriptPath_, "python file")["--python-script"].optional().help(
                         "Path to a Python script to execute for each event."))
+                .add_argument(lyra::group()
+                    .add_argument(lyra::literal("--"))
+                    .add_argument(lyra::arg(pythonScriptArgs_, "python script args"))
+                )
 #endif
         );
     }
@@ -2031,7 +2043,7 @@ struct ReplayCommand: public BaseCommand
             if (pyCtx.startCallback)
             {
                 spdlog::debug("readout: calling Python start() callback");
-                pyCtx.startCallback();
+                pyCtx.startCallback(listfilePath_, pythonScriptArgs_);
             }
         }
 #endif
@@ -2156,11 +2168,19 @@ struct ReplayCommand: public BaseCommand
             }
         }
 
+#ifdef MESYTEC_MCPD_ENABLE_PYTHON
+        if (ctx.pyContext.stopCallback)
+        {
+            spdlog::debug("replay: calling Python stop() callback");
+            ctx.pyContext.stopCallback();
+        }
+#endif
+
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
         if (rootHistoContext_.histoOutFile)
         {
             root_histos_finalize(rootHistoContext_);
-            spdlog::debug("readout: flushed ROOT histograms to file");
+            spdlog::debug("replay: flushed ROOT histograms to file");
         }
 #endif
 
