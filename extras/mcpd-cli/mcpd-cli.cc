@@ -456,8 +456,8 @@ struct CellCommand: public BaseCommand
 
 struct TimerCommand: public BaseCommand
 {
-    u16 timerId_;
-    u16 captureValue_;
+    u16 timerId_ = 0;
+    u16 captureValue_ = 0;
 
     TimerCommand(lyra::cli &cli)
     {
@@ -491,7 +491,7 @@ struct TimerCommand: public BaseCommand
 
 struct SetMasterClockCommand: public BaseCommand
 {
-    u64 clockValue_;
+    u64 clockValue_ = 0;
 
     SetMasterClockCommand(lyra::cli &cli)
     {
@@ -765,7 +765,7 @@ struct GetBusCapabilitiesCommand: public BaseCommand
 
 struct SetBusCapabilitiesCommand: public BaseCommand
 {
-    u16 capsValue_;
+    u16 capsValue_ = 0;
 
     SetBusCapabilitiesCommand(lyra::cli &cli)
     {
@@ -825,8 +825,8 @@ template <typename T> lyra::parser_result parse_unsigned_value(T &dest, const st
 
 struct WriteRegisterCommand: public BaseCommand
 {
-    u16 address_;
-    u32 value_;
+    u16 address_ = 0;
+    u32 value_ = 0;
 
     WriteRegisterCommand(lyra::cli &cli)
     {
@@ -864,7 +864,7 @@ struct WriteRegisterCommand: public BaseCommand
 
 struct ReadRegisterCommand: public BaseCommand
 {
-    u16 address_;
+    u16 address_ = 0;
 
     ReadRegisterCommand(lyra::cli &cli)
     {
@@ -900,7 +900,7 @@ struct ReadRegisterCommand: public BaseCommand
 
 struct DecodeAllInputsParameter: public BaseCommand
 {
-    u64 value_;
+    u64 value_ = 0;
 
     DecodeAllInputsParameter(lyra::cli &cli)
     {
@@ -2323,10 +2323,10 @@ struct MdllSetThresholds: public BaseCommand
 
 struct MdllSetSpectrum: public BaseCommand
 {
-    u16 shiftX_;
-    u16 shiftY_;
-    u16 scaleX_;
-    u16 scaleY_;
+    u16 shiftX_ = 0;
+    u16 shiftY_ = 0;
+    u16 scaleX_ = 0;
+    u16 scaleY_ = 0;
 
     MdllSetSpectrum(lyra::cli &cli)
     {
