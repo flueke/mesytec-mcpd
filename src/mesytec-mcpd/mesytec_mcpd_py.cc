@@ -367,96 +367,124 @@ void init_py_module(py::module_ &m)
         .def_readonly("tx_format", &MpsdParameters::txFormat)
         .def_readonly("firmware_revision", &MpsdParameters::firmwareRevision);
 
+    // McpdConnection performs blocking network I/O (UDP send/recv with
+    // retries, up to ~2.5s per call) directly in the calling C++ function
+    // without releasing the GIL itself (unlike Readout/Replay, this class has
+    // no pybind11 dependency of its own). Release the GIL for the duration of
+    // every blocking call here so other Python threads (e.g. a test fake
+    // device, or NICOS's poller) keep running while a command is in flight.
+    using GilRelease = py::call_guard<py::gil_scoped_release>;
+
     py::class_<py_lib::McpdConnection>(m, "McpdConnection")
         .def(
             py::init<const std::string &, unsigned, u16>(), py::arg("address"),
-            py::arg("mcpd_id") = 0, py::arg("port") = McpdDefaultPort)
+            py::arg("mcpd_id") = 0, py::arg("port") = McpdDefaultPort, GilRelease())
         .def("close", &py_lib::McpdConnection::close)
         .def("is_open", &py_lib::McpdConnection::is_open)
         .def_property(
             "mcpd_id", &py_lib::McpdConnection::mcpd_id, &py_lib::McpdConnection::set_mcpd_id)
 
-        .def("get_version", &py_lib::McpdConnection::get_version)
-        .def("set_id", &py_lib::McpdConnection::set_id, py::arg("new_id"))
-        .def("set_ip_address", &py_lib::McpdConnection::set_ip_address, py::arg("address"))
-        .def("set_data_dest_port", &py_lib::McpdConnection::set_data_dest_port, py::arg("port"))
+        .def("get_version", &py_lib::McpdConnection::get_version, GilRelease())
+        .def("set_id", &py_lib::McpdConnection::set_id, py::arg("new_id"), GilRelease())
+        .def(
+            "set_ip_address", &py_lib::McpdConnection::set_ip_address, py::arg("address"),
+            GilRelease())
+        .def(
+            "set_data_dest_port", &py_lib::McpdConnection::set_data_dest_port, py::arg("port"),
+            GilRelease())
         .def(
             "set_ip_address_and_data_dest", &py_lib::McpdConnection::set_ip_address_and_data_dest,
-            py::arg("address"), py::arg("data_dest_address"), py::arg("data_dest_port"))
-        .def("set_run_id", &py_lib::McpdConnection::set_run_id, py::arg("run_id"))
-        .def("reset_daq", &py_lib::McpdConnection::reset_daq)
-        .def("start_daq", &py_lib::McpdConnection::start_daq)
-        .def("stop_daq", &py_lib::McpdConnection::stop_daq)
-        .def("continue_daq", &py_lib::McpdConnection::continue_daq)
-        .def("get_all_parameters", &py_lib::McpdConnection::get_all_parameters)
-        .def("get_bus_capabilities", &py_lib::McpdConnection::get_bus_capabilities)
-        .def("set_bus_capabilities", &py_lib::McpdConnection::set_bus_capabilities, py::arg("cap_bits"))
+            py::arg("address"), py::arg("data_dest_address"), py::arg("data_dest_port"),
+            GilRelease())
+        .def("set_run_id", &py_lib::McpdConnection::set_run_id, py::arg("run_id"), GilRelease())
+        .def("reset_daq", &py_lib::McpdConnection::reset_daq, GilRelease())
+        .def("start_daq", &py_lib::McpdConnection::start_daq, GilRelease())
+        .def("stop_daq", &py_lib::McpdConnection::stop_daq, GilRelease())
+        .def("continue_daq", &py_lib::McpdConnection::continue_daq, GilRelease())
+        .def("get_all_parameters", &py_lib::McpdConnection::get_all_parameters, GilRelease())
+        .def("get_bus_capabilities", &py_lib::McpdConnection::get_bus_capabilities, GilRelease())
+        .def(
+            "set_bus_capabilities", &py_lib::McpdConnection::set_bus_capabilities,
+            py::arg("cap_bits"), GilRelease())
         .def(
             "set_timing_options", &py_lib::McpdConnection::set_timing_options, py::arg("role"),
-            py::arg("term"), py::arg("ext_sync") = false)
-        .def("set_master_clock_value", &py_lib::McpdConnection::set_master_clock_value, py::arg("clock"))
+            py::arg("term"), py::arg("ext_sync") = false, GilRelease())
+        .def(
+            "set_master_clock_value", &py_lib::McpdConnection::set_master_clock_value,
+            py::arg("clock"), GilRelease())
         .def(
             "setup_cell", &py_lib::McpdConnection::setup_cell, py::arg("cell"), py::arg("trigger_source"),
-            py::arg("compare_register_bit_value"))
+            py::arg("compare_register_bit_value"), GilRelease())
         .def(
             "setup_auxtimer", &py_lib::McpdConnection::setup_auxtimer, py::arg("timer_id"),
-            py::arg("compare_register_value"))
+            py::arg("compare_register_value"), GilRelease())
         .def(
             "set_param_source", &py_lib::McpdConnection::set_param_source, py::arg("param"),
-            py::arg("source"))
+            py::arg("source"), GilRelease())
         .def(
             "set_dac_output_values", &py_lib::McpdConnection::set_dac_output_values, py::arg("dac0_value"),
-            py::arg("dac1_value"))
-        .def("scan_busses", &py_lib::McpdConnection::scan_busses)
-        .def("write_register", &py_lib::McpdConnection::write_register, py::arg("address"), py::arg("value"))
-        .def("read_register", &py_lib::McpdConnection::read_register, py::arg("address"))
+            py::arg("dac1_value"), GilRelease())
+        .def("scan_busses", &py_lib::McpdConnection::scan_busses, GilRelease())
+        .def(
+            "write_register", &py_lib::McpdConnection::write_register, py::arg("address"),
+            py::arg("value"), GilRelease())
+        .def(
+            "read_register", &py_lib::McpdConnection::read_register, py::arg("address"),
+            GilRelease())
         .def(
             "read_peripheral_register", &py_lib::McpdConnection::read_peripheral_register,
-            py::arg("mpsd_id"), py::arg("register_number"))
+            py::arg("mpsd_id"), py::arg("register_number"), GilRelease())
         .def(
             "write_peripheral_register", &py_lib::McpdConnection::write_peripheral_register,
-            py::arg("mpsd_id"), py::arg("register_number"), py::arg("register_value"))
+            py::arg("mpsd_id"), py::arg("register_number"), py::arg("register_value"), GilRelease())
 
         .def(
             "mpsd_set_gain", &py_lib::McpdConnection::mpsd_set_gain, py::arg("mpsd_id"), py::arg("channel"),
-            py::arg("gain"))
+            py::arg("gain"), GilRelease())
         .def(
             "mpsd_set_threshold", &py_lib::McpdConnection::mpsd_set_threshold, py::arg("mpsd_id"),
-            py::arg("threshold"))
+            py::arg("threshold"), GilRelease())
         .def(
             "mpsd_set_pulser", &py_lib::McpdConnection::mpsd_set_pulser, py::arg("mpsd_id"),
-            py::arg("channel"), py::arg("position"), py::arg("amplitude"), py::arg("state"))
-        .def("mpsd_set_mode", &py_lib::McpdConnection::mpsd_set_mode, py::arg("mpsd_id"), py::arg("mode"))
+            py::arg("channel"), py::arg("position"), py::arg("amplitude"), py::arg("state"),
+            GilRelease())
+        .def(
+            "mpsd_set_mode", &py_lib::McpdConnection::mpsd_set_mode, py::arg("mpsd_id"),
+            py::arg("mode"), GilRelease())
         .def(
             "mpsd_set_tx_format", &py_lib::McpdConnection::mpsd_set_tx_format, py::arg("mpsd_id"),
-            py::arg("tx_format"))
-        .def("mpsd_get_params", &py_lib::McpdConnection::mpsd_get_params, py::arg("mpsd_id"))
+            py::arg("tx_format"), GilRelease())
+        .def(
+            "mpsd_get_params", &py_lib::McpdConnection::mpsd_get_params, py::arg("mpsd_id"),
+            GilRelease())
 
         .def(
             "mstd_set_gain", &py_lib::McpdConnection::mstd_set_gain, py::arg("mstd_id"), py::arg("channel"),
-            py::arg("gain"))
+            py::arg("gain"), GilRelease())
 
         .def(
             "mdll_set_thresholds", &py_lib::McpdConnection::mdll_set_thresholds, py::arg("threshold_x"),
-            py::arg("threshold_y"), py::arg("threshold_anode"))
+            py::arg("threshold_y"), py::arg("threshold_anode"), GilRelease())
         .def(
             "mdll_set_spectrum", &py_lib::McpdConnection::mdll_set_spectrum, py::arg("shift_x"),
-            py::arg("shift_y"), py::arg("scale_x"), py::arg("scale_y"))
+            py::arg("shift_y"), py::arg("scale_x"), py::arg("scale_y"), GilRelease())
         .def(
             "mdll_set_pulser", &py_lib::McpdConnection::mdll_set_pulser, py::arg("enable"),
-            py::arg("amplitude"), py::arg("position"))
-        .def("mdll_set_tx_data_set", &py_lib::McpdConnection::mdll_set_tx_data_set, py::arg("data_set"))
+            py::arg("amplitude"), py::arg("position"), GilRelease())
+        .def(
+            "mdll_set_tx_data_set", &py_lib::McpdConnection::mdll_set_tx_data_set,
+            py::arg("data_set"), GilRelease())
         .def(
             "mdll_set_timing_window", &py_lib::McpdConnection::mdll_set_timing_window,
             py::arg("t_sum_limit_x_low"), py::arg("t_sum_limit_x_high"),
-            py::arg("t_sum_limit_y_low"), py::arg("t_sum_limit_y_high"))
+            py::arg("t_sum_limit_y_low"), py::arg("t_sum_limit_y_high"), GilRelease())
         .def(
             "mdll_set_energy_window", &py_lib::McpdConnection::mdll_set_energy_window,
-            py::arg("lower_threshold"), py::arg("upper_threshold"));
+            py::arg("lower_threshold"), py::arg("upper_threshold"), GilRelease());
 
     m.def(
         "find_mcpd_id", &py_lib::find_mcpd_id, py::arg("address"),
-        py::arg("port") = McpdDefaultPort,
+        py::arg("port") = McpdDefaultPort, GilRelease(),
         "Probe mcpd_id values 0..255 against 'address' until one responds "
         "(MCPD-8_v1 only).");
 
