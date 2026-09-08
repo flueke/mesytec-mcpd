@@ -53,6 +53,13 @@ if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
     add_library(mesytec-mcpd-python-bindings OBJECT mesytec_mcpd_py.cc mcpd_py_lib.cc mcpd_py_commands.cc)
     target_link_libraries(mesytec-mcpd-python-bindings PUBLIC pybind11::pybind11 mesytec-mcpd spdlog::spdlog)
     set_target_properties(mesytec-mcpd-python-bindings PROPERTIES POSITION_INDEPENDENT_CODE ON CXX_VISIBILITY_PRESET hidden)
+    if (MSYS OR NOT WIN32)
+        # Benign: polymorphic pybind11 wrapper classes (WorkerBase, pybind11_sink)
+        # get default vtable/typeinfo visibility while CXX_VISIBILITY_PRESET hidden
+        # keeps their py::object fields hidden; harmless since everything ends up
+        # in the single _mesytec_mcpd module, never split across .so boundaries.
+        target_compile_options(mesytec-mcpd-python-bindings PRIVATE -Wno-attributes)
+    endif()
 
     # Note: py.typed is required by PEP 561. It's just an empty file.
     pybind11_add_module(_mesytec_mcpd MODULE mcpd_py_module.cc $<TARGET_OBJECTS:mesytec-mcpd-python-bindings>)
@@ -155,5 +162,8 @@ if (MCPD_BUILD_TESTS)
         add_gtest(test_mcpd_py_lib mcpd_py_lib.test.cc)
         target_sources(test_mcpd_py_lib PRIVATE mesytec_mcpd_py.cc mcpd_py_lib.cc mcpd_py_commands.cc mcpd_py_embed.cc)
         target_link_libraries(test_mcpd_py_lib PRIVATE pybind11::embed pybind11::module mesytec-mcpd spdlog::spdlog)
+        if (MSYS OR NOT WIN32)
+            target_compile_options(test_mcpd_py_lib PRIVATE -Wno-attributes) # see mesytec-mcpd-python-bindings above
+        endif()
     endif()
 endif(MCPD_BUILD_TESTS)
