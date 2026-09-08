@@ -28,7 +28,7 @@ classifiers = [
 
 [project.optional-dependencies]
 gui = ["pyqtgraph", "numpy", "PySide6", "hist[plot,fit]", "rich", "awkward", "numba", "platformdirs"]
-dev = ["pre-commit", "scikit-build-core>=0.12", "setuptools-scm", "pybind11-stubgen", "ruff"]
+dev = ["pre-commit", "scikit-build-core>=0.12", "setuptools-scm", "pybind11-stubgen", "ruff", "pytest"]
 
 [project.gui-scripts]
 mesytec-mcpd-gui = "mesytec_mcpd.gui.main_window:main"
@@ -53,6 +53,9 @@ build-dir = "build"
 [tool.setuptools_scm]
 version_scheme = "python-simplified-semver"
 local_scheme = "no-local-version"
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
 
 [tool.ruff]
 line-length = 100
