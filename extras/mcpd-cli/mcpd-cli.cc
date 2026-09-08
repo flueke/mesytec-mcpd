@@ -56,6 +56,7 @@ void setup_signal_handlers()
 
 #ifdef MESYTEC_MCPD_ENABLE_PYTHON
 #include <pybind11/embed.h>
+#include <pybind11/stl.h>
 namespace py = pybind11;
 
 struct PyCliContext
@@ -76,10 +77,11 @@ bool setup_python_context(PyCliContext &pyCtx, const std::string &pythonScriptPa
     try
     {
         auto scope = py::module_::import("__main__").attr("__dict__");
-        scope["mcpd"] = pyCtx.mcpdPy;
-        py::eval_file(pythonScriptPath, scope);
+        scope["mcpd"] = pyCtx.mcpdPy; // this is a handle to the embedded 'mcpd' module, not a handle to a device
 
-        spdlog::warn("After py::eval_file!");
+        spdlog::debug("Before py::eval_file!");
+        py::eval_file(pythonScriptPath, scope);
+        spdlog::debug("After py::eval_file!");
 
         if (scope.contains("start"))
             pyCtx.startCallback = scope["start"];
@@ -454,8 +456,8 @@ struct CellCommand: public BaseCommand
 
 struct TimerCommand: public BaseCommand
 {
-    u16 timerId_;
-    u16 captureValue_;
+    u16 timerId_ = 0;
+    u16 captureValue_ = 0;
 
     TimerCommand(lyra::cli &cli)
     {
@@ -489,7 +491,7 @@ struct TimerCommand: public BaseCommand
 
 struct SetMasterClockCommand: public BaseCommand
 {
-    u64 clockValue_;
+    u64 clockValue_ = 0;
 
     SetMasterClockCommand(lyra::cli &cli)
     {
@@ -763,7 +765,7 @@ struct GetBusCapabilitiesCommand: public BaseCommand
 
 struct SetBusCapabilitiesCommand: public BaseCommand
 {
-    u16 capsValue_;
+    u16 capsValue_ = 0;
 
     SetBusCapabilitiesCommand(lyra::cli &cli)
     {
@@ -823,8 +825,8 @@ template <typename T> lyra::parser_result parse_unsigned_value(T &dest, const st
 
 struct WriteRegisterCommand: public BaseCommand
 {
-    u16 address_;
-    u32 value_;
+    u16 address_ = 0;
+    u32 value_ = 0;
 
     WriteRegisterCommand(lyra::cli &cli)
     {
@@ -862,7 +864,7 @@ struct WriteRegisterCommand: public BaseCommand
 
 struct ReadRegisterCommand: public BaseCommand
 {
-    u16 address_;
+    u16 address_ = 0;
 
     ReadRegisterCommand(lyra::cli &cli)
     {
@@ -898,7 +900,7 @@ struct ReadRegisterCommand: public BaseCommand
 
 struct DecodeAllInputsParameter: public BaseCommand
 {
-    u64 value_;
+    u64 value_ = 0;
 
     DecodeAllInputsParameter(lyra::cli &cli)
     {
@@ -1349,6 +1351,7 @@ struct DaqCommand: public BaseCommand
 struct ReadoutCounters
 {
     size_t packets = 0u;
+    size_t packetsLost = 0u;
     size_t bytes = 0u;
     size_t timeouts = 0u;
     size_t events = 0u;
@@ -1359,6 +1362,7 @@ struct ReadoutCounters
     void reset()
     {
         packets = 0;
+        packetsLost = 0;
         bytes = 0;
         timeouts = 0;
         events = 0;
@@ -1397,6 +1401,21 @@ struct CountersReportInfo
     u32 flags = ReportValues; // same behavior as the old report_counters()
 };
 
+s32 calc_packet_loss(u16 lastPacketNumber, u16 packetNumber)
+{
+    static const s32 PacketNumberMax = std::numeric_limits<u16>::max();
+
+    s32 diff = packetNumber - lastPacketNumber;
+
+    if (diff < 1)
+    {
+        diff = PacketNumberMax + diff;
+        return diff;
+    }
+
+    return diff - 1;
+}
+
 void report_counters(const CountersReportInfo &info, const std::string &title = "readout")
 {
     auto &counters = info.counters;
@@ -1404,16 +1423,16 @@ void report_counters(const CountersReportInfo &info, const std::string &title = 
 
     if (info.flags & CountersReportInfo::ReportValues)
     {
-        spdlog::info("{}: counters: packets={} (buffer types: {}), events={} (trigger={}, mcpd={}, "
-                     "mdll={}), bytes={}, timeouts={}, events={}",
-                     title, counters.packets,
+        spdlog::info("{}: counters: packets={}, packetsLost={}, (buffer types: {}), events={} (Neutron={}, Trigger={}, MdllNeutron={}), bytes={}, timeouts={}",
+                     title, counters.packets, counters.packetsLost,
                      counters_packet_buffer_types_to_string(counters.packetsByType),
                      counters.events, counters.eventsByType[0], counters.eventsByType[1],
-                     counters.eventsByType[2], counters.bytes, counters.timeouts, counters.events);
+                     counters.eventsByType[2], counters.bytes, counters.timeouts);
     }
 
     ReadoutCounters deltas;
     deltas.packets = counters.packets - prevCounters.packets;
+    deltas.packetsLost = counters.packetsLost - prevCounters.packetsLost;
     deltas.bytes = counters.bytes - prevCounters.bytes;
     deltas.timeouts = counters.timeouts - prevCounters.timeouts;
     deltas.events = counters.events - prevCounters.events;
@@ -1423,9 +1442,9 @@ void report_counters(const CountersReportInfo &info, const std::string &title = 
 
     if (info.flags & CountersReportInfo::ReportDeltas)
     {
-        spdlog::info("{}: deltas: packets={}, events={}, (trigger={}, mcpd={}, mdll={}), bytes={}, "
+        spdlog::info("{}: deltas: packets={}, packetsLost={}, events={}, (Neutron={}, Trigger={}, MdllNeutron={}), bytes={}, "
                      "timeouts={}, events={}",
-                     title, deltas.packets, deltas.events, deltas.eventsByType[0],
+                     title, deltas.packets, deltas.packetsLost, deltas.events, deltas.eventsByType[0],
                      deltas.eventsByType[1], deltas.eventsByType[2], deltas.bytes, deltas.timeouts,
                      deltas.events);
     }
@@ -1448,7 +1467,7 @@ void report_counters(const CountersReportInfo &info, const std::string &title = 
     if (dt_s > 0)
     {
         spdlog::info(
-            "{}: rates: dt_s={}, packets/s={:.2f} (trigger={}, mcpd={}, mdll={}), MiB/s={:.2f}, "
+            "{}: rates: dt_s={}, packets/s={:.2f} (Neutron={}, Trigger={}, MdllNeutron={}), MiB/s={:.2f}, "
             "events/s={:.0f}",
             title, dt_s, deltas.packets / dt_s, deltas.eventsByType[0] / dt_s,
             deltas.eventsByType[1] / dt_s, deltas.eventsByType[2] / dt_s,
@@ -1462,6 +1481,16 @@ void report_counters(const ReadoutCounters &counters, const std::string &title =
     info.counters = counters;
     info.flags = CountersReportInfo::All;
     report_counters(info, title);
+}
+
+// Prints the raw 16 bit words making up the packet.
+void print_raw_packet(const DataPacket &packet)
+{
+    auto data = reinterpret_cast<const u16 *>(&packet);
+    auto wordCount = packet.bufferLength;
+
+    spdlog::info("  raw packet ({} words): {:#06x}",
+                    wordCount, fmt::join(data, data + wordCount, ", "));
 }
 
 struct ReadoutCommand: public BaseCommand
@@ -1481,11 +1510,12 @@ struct ReadoutCommand: public BaseCommand
     RootHistoContext rootHistoContext_ = {};
     std::string rootHistoPath_;
     size_t rootFlushInterval_ms_ = 500u;
-    bool rootEnableMdllGraphs_ = false;
+    bool rootEnableGraphs_ = false;
 #endif
 
 #ifdef MESYTEC_MCPD_ENABLE_PYTHON
     std::string pythonScriptPath_;
+    std::vector<std::string> pythonScriptArgs_;
 #endif
 
     ReadoutCommand(lyra::cli &cli)
@@ -1535,7 +1565,7 @@ struct ReadoutCommand: public BaseCommand
                 .add_argument(lyra::opt([this](const bool &b)
                                         { printRawPacketData_ = b; })["--print-raw-packet-data"]
                                   .optional()
-                                  .help("Print raw packet event data as 16 bit hex values"))
+                                  .help("Print raw packet data as 16 bit hex values"))
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
                 .add_argument(
@@ -1548,9 +1578,9 @@ struct ReadoutCommand: public BaseCommand
                         .help("ROOT file flush interval in ms"))
 
                 .add_argument(lyra::opt([this](const bool &b)
-                                        { rootEnableMdllGraphs_ = b; })["--root-enable-mdll-graphs"]
+                                        { rootEnableGraphs_ = b; })["--root-enable-graphs"]
                                   .optional()
-                                  .help("Create TGraphs of MDLL amplitude and position values vs "
+                                  .help("Create TGraphs of timestamps, MDLL amplitudes and positions vs "
                                         "time in the ROOT ouptut file. Eats lots of memory!"))
 #endif
 
@@ -1558,6 +1588,10 @@ struct ReadoutCommand: public BaseCommand
                 .add_argument(
                     lyra::opt(pythonScriptPath_, "python file")["--python-script"].optional().help(
                         "Path to a Python script to execute for each event."))
+                .add_argument(lyra::group()
+                    .add_argument(lyra::literal("--"))
+                    .add_argument(lyra::arg(pythonScriptArgs_, "python script args"))
+                )
 #endif
         );
     }
@@ -1616,7 +1650,7 @@ struct ReadoutCommand: public BaseCommand
             try
             {
                 rootHistoContext_ = create_histo_context(rootHistoPath_);
-                rootHistoContext_.enableMdllGraphs = rootEnableMdllGraphs_;
+                rootHistoContext_.enableGraphs = rootEnableGraphs_;
                 spdlog::info("Writing ROOT histograms to {}", rootHistoPath_);
             }
             catch (const std::runtime_error &e)
@@ -1644,7 +1678,7 @@ struct ReadoutCommand: public BaseCommand
             if (pyCtx.startCallback)
             {
                 spdlog::debug("readout: calling Python start() callback");
-                pyCtx.startCallback();
+                pyCtx.startCallback(listfilePath_, pythonScriptArgs_);
             }
         }
 #endif
@@ -1652,6 +1686,7 @@ struct ReadoutCommand: public BaseCommand
         ReadoutCounters counters = {};
         ReadoutCounters prevCounters = {};
         DataPacket dataPacket = {};
+        std::optional<u16> lastBufferNumber;
 
         spdlog::info("readout: entering readout loop, press ctrl-c to quit");
 
@@ -1722,6 +1757,18 @@ struct ReadoutCommand: public BaseCommand
                     }
                 }
 
+                if (lastBufferNumber)
+                {
+                    auto lost = calc_packet_loss(*lastBufferNumber, dataPacket.bufferNumber);
+                    counters.packetsLost += lost;
+                    if (lost > 0)
+                    {
+                        spdlog::warn("readout: detected packet loss: last buffer number {}, current buffer number {}, lost packets {}",
+                                     *lastBufferNumber, dataPacket.bufferNumber, lost);
+                    }
+                }
+                lastBufferNumber = dataPacket.bufferNumber;
+
                 const auto eventCount = get_event_count(dataPacket);
 
                 if (printPacketSummary_)
@@ -1732,18 +1779,26 @@ struct ReadoutCommand: public BaseCommand
 
                     spdlog::info("packet#{}: bufferLength={}, bufferType=0x{:04x}, "
                                  "bufferNumber={}, headerLength={}, runId={}, "
-                                 "devStatus=0x{:04x}, deviceId={}, timestamp={}, srcAddr={}",
+                                 "devStatus=0x{:04x}, deviceId={}, timestamp={}, srcAddr={}, eventCount={}",
                                  counters.packets, dataPacket.bufferLength, dataPacket.bufferType,
                                  dataPacket.bufferNumber, dataPacket.headerLength, dataPacket.runId,
                                  dataPacket.deviceStatus, dataPacket.deviceId,
-                                 get_header_timestamp(dataPacket), srcAddrBuf);
+                                 get_header_timestamp(dataPacket), srcAddrBuf, eventCount);
 
                     spdlog::info(
                         "  parameters: 0x{:012x}, {}, {}, {}", to_48bit_value(dataPacket.param[0]),
                         to_48bit_value(dataPacket.param[1]), to_48bit_value(dataPacket.param[2]),
                         to_48bit_value(dataPacket.param[3]));
 
-                    spdlog::info("  packet contains {} events", eventCount);
+                    bool isBufferLengthOk = bytesTransferred == dataPacket.bufferLength * sizeof(u16);
+
+                    spdlog::info("  packet contains {} events, bufferLengthOk={}", eventCount, isBufferLengthOk);
+
+                }
+
+                if (printRawPacketData_)
+                {
+                    print_raw_packet(dataPacket);
                 }
 
                 for (size_t ei = 0; ei < eventCount; ++ei)
@@ -1758,13 +1813,6 @@ struct ReadoutCommand: public BaseCommand
 
                     if (printEventData_)
                         spdlog::info("{}", to_string(event));
-                }
-
-                if (printRawPacketData_)
-                {
-                    spdlog::info("  raw packet.data: {:#04x}",
-                                 fmt::join(dataPacket.data,
-                                           dataPacket.data + dataPacket.bufferLength, ", "));
                 }
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
@@ -1826,19 +1874,19 @@ struct ReadoutCommand: public BaseCommand
             }
         }
 
-#ifdef MESYTEC_MCPD_ENABLE_ROOT
-        if (rootHistoContext_.histoOutFile)
-        {
-            root_histos_finalize(rootHistoContext_);
-            spdlog::debug("readout: flushed ROOT histograms to file");
-        }
-#endif
-
 #ifdef MESYTEC_MCPD_ENABLE_PYTHON
         if (ctx.pyContext.stopCallback)
         {
             spdlog::debug("readout: calling Python stop() callback");
             ctx.pyContext.stopCallback();
+        }
+#endif
+
+#ifdef MESYTEC_MCPD_ENABLE_ROOT
+        if (rootHistoContext_.histoOutFile)
+        {
+            root_histos_finalize(rootHistoContext_);
+            spdlog::debug("readout: flushed ROOT histograms to file");
         }
 #endif
 
@@ -1870,11 +1918,12 @@ struct ReplayCommand: public BaseCommand
     RootHistoContext rootHistoContext_ = {};
     std::string rootHistoPath_;
     size_t rootFlushInterval_ms_ = 500u;
-    bool rootEnableMdllGraphs_ = false;
+    bool rootEnableGraphs_ = false;
 #endif
 
 #ifdef MESYTEC_MCPD_ENABLE_PYTHON
     std::string pythonScriptPath_;
+    std::vector<std::string> pythonScriptArgs_;
 #endif
 
     ReplayCommand(lyra::cli &cli)
@@ -1906,7 +1955,7 @@ struct ReplayCommand: public BaseCommand
                 .add_argument(lyra::opt([this](const bool &b)
                                         { printRawPacketData_ = b; })["--print-raw-packet-data"]
                                   .optional()
-                                  .help("Print raw packet event data as 16 bit hex values"))
+                                  .help("Print raw packet data as 16 bit hex values"))
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
                 .add_argument(
@@ -1919,7 +1968,7 @@ struct ReplayCommand: public BaseCommand
                         .help("ROOT file flush interval in ms"))
 
                 .add_argument(lyra::opt([this](const bool &b)
-                                        { rootEnableMdllGraphs_ = b; })["--root-enable-mdll-graphs"]
+                                        { rootEnableGraphs_ = b; })["--root-enable-mdll-graphs"]
                                   .optional()
                                   .help("Create TGraphs of MDLL amplitude and position values vs "
                                         "time in the ROOT ouptut file. Eats lots of memory!"))
@@ -1929,6 +1978,10 @@ struct ReplayCommand: public BaseCommand
                 .add_argument(
                     lyra::opt(pythonScriptPath_, "python file")["--python-script"].optional().help(
                         "Path to a Python script to execute for each event."))
+                .add_argument(lyra::group()
+                    .add_argument(lyra::literal("--"))
+                    .add_argument(lyra::arg(pythonScriptArgs_, "python script args"))
+                )
 #endif
         );
     }
@@ -1973,7 +2026,7 @@ struct ReplayCommand: public BaseCommand
             try
             {
                 rootHistoContext_ = create_histo_context(rootHistoPath_);
-                rootHistoContext_.enableMdllGraphs = rootEnableMdllGraphs_;
+                rootHistoContext_.enableGraphs = rootEnableGraphs_;
                 spdlog::info("Writing ROOT histograms to {}", rootHistoPath_);
             }
             catch (const std::runtime_error &e)
@@ -2001,7 +2054,7 @@ struct ReplayCommand: public BaseCommand
             if (pyCtx.startCallback)
             {
                 spdlog::debug("readout: calling Python start() callback");
-                pyCtx.startCallback();
+                pyCtx.startCallback(listfilePath_, pythonScriptArgs_);
             }
         }
 #endif
@@ -2044,11 +2097,11 @@ struct ReplayCommand: public BaseCommand
             {
                 spdlog::info("packet#{}: bufferLength={}, bufferType=0x{:04x}, bufferNumber={}, "
                              "headerLength={}, runId={}, "
-                             "devStatus={}, deviceId={}, timestamp={:#0x}",
+                             "devStatus={}, deviceId={}, timestamp={:#0x}, eventCount={}",
                              counters.packets, dataPacket.bufferLength, dataPacket.bufferType,
                              dataPacket.bufferNumber, dataPacket.headerLength, dataPacket.runId,
                              dataPacket.deviceStatus, dataPacket.deviceId,
-                             get_header_timestamp(dataPacket));
+                             get_header_timestamp(dataPacket), eventCount);
 
                 spdlog::info(
                     "  parameters: 0x{:012x}, {}, {}, {}", to_48bit_value(dataPacket.param[0]),
@@ -2056,6 +2109,11 @@ struct ReplayCommand: public BaseCommand
                     to_48bit_value(dataPacket.param[3]));
 
                 spdlog::info("  packet contains {} events", eventCount);
+            }
+
+            if (printRawPacketData_)
+            {
+                print_raw_packet(dataPacket);
             }
 
             for (size_t ei = 0; ei < eventCount; ++ei)
@@ -2070,13 +2128,6 @@ struct ReplayCommand: public BaseCommand
 
                 if (printEventData_)
                     spdlog::info("{}", to_string(event));
-
-                if (printRawPacketData_)
-                {
-                    spdlog::info("  raw packet.data: {:#04x}",
-                                 fmt::join(dataPacket.data,
-                                           dataPacket.data + dataPacket.bufferLength, ", "));
-                }
             }
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
@@ -2126,11 +2177,19 @@ struct ReplayCommand: public BaseCommand
             }
         }
 
+#ifdef MESYTEC_MCPD_ENABLE_PYTHON
+        if (ctx.pyContext.stopCallback)
+        {
+            spdlog::debug("replay: calling Python stop() callback");
+            ctx.pyContext.stopCallback();
+        }
+#endif
+
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
         if (rootHistoContext_.histoOutFile)
         {
             root_histos_finalize(rootHistoContext_);
-            spdlog::debug("readout: flushed ROOT histograms to file");
+            spdlog::debug("replay: flushed ROOT histograms to file");
         }
 #endif
 
@@ -2264,10 +2323,10 @@ struct MdllSetThresholds: public BaseCommand
 
 struct MdllSetSpectrum: public BaseCommand
 {
-    u16 shiftX_;
-    u16 shiftY_;
-    u16 scaleX_;
-    u16 scaleY_;
+    u16 shiftX_ = 0;
+    u16 shiftY_ = 0;
+    u16 scaleX_ = 0;
+    u16 scaleY_ = 0;
 
     MdllSetSpectrum(lyra::cli &cli)
     {
@@ -2462,6 +2521,7 @@ int main(int argc, char *argv[])
     CliContext ctx = {};
     bool logDebug = false;
     bool logTrace = false;
+    bool showLogTimestamps = false;
     bool showVersion = false;
 
     auto cli =
@@ -2477,6 +2537,10 @@ int main(int argc, char *argv[])
          | lyra::opt([&](bool b) { logDebug = b; })["--debug"]("set log level to debug").optional()
 
          | lyra::opt([&](bool b) { logTrace = b; })["--trace"]("set log level to trace").optional()
+
+         | lyra::opt([&](bool b)
+                     { showLogTimestamps = b; })["--show-log-timestamps"]("show log timestamps")
+               .optional()
 
          | lyra::opt([&](bool b) { showVersion = b; })["--version"]("show mcpd-cli version info")
                .optional()
@@ -2552,6 +2616,11 @@ int main(int argc, char *argv[])
 
     if (logTrace)
         spdlog::set_level(spdlog::level::trace);
+
+    if (!showLogTimestamps)
+        spdlog::set_pattern("[%^%l%$] %v");
+    else
+        spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
 
     if (showVersion)
     {

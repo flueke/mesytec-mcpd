@@ -28,7 +28,7 @@ static const std::size_t DataPacketMaxDataWords = 715;
 #pragma pack(push, 1)
 struct MESYTEC_MCPD_EXPORT PacketBase
 {
-    u16 bufferLength;   // Length of the packet in 16 bit words starting from bufferType
+    u16 bufferLength;   // Length of the packet in 16 bit words starting from bufferLength
                         // up to and including the last data word.
     u16 bufferType;     // Type of the buffer (CommandPacketBufferType).
     u16 headerLength;   // Length of the packet header (up to and including the headerChecksum
