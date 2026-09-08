@@ -53,6 +53,7 @@ build-dir = "build"
 [tool.setuptools_scm]
 version_scheme = "python-simplified-semver"
 local_scheme = "no-local-version"
+write_to = "src/mesytec_mcpd/_version.py"
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
