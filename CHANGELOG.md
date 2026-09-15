@@ -1,5 +1,12 @@
 # Changelog for mesytec-mcpd
 
+## v0.8
+
+- Improved mcpd-cli: more stats, better reporting, improved error handling
+
+- Improved python bindings: all core mcpd/mdll/mpsd functions are now also available from python.
+
+
 ## v0.7
 
 - Fix the GetVersion command for MDLL-v1: the response is too short. Fix is to
