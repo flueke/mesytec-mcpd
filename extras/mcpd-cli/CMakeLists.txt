@@ -47,7 +47,10 @@ if (MCPD_CLI_WITH_ROOT AND ROOT_FOUND)
     target_link_libraries(mcpd-cli PRIVATE ${ROOT_LIBRARIES})
 endif()
 
-if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
+if (MCPD_ENABLE_PYTHON AND pybind11_FOUND AND NOT DEFINED SKBUILD)
+    # mcpd-cli is never installed into the wheel (see below), and pybind11::embed
+    # needs a linkable libpython that cibuildwheel's manylinux/musllinux images
+    # don't reliably provide. Skip embedding when building under scikit-build-core.
     message("-- Enabling Python support in mcpd-cli")
     target_compile_definitions(mcpd-cli PRIVATE -DMESYTEC_MCPD_ENABLE_PYTHON)
     target_sources(mcpd-cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../src/mesytec-mcpd/mcpd_py_embed.cc)

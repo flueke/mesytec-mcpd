@@ -71,7 +71,15 @@ endif()
 message("-- CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
 
 ### Optional tests
-option(MCPD_BUILD_TESTS "Build test binaries" ${MESYTEC_MCPD_MASTER_PROJECT})
+# Default off under scikit-build-core: test binaries are never installed into
+# the wheel, and test_mcpd_py_lib needs pybind11::embed (a linkable libpython)
+# which cibuildwheel's manylinux/musllinux images don't reliably provide.
+if (MESYTEC_MCPD_MASTER_PROJECT AND NOT DEFINED SKBUILD)
+    set(MCPD_BUILD_TESTS_DEFAULT ON)
+else()
+    set(MCPD_BUILD_TESTS_DEFAULT OFF)
+endif()
+option(MCPD_BUILD_TESTS "Build test binaries" ${MCPD_BUILD_TESTS_DEFAULT})
 
 if (MCPD_BUILD_TESTS)
     include(FetchContent)
