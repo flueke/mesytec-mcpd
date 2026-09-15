@@ -12,14 +12,6 @@ if(MCPD_CLI_WITH_ROOT)
     endif()
 endif()
 
-if (MCPD_ENABLE_PYTHON)
-    if (pybind11_FOUND)
-        message("-- Found pybind11: ${pybind11_DIR}")
-    else()
-        message(WARNING "Could not find pybind11. Disabling Python support in mcpd-cli")
-    endif()
-endif()
-
 add_executable(mcpd-cli mcpd-cli.cc)
 
 target_link_libraries(mcpd-cli
@@ -47,8 +39,9 @@ if (MCPD_CLI_WITH_ROOT AND ROOT_FOUND)
     target_link_libraries(mcpd-cli PRIVATE ${ROOT_LIBRARIES})
 endif()
 
-if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
+if (MCPD_ENABLE_PYTHON)
     message("-- Enabling Python support in mcpd-cli")
+    find_package(pybind11 CONFIG QUIET)
     target_compile_definitions(mcpd-cli PRIVATE -DMESYTEC_MCPD_ENABLE_PYTHON)
     target_sources(mcpd-cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../src/mesytec-mcpd/mcpd_py_embed.cc)
     target_link_libraries(mcpd-cli PRIVATE pybind11::embed $<TARGET_OBJECTS:mesytec-mcpd-python-bindings>)

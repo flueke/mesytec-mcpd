@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.18...4.2)
 
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW) # DOWNLOAD_EXTRACT_TIMESTAMP
@@ -70,7 +70,7 @@ endif()
 
 message("-- CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
 
-### Optional tests
+option(MCPD_ENABLE_PYTHON "Build mesytec-mcpd with python bindings" ON)
 option(MCPD_BUILD_TESTS "Build test binaries" ${MESYTEC_MCPD_MASTER_PROJECT})
 
 if (MCPD_BUILD_TESTS)

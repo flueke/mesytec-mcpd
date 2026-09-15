@@ -1,19 +1,7 @@
-option(MCPD_ENABLE_PYTHON "Build mesytec-mcpd with python bindings" ON)
 configure_file("git_version.cc.in" "git_version.cc" @ONLY)
 find_package(Threads)
 
-if (MCPD_ENABLE_PYTHON)
-    if (pybind11_FOUND)
-        message("-- Found pybind11: ${pybind11_VERSION}")
-    else()
-        message(WARNING "Could not find pybind11. Disabling Python support in mesytec-mcpd")
-    endif()
-endif()
-
-# The name of the c++ mesytec-mcpd library, not the python bindings.
-set(MCPD_LIBRARY_NAME mesytec-mcpd)
-
-add_library(${MCPD_LIBRARY_NAME} SHARED
+add_library(mesytec-mcpd SHARED
     "${CMAKE_CURRENT_BINARY_DIR}/git_version.cc"
     mcpd_core.cc
     mcpd_functions.cc
@@ -22,36 +10,37 @@ add_library(${MCPD_LIBRARY_NAME} SHARED
     util/udp_sockets.cc
     )
 
-target_include_directories(${MCPD_LIBRARY_NAME}
+target_include_directories(mesytec-mcpd
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/..>
     PUBLIC $<INSTALL_INTERFACE:include>
     )
 
-target_link_libraries(${MCPD_LIBRARY_NAME}
+target_link_libraries(mesytec-mcpd
     PRIVATE spdlog::spdlog
-    PUBLIC Threads::Threads
+    PRIVATE Threads::Threads
     )
 
-target_compile_features(${MCPD_LIBRARY_NAME} PUBLIC cxx_std_17)
+target_compile_features(mesytec-mcpd PUBLIC cxx_std_17)
 
 if (MSYS OR NOT WIN32)
-    target_compile_options(${MCPD_LIBRARY_NAME} PRIVATE -Wall -Wextra)
-    target_compile_options(${MCPD_LIBRARY_NAME} PRIVATE -Wno-format)
+    target_compile_options(mesytec-mcpd PRIVATE -Wall -Wextra)
+    target_compile_options(mesytec-mcpd PRIVATE -Wno-format)
 endif()
 
 if (WIN32)
-    target_link_libraries(${MCPD_LIBRARY_NAME} PUBLIC ws2_32 winmm)
-    target_compile_definitions(${MCPD_LIBRARY_NAME} PRIVATE -DNOMINMAX)
+    target_link_libraries(mesytec-mcpd PRIVATE ws2_32 winmm)
+    target_compile_definitions(mesytec-mcpd PRIVATE -DNOMINMAX)
 endif(WIN32)
 
 include(GenerateExportHeader)
-generate_export_header(${MCPD_LIBRARY_NAME})
+generate_export_header(mesytec-mcpd)
 
-if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
+if (MCPD_ENABLE_PYTHON)
+    find_package(pybind11 CONFIG QUIET)
     add_library(mesytec-mcpd-python-bindings OBJECT mesytec_mcpd_py.cc mcpd_py_lib.cc mcpd_py_commands.cc)
-    target_link_libraries(mesytec-mcpd-python-bindings PUBLIC pybind11::pybind11 mesytec-mcpd spdlog::spdlog)
+    target_link_libraries(mesytec-mcpd-python-bindings PRIVATE pybind11::module mesytec-mcpd spdlog::spdlog)
     set_target_properties(mesytec-mcpd-python-bindings PROPERTIES POSITION_INDEPENDENT_CODE ON CXX_VISIBILITY_PRESET hidden)
     if (MSYS OR NOT WIN32)
         # Benign: polymorphic pybind11 wrapper classes (WorkerBase, pybind11_sink)
@@ -63,12 +52,12 @@ if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
 
     # Note: py.typed is required by PEP 561. It's just an empty file.
     pybind11_add_module(_mesytec_mcpd MODULE mcpd_py_module.cc $<TARGET_OBJECTS:mesytec-mcpd-python-bindings>)
-    target_link_libraries(_mesytec_mcpd PRIVATE ${MCPD_LIBRARY_NAME} spdlog::spdlog)
+    target_link_libraries(_mesytec_mcpd PRIVATE mesytec-mcpd spdlog::spdlog)
     if (WIN32)
         target_link_libraries(_mesytec_mcpd PRIVATE ws2_32 winmm)
     endif(WIN32)
     if (DEFINED SKBUILD)
-        install(TARGETS _mesytec_mcpd ${MCPD_LIBRARY_NAME} DESTINATION ${SKBUILD_PROJECT_NAME})
+        install(TARGETS _mesytec_mcpd mesytec-mcpd DESTINATION ${SKBUILD_PROJECT_NAME})
         install(FILES __init__.py py.typed DESTINATION ${SKBUILD_PROJECT_NAME})
         # Install gui submodule
         install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../gui
@@ -116,7 +105,7 @@ if (NOT DEFINED SKBUILD)
         ${project_config}
         INSTALL_DESTINATION lib/cmake/mesytec-mcpd)
 
-    export(TARGETS ${MCPD_LIBRARY_NAME} NAMESPACE mesytec-mcpd::
+    export(TARGETS mesytec-mcpd NAMESPACE mesytec-mcpd::
         FILE ${PROJECT_BINARY_DIR}/${targets_export_name}.cmake)
 
     install(FILES ${project_config}

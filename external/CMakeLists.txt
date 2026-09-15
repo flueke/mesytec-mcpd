@@ -17,12 +17,11 @@ if (NOT TARGET lyra)
     add_subdirectory(lyra-1.7.0)
 endif()
 
-find_package(Python 3.12 COMPONENTS Interpreter Development GLOBAL)
-
-message(STATUS "${PROJECT_NAME}: pre: Python_FOUND=${Python_FOUND}, pybind11_FOUND=${pybind11_FOUND}")
-
-if (Python_FOUND AND NOT TARGET pybind11::module)
-    add_subdirectory(pybind11-3.0.1)
+if (MCPD_ENABLE_PYTHON)
+    set(PYBIND11_FINDPYTHON ON)
+    find_package(pybind11 CONFIG QUIET)
+    if (NOT pybind11_FOUND)
+        message(STATUS "pybind11 not found, using ${CMAKE_CURRENT_LIST_DIR}/pybind11-3.0.1")
+        add_subdirectory(pybind11-3.0.1)
+    endif()
 endif()
-
-message(STATUS "${PROJECT_NAME}: post: Python_FOUND=${Python_FOUND}, pybind11_FOUND=${pybind11_FOUND}")
