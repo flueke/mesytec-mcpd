@@ -2,7 +2,7 @@
 # https://scikit-build-core.readthedocs.io/en/stable/configuration/
 
 [build-system]
-requires = ["scikit-build-core>=0.12", "setuptools-scm", "pybind11-stubgen"]
+requires = ["scikit-build-core>=0.12", "setuptools-scm", "pybind11>=3.0", "pybind11-stubgen", "numpy"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -39,16 +39,15 @@ Repository = "https://github.com/mesytec/mesytec-mcpd"
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"
-cmake.args = [ '-DMCPD_ENABLE_PYTHON=ON' ]
+build-dir = "build/{wheel_tag}"
+cmake.args = [ '-DMCPD_ENABLE_PYTHON=ON', '-DMCPD_BUILD_TESTS=OFF', '-DMCPD_BUILD_MCPD_CLI=OFF' ]
 build.verbose = true
 logging.level = "INFO"
 metadata.version.provider = "scikit_build_core.metadata.setuptools_scm"
 wheel.packages = [ "mesytec_mcpd" ]
 
-# Not sure which one to keep. Plain 'build' is picked up by vscode, the
-# {wheel_tag} variant was not but it might be needed for cibuildwheel.
-#build-dir = "build/{wheel_tag}"
-build-dir = "build"
+[tool.cibuildwheel]
+build-frontend = "build[uv]"
 
 [tool.setuptools_scm]
 version_scheme = "python-simplified-semver"
