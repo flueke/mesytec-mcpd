@@ -10,7 +10,7 @@ For a real-hardware counterpart see hw_smoke_test.py at the repo root.
 
 import pytest
 
-import _mesytec_mcpd as mcpd
+import mesytec_mcpd as mcpd
 from fake_mcpd_device import FakeMcpdDevice
 
 
