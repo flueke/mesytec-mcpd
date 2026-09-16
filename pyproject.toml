@@ -28,10 +28,14 @@ classifiers = [
 
 [project.optional-dependencies]
 gui = ["pyqtgraph", "numpy", "PySide6", "hist[plot,fit]", "rich", "awkward", "numba", "platformdirs"]
-dev = ["pre-commit", "scikit-build-core>=0.12", "setuptools-scm", "pybind11-stubgen", "ruff", "pytest"]
+cli = ["click"]
+dev = ["pre-commit", "scikit-build-core>=0.12", "setuptools-scm", "pybind11-stubgen", "ruff", "pytest", "click"]
 
 [project.gui-scripts]
 mesytec-mcpd-gui = "mesytec_mcpd.gui.main_window:main"
+
+[project.scripts]
+mcpd-cli = "mesytec_mcpd.cli.main:main"
 
 [project.urls]
 Homepage = "https://mesytec.com/products/neutron-scattering.html"

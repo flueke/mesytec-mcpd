@@ -65,6 +65,10 @@ if (MCPD_ENABLE_PYTHON)
         install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../gui
                 DESTINATION ${SKBUILD_PROJECT_NAME}
                 FILES_MATCHING PATTERN "*.py")
+        # Install cli submodule (mcpd-cli console script)
+        install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../cli
+                DESTINATION ${SKBUILD_PROJECT_NAME}
+                FILES_MATCHING PATTERN "*.py")
     else()
         install(TARGETS _mesytec_mcpd
             LIBRARY DESTINATION lib/mesytec_mcpd
@@ -74,6 +78,10 @@ if (MCPD_ENABLE_PYTHON)
         install(FILES __init__.py py.typed DESTINATION lib/mesytec_mcpd)
         # Install gui submodule
         install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../gui
+                DESTINATION lib/mesytec_mcpd
+                FILES_MATCHING PATTERN "*.py")
+        # Install cli submodule (mcpd-cli console script)
+        install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../cli
                 DESTINATION lib/mesytec_mcpd
                 FILES_MATCHING PATTERN "*.py")
     endif()
