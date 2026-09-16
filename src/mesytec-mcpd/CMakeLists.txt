@@ -57,7 +57,9 @@ if (MCPD_ENABLE_PYTHON)
         target_link_libraries(_mesytec_mcpd PRIVATE ws2_32 winmm)
     endif(WIN32)
     if (DEFINED SKBUILD)
-        install(TARGETS _mesytec_mcpd mesytec-mcpd DESTINATION ${SKBUILD_PROJECT_NAME})
+        install(TARGETS _mesytec_mcpd mesytec-mcpd
+         RUNTIME DESTINATION ${SKBUILD_PROJECT_NAME}
+         LIBRARY DESTINATION ${SKBUILD_PROJECT_NAME})
         install(FILES __init__.py py.typed DESTINATION ${SKBUILD_PROJECT_NAME})
         # Install gui submodule
         install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../gui
