@@ -52,6 +52,9 @@ version_scheme = "no-guess-dev"
 [tool.pytest.ini_options]
 testpaths = ["test"]
 
+[tool.cibuildwheel.windows]
+repair-wheel-command = "delvewheel repair -w {dest_dir} {wheel} --no-dll mesytec-mcpd.dll"
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
