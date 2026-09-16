@@ -23,7 +23,7 @@ from .replay_cmd import replay
 @click.option("--port", default=McpdDefaultPort, show_default=True, help="mcpd command port")
 @click.option("--debug", is_flag=True, help="set log level to debug")
 @click.option("--trace", is_flag=True, help="set log level to trace")
-@click.version_option(mcpd.__version__, prog_name="mcpd-cli")
+@click.version_option(mcpd.__version__, prog_name="mcpd-cli-py")
 @click.pass_context
 def cli(ctx, address, mcpd_id, port, debug, trace):
     """Command-line tool for driving mesytec MCPD/MPSD/MSTD/MDLL devices.

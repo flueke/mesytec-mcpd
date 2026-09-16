@@ -35,7 +35,7 @@ dev = ["pre-commit", "scikit-build-core>=0.12", "setuptools-scm", "pybind11-stub
 mesytec-mcpd-gui = "mesytec_mcpd.gui.main_window:main"
 
 [project.scripts]
-mcpd-cli = "mesytec_mcpd.cli.main:main"
+mcpd-cli-py = "mesytec_mcpd.cli.main:main"
 
 [project.urls]
 Homepage = "https://mesytec.com/products/neutron-scattering.html"
