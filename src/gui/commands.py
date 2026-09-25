@@ -95,7 +95,7 @@ SETTINGS: tuple[Command, ...] = (
         "spectrum",
         "Spectrum",
         "mdll_set_spectrum",
-        (u8("shift_x"), u8("shift_y"), u8("scale_x"), u8("scale_y")),
+        (u16("shift_x"), u16("shift_y"), Arg("scale_x", "int", 0, (0, 1023)), u16("scale_y")),
     ),
     Command(
         "energy_window",

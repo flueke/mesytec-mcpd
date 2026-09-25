@@ -75,6 +75,11 @@ def test_mdll_setters_ack_without_error(connection):
     )
 
 
+def test_mdll_set_spectrum_16_bit_args(connection, fake_device):
+    connection.mdll_set_spectrum(shift_x=0x1234, shift_y=0xFFFF, scale_x=1023, scale_y=512)
+    assert fake_device.last_request[61] == [0x1234, 0xFFFF, 1023, 512]
+
+
 def test_set_get_bus_capabilities(connection):
     result = connection.set_bus_capabilities(0x02)
     assert result == 0x02

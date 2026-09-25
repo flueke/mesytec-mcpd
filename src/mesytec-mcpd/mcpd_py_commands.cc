@@ -248,7 +248,7 @@ void McpdConnection::mdll_set_thresholds(u8 thresholdX, u8 thresholdY, u8 thresh
         "mdll_set_thresholds");
 }
 
-void McpdConnection::mdll_set_spectrum(u8 shiftX, u8 shiftY, u8 scaleX, u8 scaleY)
+void McpdConnection::mdll_set_spectrum(u16 shiftX, u16 shiftY, u16 scaleX, u16 scaleY)
 {
     check(
         mesytec::mcpd::mdll_set_spectrum(

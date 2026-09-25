@@ -111,6 +111,8 @@ class FakeMcpdDevice:
         self.bus_capabilities = (0x07, 0x01)
         self.registers = {}
         self.daq_state = "idle"
+        # command number -> data words of the last request with that command
+        self.last_request = {}
 
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._sock.bind((host, port))
@@ -154,6 +156,8 @@ class FakeMcpdDevice:
     def _handle(self, header, data):
         cmd = header["cmd"] & COMMAND_NUMBER_MASK
         device_id = header["device_id"]
+        # The data words include the trailing BUFFER_TERMINATOR.
+        self.last_request[cmd] = data[: header["buffer_length"] - header["header_length"] - 1]
 
         if self.enforce_id and device_id != self.mcpd_id:
             return _encode(cmd, self.mcpd_id, [], error=ID_MISMATCH_ERROR)
