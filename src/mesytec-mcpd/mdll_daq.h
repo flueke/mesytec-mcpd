@@ -1,5 +1,5 @@
-#ifndef A3C5D2E1_7F4B_4E19_9B0C_6D2A8E1F4C77
-#define A3C5D2E1_7F4B_4E19_9B0C_6D2A8E1F4C77
+#ifndef AEB82A63_4C5D_466E_966E_EE0F4B353DDA
+#define AEB82A63_4C5D_466E_966E_EE0F4B353DDA
 
 #include <array>
 #include <atomic>
@@ -157,4 +157,4 @@ class MdllDaq
 
 } // namespace mesytec::mcpd::py_lib
 
-#endif /* A3C5D2E1_7F4B_4E19_9B0C_6D2A8E1F4C77 */
+#endif /* AEB82A63_4C5D_466E_966E_EE0F4B353DDA */
