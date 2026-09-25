@@ -18,14 +18,14 @@ def mcpd_group():
 def version(ctx):
     """Read cpu and fpga version info."""
     vi = ctx.connection.get_version()
-    click.echo(f"MCPD cpu={vi.cpu[0]}.{vi.cpu[1]}, fpga={vi.fpga[0]}.{vi.fpga[1]}")
+    click.echo(f"MCPD/MDLL cpu={vi.cpu[0]}.{vi.cpu[1]}, fpga={vi.fpga[0]}.{vi.fpga[1]}")
 
 
 @mcpd_group.command("find-id")
 @click.pass_obj
 @handle_mcpd_errors
 def find_id(ctx):
-    """Find the 'id' value of MCPD-8_v1 (older) modules."""
+    """Find the 'id' value of MCPD-8_v1 (older) modules. Does not work for MCPD-8_v2 and MDLL_v2."""
     found_id = mcpd.find_mcpd_id(ctx.address, ctx.port)
     click.echo(f"Found mcpd_id={found_id}")
 

@@ -18,7 +18,7 @@ class CliContext:
 
     @property
     def connection(self) -> mcpd.McpdConnection:
-        # Lazy: commands that don't talk to a device (find-id, replay, ...) never open a socket.
+        # Lazy: commands that don't talk to a device never open a socket.
         if self._connection is None:
             self._connection = mcpd.McpdConnection(self.address, mcpd_id=self.mcpd_id, port=self.port)
         return self._connection

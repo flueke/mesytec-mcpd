@@ -12,6 +12,14 @@ def mdll():
     """MDLL module commands."""
 
 
+@mdll.command("version")
+@click.pass_obj
+@handle_mcpd_errors
+def version(ctx):
+    """Read cpu and fpga version info."""
+    vi = ctx.connection.get_version()
+    click.echo(f"MCPD/MDLL cpu={vi.cpu[0]}.{vi.cpu[1]}, fpga={vi.fpga[0]}.{vi.fpga[1]}")
+
 @mdll.command("set-thresholds")
 @click.argument("threshold_x", type=int)
 @click.argument("threshold_y", type=int)
