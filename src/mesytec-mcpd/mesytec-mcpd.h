@@ -5,6 +5,11 @@
 #include "mcpd_core.h"
 #include "mcpd_functions.h"
 #include "mdll_functions.h"
+#include "packet_io.h"
+#include "readout_worker.h"
+#include "source_stats.h"
+#include "histogrammers.h"
+#include "daq.h"
 #include "util/pretty_function.h"
 
 #endif /* __MESYTEC_MCPD_H__ */
