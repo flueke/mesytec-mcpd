@@ -30,8 +30,8 @@ def process_event(event: mcpd.DecodedEvent):
     print(f"hello from process_event: {event.type}")
     ctx.n_events = ctx.n_events + 1
 
-def start():
-    print("python start!")
+def start(listfile_path: str, args: list[str]):
+    print(f"python start! {listfile_path=}, {args=}")
 
 def stop():
     global ctx
