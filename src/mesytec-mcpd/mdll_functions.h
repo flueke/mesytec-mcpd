@@ -17,11 +17,11 @@ std::error_code MESYTEC_MCPD_EXPORT mdll_set_thresholds(
 
 std::error_code MESYTEC_MCPD_EXPORT mdll_set_spectrum(
     int sock,
-    u8 mdllId,
-    u8 shiftX,
-    u8 shiftY,
-    u8 scaleX,
-    u8 scaleY);
+    u16 mdllId,
+    u16 shiftX,
+    u16 shiftY,
+    u16 scaleX,
+    u16 scaleY);
 
 std::error_code MESYTEC_MCPD_EXPORT mdll_set_pulser(
     int sock,

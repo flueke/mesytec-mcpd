@@ -31,20 +31,20 @@ std::error_code mdll_set_thresholds(
 
 std::error_code mdll_set_spectrum(
     int sock,
-    u8 mdllId,
-    u8 shiftX,
-    u8 shiftY,
-    u8 scaleX,
-    u8 scaleY)
+    u16 mdllId,
+    u16 shiftX,
+    u16 shiftY,
+    u16 scaleX,
+    u16 scaleY)
 {
     auto request = make_command_packet(
         CommandType::MdllSetSpectrum,
         mdllId,
         {
-            static_cast<u16>(shiftX),
-            static_cast<u16>(shiftY),
-            static_cast<u16>(scaleX),
-            static_cast<u16>(scaleY),
+            shiftX,
+            shiftY,
+            scaleX,
+            scaleY,
         });
 
     CommandPacket response = {};
