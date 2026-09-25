@@ -110,6 +110,14 @@ void ReadoutWorker::loop()
                     ++counters_.invalidPackets;
             }
 
+            if (!valid && spdlog::should_log(spdlog::level::debug))
+            {
+                spdlog::debug("ReadoutWorker: invalid packet from {}:{}: bytes={}, bufferLength={}, "
+                              "headerLength={}, bufferType=0x{:04x}",
+                              format_ipv4(rp.srcAddr), rp.srcPort, rp.bytes, rp.packet.bufferLength,
+                              rp.packet.headerLength, rp.packet.bufferType);
+            }
+
             if (valid)
             {
                 for (auto &consumer: consumers_)

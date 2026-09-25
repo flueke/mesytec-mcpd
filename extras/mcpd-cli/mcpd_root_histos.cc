@@ -19,6 +19,7 @@ RootHistoContext create_histo_context(const std::string &outputFilename)
     RootHistoContext result = {};
 
     result.histoOutFile = std::make_unique<TFile>(outputFilename.c_str(), "recreate");
+    result.mcpdHistos = std::make_unique<RootHistoContext::McpdHistos>();
 
     if (result.histoOutFile->IsZombie() || !result.histoOutFile->IsOpen())
     {

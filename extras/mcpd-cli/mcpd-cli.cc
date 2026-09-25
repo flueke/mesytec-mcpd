@@ -3,11 +3,15 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <functional>
 #include <map>
+#include <optional>
 #include <signal.h>
+#include <thread>
 
 #include <lyra/lyra.hpp>
 #include <mesytec-mcpd/mesytec-mcpd.h>
+#include <mesytec-mcpd/util/logging.h>
 #include <spdlog/spdlog.h>
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
@@ -1348,28 +1352,45 @@ struct DaqCommand: public BaseCommand
     }
 };
 
+// Snapshot of the readout state used for the periodic reports.
 struct ReadoutCounters
 {
     size_t packets = 0u;
     size_t packetsLost = 0u;
+    size_t bufferNumberJumps = 0u;
     size_t bytes = 0u;
     size_t timeouts = 0u;
+    size_t invalidPackets = 0u;
     size_t events = 0u;
-    std::map<u16, size_t> packetsByType =
-        {}; // CommandPacketBufferType, McpdDataBufferType, MdllDataBufferType
+    std::map<u16, size_t> packetsByType; // CommandPacketBufferType, McpdDataBufferType, MdllDataBufferType
     std::array<size_t, EventTypeCount> eventsByType = {}; // Neutron, Trigger, MdllNeutron
-
-    void reset()
-    {
-        packets = 0;
-        packetsLost = 0;
-        bytes = 0;
-        timeouts = 0;
-        events = 0;
-        packetsByType.clear();
-        eventsByType.fill(0);
-    }
 };
+
+ReadoutCounters make_counters(const ReadoutWorker &worker, const SourceStatsCollector &stats)
+{
+    const auto wc = worker.getCounters();
+
+    ReadoutCounters result;
+    result.packets = wc.packets;
+    result.bytes = wc.bytes;
+    result.timeouts = wc.timeouts;
+    result.invalidPackets = wc.invalidPackets;
+
+    for (const auto &[key, st]: stats.getStats())
+    {
+        const auto neutronType =
+            st.bufferType == MdllDataBufferType ? EventType::MdllNeutron : EventType::Neutron;
+
+        result.packetsLost += st.packetsLost;
+        result.bufferNumberJumps += st.bufferNumberJumps;
+        result.events += st.events;
+        result.packetsByType[st.bufferType] += st.packets;
+        result.eventsByType[static_cast<unsigned>(neutronType)] += st.neutronEvents;
+        result.eventsByType[static_cast<unsigned>(EventType::Trigger)] += st.triggerEvents;
+    }
+
+    return result;
+}
 
 std::string counters_packet_buffer_types_to_string(const std::map<u16, size_t> &packetsByType)
 {
@@ -1398,23 +1419,8 @@ struct CountersReportInfo
     ReadoutCounters counters;
     ReadoutCounters prevCounters;
     std::chrono::microseconds dt;
-    u32 flags = ReportValues; // same behavior as the old report_counters()
+    u32 flags = ReportValues;
 };
-
-s32 calc_packet_loss(u16 lastPacketNumber, u16 packetNumber)
-{
-    static const s32 PacketNumberMax = std::numeric_limits<u16>::max();
-
-    s32 diff = packetNumber - lastPacketNumber;
-
-    if (diff < 1)
-    {
-        diff = PacketNumberMax + diff;
-        return diff;
-    }
-
-    return diff - 1;
-}
 
 void report_counters(const CountersReportInfo &info, const std::string &title = "readout")
 {
@@ -1423,8 +1429,10 @@ void report_counters(const CountersReportInfo &info, const std::string &title = 
 
     if (info.flags & CountersReportInfo::ReportValues)
     {
-        spdlog::info("{}: counters: packets={}, packetsLost={}, (buffer types: {}), events={} (Neutron={}, Trigger={}, MdllNeutron={}), bytes={}, timeouts={}",
-                     title, counters.packets, counters.packetsLost,
+        spdlog::info("{}: counters: packets={}, packetsLost={}, bufferNumberJumps={}, invalidPackets={}, "
+                     "(buffer types: {}), events={} (Neutron={}, Trigger={}, MdllNeutron={}), bytes={}, timeouts={}",
+                     title, counters.packets, counters.packetsLost, counters.bufferNumberJumps,
+                     counters.invalidPackets,
                      counters_packet_buffer_types_to_string(counters.packetsByType),
                      counters.events, counters.eventsByType[0], counters.eventsByType[1],
                      counters.eventsByType[2], counters.bytes, counters.timeouts);
@@ -1436,17 +1444,18 @@ void report_counters(const CountersReportInfo &info, const std::string &title = 
     deltas.bytes = counters.bytes - prevCounters.bytes;
     deltas.timeouts = counters.timeouts - prevCounters.timeouts;
     deltas.events = counters.events - prevCounters.events;
-    deltas.eventsByType[0] = counters.eventsByType[0] - prevCounters.eventsByType[0];
-    deltas.eventsByType[1] = counters.eventsByType[1] - prevCounters.eventsByType[1];
-    deltas.eventsByType[2] = counters.eventsByType[2] - prevCounters.eventsByType[2];
+    for (size_t i = 0; i < deltas.eventsByType.size(); ++i)
+        deltas.eventsByType[i] = counters.eventsByType[i] - prevCounters.eventsByType[i];
 
     if (info.flags & CountersReportInfo::ReportDeltas)
     {
         spdlog::info("{}: deltas: packets={}, packetsLost={}, events={}, (Neutron={}, Trigger={}, MdllNeutron={}), bytes={}, "
-                     "timeouts={}, events={}",
+                     "timeouts={}",
                      title, deltas.packets, deltas.packetsLost, deltas.events, deltas.eventsByType[0],
-                     deltas.eventsByType[1], deltas.eventsByType[2], deltas.bytes, deltas.timeouts,
-                     deltas.events);
+                     deltas.eventsByType[1], deltas.eventsByType[2], deltas.bytes, deltas.timeouts);
+
+        if (deltas.packetsLost > 0)
+            spdlog::warn("{}: lost {} packets since the last report", title, deltas.packetsLost);
     }
 
     if (info.flags & CountersReportInfo::ReportPacketTypes)
@@ -1475,12 +1484,16 @@ void report_counters(const CountersReportInfo &info, const std::string &title = 
     }
 }
 
-void report_counters(const ReadoutCounters &counters, const std::string &title = "readout")
+void report_sources(const SourceStatsCollector &stats, const std::string &title)
 {
-    CountersReportInfo info;
-    info.counters = counters;
-    info.flags = CountersReportInfo::All;
-    report_counters(info, title);
+    for (const auto &[key, st]: stats.getStats())
+    {
+        spdlog::info("{}: source {} id={}: type={}, packets={}, events={}, packetsLost={}, "
+                     "bufferNumberJumps={}, lastRunId={}",
+                     title, key.srcAddr ? format_ipv4(key.srcAddr) : "listfile", key.deviceId,
+                     packet_buffer_type_to_string(st.bufferType), st.packets, st.events,
+                     st.packetsLost, st.bufferNumberJumps, st.lastRunId);
+    }
 }
 
 // Prints the raw 16 bit words making up the packet.
@@ -1493,21 +1506,128 @@ void print_raw_packet(const DataPacket &packet)
                     wordCount, fmt::join(data, data + wordCount, ", "));
 }
 
-struct ReadoutCommand: public BaseCommand
+// Implements the --print-* options. Runs in the readout thread.
+class PrintConsumer: public PacketConsumer
 {
-    u16 dataPort_ = McpdDefaultPort;
-    std::string listfilePath_;
-    bool noListfile_ = false;
-    size_t duration_s_ = 0u;
+  public:
+    PrintConsumer(bool summary, bool events, bool raw)
+        : summary_(summary)
+        , events_(events)
+        , raw_(raw)
+    {
+    }
+
+    void consume(const ReceivedPacket &rp) override
+    {
+        const auto &packet = rp.packet;
+        const auto eventCount = get_event_count(packet);
+
+        if (summary_)
+        {
+            spdlog::info("packet#{}: bufferLength={}, bufferType=0x{:04x}, "
+                         "bufferNumber={}, headerLength={}, runId={}, "
+                         "devStatus=0x{:04x}, deviceId={}, timestamp={}, srcAddr={}, eventCount={}",
+                         packetNumber_, packet.bufferLength, packet.bufferType,
+                         packet.bufferNumber, packet.headerLength, packet.runId,
+                         packet.deviceStatus, packet.deviceId, get_header_timestamp(packet),
+                         rp.srcAddr ? format_ipv4(rp.srcAddr) : "listfile", eventCount);
+
+            spdlog::info(
+                "  parameters: 0x{:012x}, {}, {}, {}", to_48bit_value(packet.param[0]),
+                to_48bit_value(packet.param[1]), to_48bit_value(packet.param[2]),
+                to_48bit_value(packet.param[3]));
+        }
+
+        if (raw_)
+            print_raw_packet(packet);
+
+        if (events_)
+        {
+            for (size_t ei = 0; ei < eventCount; ++ei)
+                spdlog::info("{}", to_string(decode_event(packet, ei)));
+        }
+
+        ++packetNumber_;
+    }
+
+  private:
+    bool summary_;
+    bool events_;
+    bool raw_;
+    size_t packetNumber_ = 0;
+};
+
+#ifdef MESYTEC_MCPD_ENABLE_ROOT
+// All ROOT calls, including the periodic flushes and finalization, happen in
+// the readout thread.
+class RootHistoConsumer: public PacketConsumer
+{
+  public:
+    RootHistoConsumer(const std::string &filename, bool enableGraphs, size_t flushInterval_ms)
+        : ctx_(create_histo_context(filename))
+        , flushInterval_(flushInterval_ms)
+    {
+        ctx_.enableGraphs = enableGraphs;
+    }
+
+    void consume(const ReceivedPacket &rp) override
+    {
+        root_histos_process_packet(ctx_, rp.packet);
+
+        const auto now = std::chrono::steady_clock::now();
+
+        if (flushInterval_.count() > 0 && now - tFlush_ >= flushInterval_)
+        {
+            ctx_.histoOutFile->Write("", TObject::kOverwrite);
+            spdlog::debug("flushed ROOT histograms to file");
+            tFlush_ = now;
+        }
+    }
+
+    void finished() override
+    {
+        root_histos_finalize(ctx_);
+        spdlog::debug("finalized ROOT histograms");
+    }
+
+  private:
+    RootHistoContext ctx_;
+    std::chrono::milliseconds flushInterval_;
+    std::chrono::steady_clock::time_point tFlush_ = std::chrono::steady_clock::now();
+};
+#endif
+
+#ifdef MESYTEC_MCPD_ENABLE_PYTHON
+// Calls the script callbacks from the readout thread. The main thread must
+// release the GIL while the readout is running.
+class PythonConsumer: public PacketConsumer
+{
+  public:
+    explicit PythonConsumer(PyCliContext &ctx)
+        : ctx_(ctx)
+    {
+    }
+
+    void consume(const ReceivedPacket &rp) override
+    {
+        py::gil_scoped_acquire gil;
+        python_context_handle_packet(ctx_, rp.packet);
+    }
+
+  private:
+    PyCliContext &ctx_;
+};
+#endif
+
+// Options and run loop shared by the readout and replay commands.
+struct ReadoutCommandBase: public BaseCommand
+{
     size_t reportInterval_ms_ = 1000u;
     bool printPacketSummary_ = false;
     bool printEventData_ = false;
     bool printRawPacketData_ = false;
-    bool overwriteListfile_ = false;
-    bool sendStartDaqCommand_ = true;
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
-    RootHistoContext rootHistoContext_ = {};
     std::string rootHistoPath_;
     size_t rootFlushInterval_ms_ = 500u;
     bool rootEnableGraphs_ = false;
@@ -1518,82 +1638,259 @@ struct ReadoutCommand: public BaseCommand
     std::vector<std::string> pythonScriptArgs_;
 #endif
 
-    ReadoutCommand(lyra::cli &cli)
+    void addCommonArguments(lyra::command &cmd)
     {
-        cli.add_argument(
-            lyra::command("readout", [this](const lyra::group &) { this->run_ = true; })
-                .help("DAQ readout to listfile")
+        cmd.add_argument(lyra::opt(reportInterval_ms_, "interval [ms]")["--report-interval"]
+                             .optional()
+                             .help("Time in ms between logging readout stats"))
 
-                .add_argument(
-                    lyra::opt(listfilePath_, "listfilePath")["--listfile"].optional().help(
-                        "Path to the output listfile"))
+            .add_argument(lyra::opt([this](const bool &b)
+                                    { printPacketSummary_ = b; })["--print-packet-summary"]
+                              .optional()
+                              .help("Print readout packet summaries"))
 
-                .add_argument(lyra::opt([this](const bool &b)
-                                        { overwriteListfile_ = b; })["--overwrite-listfile"]
-                                  .optional()
-                                  .help("Overwrite the output listfile if it already exists"))
+            .add_argument(
+                lyra::opt([this](const bool &b) { printEventData_ = b; })["--print-event-data"]
+                    .optional()
+                    .help("Print readout event data"))
 
-                .add_argument(lyra::opt([this](const bool &b) { noListfile_ = b; })["--no-listfile"]
-                                  .optional()
-                                  .help("Do not write an output listfile."))
-
-                .add_argument(lyra::opt(duration_s_, "duration [s]")["--duration"].optional().help(
-                    "DAQ run duration in seconds. Runs forever if not specified or 0."))
-
-                .add_argument(lyra::opt(dataPort_, "dataPort")["--dataport"].optional().help(
-                    "mcpd data port (also the local listening port)"))
-
-                .add_argument(lyra::opt(reportInterval_ms_, "interval [ms]")["--report-interval"]
-                                  .optional()
-                                  .help("Time in ms between logging readout stats"))
-
-                .add_argument(lyra::opt([this](const bool &b)
-                                        { printPacketSummary_ = b; })["--print-packet-summary"]
-                                  .optional()
-                                  .help("Print readout packet summaries"))
-
-                .add_argument(
-                    lyra::opt([this](const bool &b) { sendStartDaqCommand_ = b; })["--no-start-daq"]
-                        .optional()
-                        .help("Do not send the DAQ start command prior to data taking"))
-
-                .add_argument(
-                    lyra::opt([this](const bool &b) { printEventData_ = b; })["--print-event-data"]
-                        .optional()
-                        .help("Print readout event data"))
-
-                .add_argument(lyra::opt([this](const bool &b)
-                                        { printRawPacketData_ = b; })["--print-raw-packet-data"]
-                                  .optional()
-                                  .help("Print raw packet data as 16 bit hex values"))
+            .add_argument(lyra::opt([this](const bool &b)
+                                    { printRawPacketData_ = b; })["--print-raw-packet-data"]
+                              .optional()
+                              .help("Print raw packet data as 16 bit hex values"))
 
 #ifdef MESYTEC_MCPD_ENABLE_ROOT
-                .add_argument(
-                    lyra::opt(rootHistoPath_, "rootfile")["--root-histo-file"].optional().help(
-                        "ROOT histo output file path"))
+            .add_argument(
+                lyra::opt(rootHistoPath_, "rootfile")["--root-histo-file"].optional().help(
+                    "ROOT histo output file path"))
 
-                .add_argument(
-                    lyra::opt(rootFlushInterval_ms_, "flushInterval [ms]")["--root-flush-interval"]
-                        .optional()
-                        .help("ROOT file flush interval in ms"))
+            .add_argument(
+                lyra::opt(rootFlushInterval_ms_, "flushInterval [ms]")["--root-flush-interval"]
+                    .optional()
+                    .help("ROOT file flush interval in ms"))
 
-                .add_argument(lyra::opt([this](const bool &b)
-                                        { rootEnableGraphs_ = b; })["--root-enable-graphs"]
+            .add_argument(lyra::opt([this](const bool &b) { rootEnableGraphs_ = b; })
+                              ["--root-enable-graphs"]["--root-enable-mdll-graphs"]
                                   .optional()
                                   .help("Create TGraphs of timestamps, MDLL amplitudes and positions vs "
                                         "time in the ROOT ouptut file. Eats lots of memory!"))
 #endif
 
 #ifdef MESYTEC_MCPD_ENABLE_PYTHON
-                .add_argument(
-                    lyra::opt(pythonScriptPath_, "python file")["--python-script"].optional().help(
-                        "Path to a Python script to execute for each event."))
-                .add_argument(lyra::group()
-                    .add_argument(lyra::literal("--"))
-                    .add_argument(lyra::arg(pythonScriptArgs_, "python script args"))
-                )
+            .add_argument(
+                lyra::opt(pythonScriptPath_, "python file")["--python-script"].optional().help(
+                    "Path to a Python script to execute for each event."))
+            .add_argument(lyra::group()
+                .add_argument(lyra::literal("--"))
+                .add_argument(lyra::arg(pythonScriptArgs_, "python script args"))
+            )
 #endif
-        );
+            ;
+    }
+
+    // Runs until interrupted, until duration_s has elapsed (0: no limit) or
+    // until the source reaches its end. afterStart is invoked once the worker
+    // is running, e.g. to send the DAQ start command.
+    int runLoop([[maybe_unused]] CliContext &ctx, const std::string &title,
+                std::unique_ptr<PacketSource> source, std::unique_ptr<ListfileWriter> listfile,
+                [[maybe_unused]] const std::string &listfilePath, size_t duration_s = 0,
+                std::function<std::error_code()> afterStart = {})
+    {
+        auto stats = std::make_shared<SourceStatsCollector>();
+        std::vector<std::shared_ptr<PacketConsumer>> consumers = {stats};
+
+        if (printPacketSummary_ || printEventData_ || printRawPacketData_)
+            consumers.emplace_back(std::make_shared<PrintConsumer>(
+                printPacketSummary_, printEventData_, printRawPacketData_));
+
+#ifdef MESYTEC_MCPD_ENABLE_ROOT
+        if (!rootHistoPath_.empty())
+        {
+            try
+            {
+                consumers.emplace_back(std::make_shared<RootHistoConsumer>(
+                    rootHistoPath_, rootEnableGraphs_, rootFlushInterval_ms_));
+                spdlog::info("Writing ROOT histograms to {}", rootHistoPath_);
+            }
+            catch (const std::runtime_error &e)
+            {
+                spdlog::error("{}", e.what());
+                return 1;
+            }
+        }
+#endif
+
+#ifdef MESYTEC_MCPD_ENABLE_PYTHON
+        const bool usePython = !pythonScriptPath_.empty();
+
+        if (usePython)
+        {
+            auto &pyCtx = ctx.pyContext;
+
+            if (!setup_python_context(pyCtx, pythonScriptPath_))
+            {
+                spdlog::error("{}: Failed to set up Python context for script '{}'", title,
+                              pythonScriptPath_);
+                return 1;
+            }
+
+            spdlog::info("{}: successfully loaded Python script '{}'", title, pythonScriptPath_);
+
+            if (pyCtx.startCallback)
+            {
+                spdlog::debug("{}: calling Python start() callback", title);
+                try
+                {
+                    pyCtx.startCallback(listfilePath, pythonScriptArgs_);
+                }
+                catch (const std::exception &e)
+                {
+                    spdlog::error("{}: Error in Python start() callback: {}", title, e.what());
+                    return 1;
+                }
+            }
+
+            consumers.emplace_back(std::make_shared<PythonConsumer>(pyCtx));
+        }
+
+        std::optional<py::gil_scoped_release> gilRelease;
+        if (usePython)
+            gilRelease.emplace();
+#endif
+
+        ReadoutWorker worker(std::move(source), std::move(listfile), consumers);
+        worker.start();
+
+        int ret = 0;
+
+        if (afterStart)
+        {
+            if (auto ec = afterStart())
+            {
+                spdlog::error("{}: {} (code={}, category={})", title, ec.message(), ec.value(),
+                              ec.category().name());
+                ret = 1;
+            }
+        }
+
+        if (ret == 0)
+            spdlog::info("{}: entering readout loop, press ctrl-c to quit", title);
+
+        const auto tStart = std::chrono::steady_clock::now();
+        auto tReport = tStart;
+        ReadoutCounters prevCounters;
+        CountersReportInfo reportInfo;
+        reportInfo.flags = CountersReportInfo::All;
+
+        while (ret == 0 && !g_interrupted && worker.isRunning())
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            const auto now = std::chrono::steady_clock::now();
+
+            if (duration_s > 0 && now - tStart >= std::chrono::seconds(duration_s))
+            {
+                spdlog::info("{}: runDuration reached, leaving readout loop", title);
+                break;
+            }
+
+            if (reportInterval_ms_ > 0 && now - tReport >= std::chrono::milliseconds(reportInterval_ms_))
+            {
+                reportInfo.counters = make_counters(worker, *stats);
+                reportInfo.prevCounters = prevCounters;
+                reportInfo.dt = std::chrono::duration_cast<std::chrono::microseconds>(now - tReport);
+                report_counters(reportInfo, title);
+                fmt::print("\n");
+                tReport = now;
+                prevCounters = reportInfo.counters;
+            }
+        }
+
+        worker.stop();
+
+#ifdef MESYTEC_MCPD_ENABLE_PYTHON
+        gilRelease.reset();
+
+        if (usePython && ctx.pyContext.stopCallback)
+        {
+            spdlog::debug("{}: calling Python stop() callback", title);
+            try
+            {
+                ctx.pyContext.stopCallback();
+            }
+            catch (const std::exception &e)
+            {
+                spdlog::error("{}: Error in Python stop() callback: {}", title, e.what());
+                ret = 1;
+            }
+        }
+#endif
+
+        try
+        {
+            worker.rethrowException();
+        }
+        catch (const std::exception &e)
+        {
+            spdlog::error("{}: {}", title, e.what());
+            ret = 1;
+        }
+
+        // final counters report over the whole run duration
+        {
+            const auto now = std::chrono::steady_clock::now();
+            reportInfo.counters = make_counters(worker, *stats);
+            reportInfo.prevCounters = {};
+            reportInfo.dt = std::chrono::duration_cast<std::chrono::microseconds>(now - tStart);
+            reportInfo.flags &= ~CountersReportInfo::ReportDeltas;
+            report_counters(reportInfo, title + " (full run)");
+            report_sources(*stats, title + " (full run)");
+            fmt::print("\n");
+        }
+
+        return ret;
+    }
+};
+
+struct ReadoutCommand: public ReadoutCommandBase
+{
+    u16 dataPort_ = McpdDefaultPort;
+    std::string listfilePath_;
+    bool noListfile_ = false;
+    size_t duration_s_ = 0u;
+    bool overwriteListfile_ = false;
+    bool sendStartDaqCommand_ = true;
+
+    ReadoutCommand(lyra::cli &cli)
+    {
+        auto cmd = lyra::command("readout", [this](const lyra::group &) { this->run_ = true; });
+        cmd.help("DAQ readout to listfile")
+
+            .add_argument(
+                lyra::opt(listfilePath_, "listfilePath")["--listfile"].optional().help(
+                    "Path to the output listfile"))
+
+            .add_argument(lyra::opt([this](const bool &b)
+                                    { overwriteListfile_ = b; })["--overwrite-listfile"]
+                              .optional()
+                              .help("Overwrite the output listfile if it already exists"))
+
+            .add_argument(lyra::opt([this](const bool &b) { noListfile_ = b; })["--no-listfile"]
+                              .optional()
+                              .help("Do not write an output listfile."))
+
+            .add_argument(lyra::opt(duration_s_, "duration [s]")["--duration"].optional().help(
+                "DAQ run duration in seconds. Runs forever if not specified or 0."))
+
+            .add_argument(lyra::opt(dataPort_, "dataPort")["--dataport"].optional().help(
+                "mcpd data port (also the local listening port)"))
+
+            .add_argument(
+                lyra::opt([this](const bool &b) { sendStartDaqCommand_ = !b; })["--no-start-daq"]
+                    .optional()
+                    .help("Do not send the DAQ start command prior to data taking"));
+
+        addCommonArguments(cmd);
+        cli.add_argument(cmd);
     }
 
     int runCommand(CliContext &ctx) override
@@ -1604,386 +1901,50 @@ struct ReadoutCommand: public BaseCommand
             return 1;
         }
 
-        spdlog::debug("{} {} {}", PRETTY_FUNCTION, dataPort_, listfilePath_);
+        std::unique_ptr<UdpPacketSource> source;
+        std::unique_ptr<ListfileWriter> listfile;
 
-        std::error_code ec;
-        // Creates an unconnected UDP socket listening on the dataPort.
-        int dataSock = create_bound_udp_socket(dataPort_, &ec);
-
-        if (ec)
+        try
         {
-            spdlog::error("readout: error listening on data port {}: {} (code={}, category={})",
-                          dataPort_, ec.message(), ec.value(), ec.category().name());
+            source = std::make_unique<UdpPacketSource>(dataPort_);
+            if (!noListfile_)
+                listfile = std::make_unique<ListfileWriter>(listfilePath_, overwriteListfile_);
+        }
+        catch (const std::exception &e)
+        {
+            spdlog::error("readout: {}", e.what());
             return 1;
         }
 
+        auto startDaq = [&]() -> std::error_code
         {
-            u16 localPort = get_local_socket_port(dataSock);
-            spdlog::info("readout: listening for data on port {}", localPort);
-        }
-
-        std::ofstream listfile;
-        listfile.exceptions(std::ios::failbit | std::ios::badbit);
-
-        if (!noListfile_)
-        {
-            if (!overwriteListfile_ && file_exists(listfilePath_.c_str()))
-            {
-                spdlog::error("readout: Output listfile '{}' already exists", listfilePath_);
-                return 1;
-            }
-
-            try
-            {
-                listfile.open(listfilePath_, std::ios_base::out | std::ios::binary);
-            }
-            catch (const std::exception &e)
-            {
-                spdlog::error("readout: Error opening listfile '{}': {}", listfilePath_, e.what());
-                return 1;
-            }
-        }
-
-#ifdef MESYTEC_MCPD_ENABLE_ROOT
-        if (!rootHistoPath_.empty())
-        {
-            try
-            {
-                rootHistoContext_ = create_histo_context(rootHistoPath_);
-                rootHistoContext_.enableGraphs = rootEnableGraphs_;
-                spdlog::info("Writing ROOT histograms to {}", rootHistoPath_);
-            }
-            catch (const std::runtime_error &e)
-            {
-                spdlog::error("{}", e.what());
-                return 1;
-            }
-        }
-#endif
-
-#ifdef MESYTEC_MCPD_ENABLE_PYTHON
-        if (!pythonScriptPath_.empty())
-        {
-            auto &pyCtx = ctx.pyContext;
-
-            if (!setup_python_context(pyCtx, pythonScriptPath_))
-            {
-                spdlog::error("readout: Failed to set up Python context for script '{}'",
-                              pythonScriptPath_);
-                return 1;
-            }
-
-            spdlog::info("readout: successfully loaded Python script '{}'", pythonScriptPath_);
-
-            if (pyCtx.startCallback)
-            {
-                spdlog::debug("readout: calling Python start() callback");
-                pyCtx.startCallback(listfilePath_, pythonScriptArgs_);
-            }
-        }
-#endif
-
-        ReadoutCounters counters = {};
-        ReadoutCounters prevCounters = {};
-        DataPacket dataPacket = {};
-        std::optional<u16> lastBufferNumber;
-
-        spdlog::info("readout: entering readout loop, press ctrl-c to quit");
-
-        auto tStart = std::chrono::steady_clock::now();
-        auto tReport = tStart;
-#ifdef MESYTEC_MCPD_ENABLE_ROOT
-        auto tRootFlush = tStart;
-#endif
-
-        CountersReportInfo reportInfo;
-        reportInfo.flags = CountersReportInfo::All;
-
-        if (sendStartDaqCommand_)
-        {
+            if (!sendStartDaqCommand_)
+                return {};
             spdlog::debug("readout: sending DAQ start command to {}", ctx.mcpdAddress);
-            ec = mcpd_start_daq(ctx.cmdSock, ctx.mcpdId);
+            return mcpd_start_daq(ctx.cmdSock, ctx.mcpdId);
+        };
 
-            if (ec)
-            {
-                spdlog::error("readout: error sending DAQ start command: {} (code={}, category={})",
-                              ec.message(), ec.value(), ec.category().name());
-                return 1;
-            }
-        }
-
-        while (!g_interrupted)
-        {
-            size_t bytesTransferred = 0u;
-            sockaddr_in srcAddr = {};
-
-            auto ec = receive_one_packet(dataSock, reinterpret_cast<u8 *>(&dataPacket),
-                                         sizeof(dataPacket), bytesTransferred,
-                                         DefaultReadTimeout_ms, &srcAddr);
-
-            if (ec)
-            {
-                if (ec == std::errc::interrupted)
-                {
-                    spdlog::trace("readout: interrupted while reading from network: {}",
-                                  ec.message());
-                    continue;
-                }
-
-                if (ec != SocketErrorType::Timeout)
-                {
-                    spdlog::error("readout: error reading from network: {} (code={}, category={})",
-                                  ec.message(), ec.value(), ec.category().name());
-                    return 1;
-                }
-                else
-                    ++counters.timeouts;
-            }
-
-            if (bytesTransferred)
-            {
-                if (!noListfile_)
-                {
-                    try
-                    {
-                        listfile.write(reinterpret_cast<const char *>(&dataPacket),
-                                       sizeof(dataPacket));
-                    }
-                    catch (const std::exception &e)
-                    {
-                        spdlog::error("readout: Error writing to listfile '{}': {}", listfilePath_,
-                                      e.what());
-                        return 1;
-                    }
-                }
-
-                if (lastBufferNumber)
-                {
-                    auto lost = calc_packet_loss(*lastBufferNumber, dataPacket.bufferNumber);
-                    counters.packetsLost += lost;
-                    if (lost > 0)
-                    {
-                        spdlog::warn("readout: detected packet loss: last buffer number {}, current buffer number {}, lost packets {}",
-                                     *lastBufferNumber, dataPacket.bufferNumber, lost);
-                    }
-                }
-                lastBufferNumber = dataPacket.bufferNumber;
-
-                const auto eventCount = get_event_count(dataPacket);
-
-                if (printPacketSummary_)
-                {
-                    char srcAddrBuf[16];
-
-                    inet_ntop(AF_INET, &srcAddr.sin_addr, srcAddrBuf, sizeof(srcAddrBuf));
-
-                    spdlog::info("packet#{}: bufferLength={}, bufferType=0x{:04x}, "
-                                 "bufferNumber={}, headerLength={}, runId={}, "
-                                 "devStatus=0x{:04x}, deviceId={}, timestamp={}, srcAddr={}, eventCount={}",
-                                 counters.packets, dataPacket.bufferLength, dataPacket.bufferType,
-                                 dataPacket.bufferNumber, dataPacket.headerLength, dataPacket.runId,
-                                 dataPacket.deviceStatus, dataPacket.deviceId,
-                                 get_header_timestamp(dataPacket), srcAddrBuf, eventCount);
-
-                    spdlog::info(
-                        "  parameters: 0x{:012x}, {}, {}, {}", to_48bit_value(dataPacket.param[0]),
-                        to_48bit_value(dataPacket.param[1]), to_48bit_value(dataPacket.param[2]),
-                        to_48bit_value(dataPacket.param[3]));
-
-                    bool isBufferLengthOk = bytesTransferred == dataPacket.bufferLength * sizeof(u16);
-
-                    spdlog::info("  packet contains {} events, bufferLengthOk={}", eventCount, isBufferLengthOk);
-
-                }
-
-                if (printRawPacketData_)
-                {
-                    print_raw_packet(dataPacket);
-                }
-
-                for (size_t ei = 0; ei < eventCount; ++ei)
-                {
-                    auto event = decode_event(dataPacket, ei);
-
-                    if (event.type <= EventType::MdllNeutron)
-                        ++counters.eventsByType[static_cast<unsigned>(event.type)];
-                    else
-                        spdlog::error("readout: unknown event type {} in packet#{}",
-                                      static_cast<unsigned>(event.type), counters.packets);
-
-                    if (printEventData_)
-                        spdlog::info("{}", to_string(event));
-                }
-
-#ifdef MESYTEC_MCPD_ENABLE_ROOT
-                if (rootHistoContext_.histoOutFile)
-                    root_histos_process_packet(rootHistoContext_, dataPacket);
-#endif
-
-#ifdef MESYTEC_MCPD_ENABLE_PYTHON
-                python_context_handle_packet(ctx.pyContext, dataPacket);
-#endif
-
-                ++counters.packets;
-                counters.bytes += bytesTransferred;
-                counters.events += eventCount;
-                ++counters.packetsByType[dataPacket.bufferType];
-            }
-
-            const auto now = std::chrono::steady_clock::now();
-
-#ifdef MESYTEC_MCPD_ENABLE_ROOT
-            if (rootHistoContext_.histoOutFile && rootFlushInterval_ms_ > 0)
-            {
-                auto elapsed = now - tRootFlush;
-
-                if (elapsed >= std::chrono::milliseconds(rootFlushInterval_ms_))
-                {
-                    rootHistoContext_.histoOutFile->Write("", TObject::kOverwrite);
-                    spdlog::debug("readout: flushed ROOT histograms to file");
-                    tRootFlush = now;
-                }
-            }
-#endif
-
-            if (duration_s_ > 0)
-            {
-                auto elapsed = now - tStart;
-
-                if (elapsed >= std::chrono::seconds(duration_s_))
-                {
-                    spdlog::info("readout: runDuration reached, leaving readout loop");
-                    break;
-                }
-            }
-
-            if (reportInterval_ms_ > 0)
-            {
-                auto elapsed = now - tReport;
-
-                if (elapsed >= std::chrono::milliseconds(reportInterval_ms_))
-                {
-                    reportInfo.counters = counters;
-                    reportInfo.prevCounters = prevCounters;
-                    reportInfo.dt = std::chrono::duration_cast<std::chrono::microseconds>(elapsed);
-                    report_counters(reportInfo, "readout");
-                    fmt::print("\n");
-                    tReport = now;
-                    prevCounters = counters;
-                }
-            }
-        }
-
-#ifdef MESYTEC_MCPD_ENABLE_PYTHON
-        if (ctx.pyContext.stopCallback)
-        {
-            spdlog::debug("readout: calling Python stop() callback");
-            ctx.pyContext.stopCallback();
-        }
-#endif
-
-#ifdef MESYTEC_MCPD_ENABLE_ROOT
-        if (rootHistoContext_.histoOutFile)
-        {
-            root_histos_finalize(rootHistoContext_);
-            spdlog::debug("readout: flushed ROOT histograms to file");
-        }
-#endif
-
-        // final counters report over the whole run duration
-        {
-            const auto now = std::chrono::steady_clock::now();
-            auto elapsed = now - tStart;
-            reportInfo.counters = counters;
-            reportInfo.prevCounters = {};
-            reportInfo.dt = std::chrono::duration_cast<std::chrono::microseconds>(elapsed);
-            reportInfo.flags &= ~CountersReportInfo::ReportDeltas;
-            report_counters(reportInfo, "readout (full run)");
-            fmt::print("\n");
-        }
-
-        return 0;
+        return runLoop(ctx, "readout", std::move(source), std::move(listfile),
+                       noListfile_ ? std::string() : listfilePath_, duration_s_, startDaq);
     }
 };
 
-struct ReplayCommand: public BaseCommand
+struct ReplayCommand: public ReadoutCommandBase
 {
     std::string listfilePath_;
-    size_t reportInterval_ms_ = 1000u;
-    bool printPacketSummary_ = false;
-    bool printEventData_ = false;
-    bool printRawPacketData_ = false;
-
-#ifdef MESYTEC_MCPD_ENABLE_ROOT
-    RootHistoContext rootHistoContext_ = {};
-    std::string rootHistoPath_;
-    size_t rootFlushInterval_ms_ = 500u;
-    bool rootEnableGraphs_ = false;
-#endif
-
-#ifdef MESYTEC_MCPD_ENABLE_PYTHON
-    std::string pythonScriptPath_;
-    std::vector<std::string> pythonScriptArgs_;
-#endif
 
     ReplayCommand(lyra::cli &cli)
     {
         offline_ = true;
 
-        cli.add_argument(
-            lyra::command("replay", [this](const lyra::group &) { this->run_ = true; })
-                .help("DAQ replay from listfile")
+        auto cmd = lyra::command("replay", [this](const lyra::group &) { this->run_ = true; });
+        cmd.help("DAQ replay from listfile")
+            .add_argument(
+                lyra::opt(listfilePath_, "listfilePath")["--listfile"].required().help(
+                    "Path to the input listfile"));
 
-                .add_argument(
-                    lyra::opt(listfilePath_, "listfilePath")["--listfile"].required().help(
-                        "Path to the input listfile"))
-
-                .add_argument(lyra::opt(reportInterval_ms_, "interval [ms]")["--report-interval"]
-                                  .optional()
-                                  .help("Time in ms between logging readout stats"))
-
-                .add_argument(lyra::opt([this](const bool &b)
-                                        { printPacketSummary_ = b; })["--print-packet-summary"]
-                                  .optional()
-                                  .help("Print readout packet summaries"))
-
-                .add_argument(
-                    lyra::opt([this](const bool &b) { printEventData_ = b; })["--print-event-data"]
-                        .optional()
-                        .help("Print readout event data"))
-
-                .add_argument(lyra::opt([this](const bool &b)
-                                        { printRawPacketData_ = b; })["--print-raw-packet-data"]
-                                  .optional()
-                                  .help("Print raw packet data as 16 bit hex values"))
-
-#ifdef MESYTEC_MCPD_ENABLE_ROOT
-                .add_argument(
-                    lyra::opt(rootHistoPath_, "rootfile")["--root-histo-file"].optional().help(
-                        "ROOT histo output file path"))
-
-                .add_argument(
-                    lyra::opt(rootFlushInterval_ms_, "flushInterval [ms]")["--root-flush-interval"]
-                        .optional()
-                        .help("ROOT file flush interval in ms"))
-
-                .add_argument(lyra::opt([this](const bool &b)
-                                        { rootEnableGraphs_ = b; })["--root-enable-mdll-graphs"]
-                                  .optional()
-                                  .help("Create TGraphs of MDLL amplitude and position values vs "
-                                        "time in the ROOT ouptut file. Eats lots of memory!"))
-#endif
-
-#ifdef MESYTEC_MCPD_ENABLE_PYTHON
-                .add_argument(
-                    lyra::opt(pythonScriptPath_, "python file")["--python-script"].optional().help(
-                        "Path to a Python script to execute for each event."))
-                .add_argument(lyra::group()
-                    .add_argument(lyra::literal("--"))
-                    .add_argument(lyra::arg(pythonScriptArgs_, "python script args"))
-                )
-#endif
-        );
+        addCommonArguments(cmd);
+        cli.add_argument(cmd);
     }
 
     int runCommand(CliContext &ctx) override
@@ -1994,218 +1955,20 @@ struct ReplayCommand: public BaseCommand
             return 1;
         }
 
-        spdlog::debug("{} {}", PRETTY_FUNCTION, listfilePath_);
-
-        std::ifstream listfile;
-        listfile.exceptions(std::ios::badbit | std::ios::failbit);
+        std::unique_ptr<ListfilePacketSource> source;
 
         try
         {
-            listfile.open(listfilePath_, std::ios::in | std::ios::binary);
+            source = std::make_unique<ListfilePacketSource>(listfilePath_);
         }
         catch (const std::exception &e)
         {
-            if (!std::filesystem::exists(listfilePath_))
-            {
-                spdlog::error("replay: Error opening listfile '{}': file does not exist",
-                              listfilePath_);
-            }
-            else
-            {
-                spdlog::error("replay: Error opening listfile '{}': {}", listfilePath_, e.what());
-            }
+            spdlog::error("replay: {}", e.what());
             return 1;
         }
 
-        // no more failbit. don't want reads to throw.
-        listfile.exceptions(std::ios::badbit);
-
-#ifdef MESYTEC_MCPD_ENABLE_ROOT
-        if (!rootHistoPath_.empty())
-        {
-            try
-            {
-                rootHistoContext_ = create_histo_context(rootHistoPath_);
-                rootHistoContext_.enableGraphs = rootEnableGraphs_;
-                spdlog::info("Writing ROOT histograms to {}", rootHistoPath_);
-            }
-            catch (const std::runtime_error &e)
-            {
-                spdlog::error("{}", e.what());
-                return 1;
-            }
-        }
-#endif
-
-#ifdef MESYTEC_MCPD_ENABLE_PYTHON
-        if (!pythonScriptPath_.empty())
-        {
-            auto &pyCtx = ctx.pyContext;
-
-            if (!setup_python_context(pyCtx, pythonScriptPath_))
-            {
-                spdlog::error("readout: Failed to set up Python context for script '{}'",
-                              pythonScriptPath_);
-                return 1;
-            }
-
-            spdlog::info("readout: successfully loaded Python script '{}'", pythonScriptPath_);
-
-            if (pyCtx.startCallback)
-            {
-                spdlog::debug("readout: calling Python start() callback");
-                pyCtx.startCallback(listfilePath_, pythonScriptArgs_);
-            }
-        }
-#endif
-
-        ReadoutCounters counters = {};
-        ReadoutCounters prevCounters = {};
-        counters.reset();
-        DataPacket dataPacket = {};
-
         spdlog::info("Replaying from {}", listfilePath_);
-
-        auto tStart = std::chrono::steady_clock::now();
-        auto tReport = tStart;
-#ifdef MESYTEC_MCPD_ENABLE_ROOT
-        auto tRootFlush = tStart;
-#endif
-
-        CountersReportInfo reportInfo;
-        reportInfo.flags = CountersReportInfo::All;
-
-        while (!listfile.eof() && !g_interrupted)
-        {
-            try
-            {
-                if (listfile.eof())
-                    break;
-
-                listfile.read(reinterpret_cast<char *>(&dataPacket), sizeof(dataPacket));
-            }
-            catch (const std::exception &e)
-            {
-                spdlog::error("replay: Error reading from listfile '{}': {}", listfilePath_,
-                              e.what());
-                return 1;
-            }
-
-            const auto eventCount = get_event_count(dataPacket);
-
-            if (printPacketSummary_)
-            {
-                spdlog::info("packet#{}: bufferLength={}, bufferType=0x{:04x}, bufferNumber={}, "
-                             "headerLength={}, runId={}, "
-                             "devStatus={}, deviceId={}, timestamp={:#0x}, eventCount={}",
-                             counters.packets, dataPacket.bufferLength, dataPacket.bufferType,
-                             dataPacket.bufferNumber, dataPacket.headerLength, dataPacket.runId,
-                             dataPacket.deviceStatus, dataPacket.deviceId,
-                             get_header_timestamp(dataPacket), eventCount);
-
-                spdlog::info(
-                    "  parameters: 0x{:012x}, {}, {}, {}", to_48bit_value(dataPacket.param[0]),
-                    to_48bit_value(dataPacket.param[1]), to_48bit_value(dataPacket.param[2]),
-                    to_48bit_value(dataPacket.param[3]));
-
-                spdlog::info("  packet contains {} events", eventCount);
-            }
-
-            if (printRawPacketData_)
-            {
-                print_raw_packet(dataPacket);
-            }
-
-            for (size_t ei = 0; ei < eventCount; ++ei)
-            {
-                auto event = decode_event(dataPacket, ei);
-
-                if (event.type <= EventType::MdllNeutron)
-                    ++counters.eventsByType[static_cast<unsigned>(event.type)];
-                else
-                    spdlog::error("replay: unknown event type {} in packet#{}",
-                                  static_cast<unsigned>(event.type), counters.packets);
-
-                if (printEventData_)
-                    spdlog::info("{}", to_string(event));
-            }
-
-#ifdef MESYTEC_MCPD_ENABLE_ROOT
-            if (rootHistoContext_.histoOutFile)
-                root_histos_process_packet(rootHistoContext_, dataPacket);
-#endif
-
-#ifdef MESYTEC_MCPD_ENABLE_PYTHON
-            python_context_handle_packet(ctx.pyContext, dataPacket);
-#endif
-
-            ++counters.packets;
-            counters.bytes += sizeof(dataPacket);
-            counters.events += eventCount;
-            ++counters.packetsByType[dataPacket.bufferType];
-
-            const auto now = std::chrono::steady_clock::now();
-
-#ifdef MESYTEC_MCPD_ENABLE_ROOT
-            if (rootHistoContext_.histoOutFile && rootFlushInterval_ms_ > 0)
-            {
-                auto elapsed = now - tRootFlush;
-
-                if (elapsed >= std::chrono::milliseconds(rootFlushInterval_ms_))
-                {
-                    rootHistoContext_.histoOutFile->Write("", TObject::kOverwrite);
-                    spdlog::debug("readout: flushed ROOT histograms to file");
-                    tRootFlush = now;
-                }
-            }
-#endif
-
-            if (reportInterval_ms_ > 0)
-            {
-                auto elapsed = now - tReport;
-
-                if (elapsed >= std::chrono::milliseconds(reportInterval_ms_))
-                {
-                    reportInfo.counters = counters;
-                    reportInfo.prevCounters = prevCounters;
-                    reportInfo.dt = std::chrono::duration_cast<std::chrono::microseconds>(elapsed);
-                    report_counters(reportInfo, "replay");
-                    fmt::print("\n");
-                    tReport = now;
-                    prevCounters = counters;
-                }
-            }
-        }
-
-#ifdef MESYTEC_MCPD_ENABLE_PYTHON
-        if (ctx.pyContext.stopCallback)
-        {
-            spdlog::debug("replay: calling Python stop() callback");
-            ctx.pyContext.stopCallback();
-        }
-#endif
-
-#ifdef MESYTEC_MCPD_ENABLE_ROOT
-        if (rootHistoContext_.histoOutFile)
-        {
-            root_histos_finalize(rootHistoContext_);
-            spdlog::debug("replay: flushed ROOT histograms to file");
-        }
-#endif
-
-        // final counters report over the whole run duration
-        {
-            const auto now = std::chrono::steady_clock::now();
-            auto elapsed = now - tStart;
-            reportInfo.counters = counters;
-            reportInfo.prevCounters = {};
-            reportInfo.dt = std::chrono::duration_cast<std::chrono::microseconds>(elapsed);
-            reportInfo.flags &= ~CountersReportInfo::ReportDeltas;
-            report_counters(reportInfo, "replay (full run)");
-            fmt::print("\n");
-        }
-
-        return 0;
+        return runLoop(ctx, "replay", std::move(source), {}, listfilePath_);
     }
 };
 
@@ -2612,10 +2375,16 @@ int main(int argc, char *argv[])
     }
 
     if (logDebug)
+    {
         spdlog::set_level(spdlog::level::debug);
+        set_global_log_level(spdlog::level::debug);
+    }
 
     if (logTrace)
+    {
         spdlog::set_level(spdlog::level::trace);
+        set_global_log_level(spdlog::level::trace);
+    }
 
     if (!showLogTimestamps)
         spdlog::set_pattern("[%^%l%$] %v");
