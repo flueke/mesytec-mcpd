@@ -10,6 +10,7 @@
 
 #include "mcpd_py_commands.h"
 #include "mcpd_py_lib.h"
+#include "mdll_daq.h"
 #include "util/logging.h"
 #include "util/pybind11_log.h"
 #include <mesytec-mcpd/mesytec-mcpd.h>
@@ -247,6 +248,93 @@ void init_py_module(py::module_ &m)
         .def(py::init<const std::string &, size_t>(),
              py::arg("filename"),
              py::arg("queue_size") = py_lib::DefaultQueueSize);
+
+    py::class_<MdllDaqCounters>(m, "MdllDaqCounters")
+        .def(py::init<>())
+        .def_readonly("packets", &MdllDaqCounters::packets)
+        .def_readonly("bytes", &MdllDaqCounters::bytes)
+        .def_readonly("timeouts", &MdllDaqCounters::timeouts)
+        .def_readonly("invalid_packets", &MdllDaqCounters::invalidPackets)
+        .def_readonly("non_mdll_packets", &MdllDaqCounters::nonMdllPackets)
+        .def_readonly("listfile_bytes", &MdllDaqCounters::listfileBytes);
+
+    py::class_<MdllDeviceStats>(m, "MdllDeviceStats")
+        .def(py::init<>())
+        .def_readonly("packets", &MdllDeviceStats::packets)
+        .def_readonly("bytes", &MdllDeviceStats::bytes)
+        .def_readonly("events", &MdllDeviceStats::events)
+        .def_readonly("neutron_events", &MdllDeviceStats::neutronEvents)
+        .def_readonly("trigger_events", &MdllDeviceStats::triggerEvents)
+        .def_readonly("packets_lost", &MdllDeviceStats::packetsLost)
+        .def_readonly("buffer_number_jumps", &MdllDeviceStats::bufferNumberJumps)
+        .def_readonly("last_buffer_number", &MdllDeviceStats::lastBufferNumber)
+        .def_readonly("last_device_status", &MdllDeviceStats::lastDeviceStatus)
+        .def_readonly("last_run_id", &MdllDeviceStats::lastRunId)
+        .def_readonly("last_header_timestamp", &MdllDeviceStats::lastHeaderTimestamp)
+        .def_property_readonly("last_params", [](const MdllDeviceStats &s)
+                               { return std::make_tuple(s.lastParams[0], s.lastParams[1],
+                                                        s.lastParams[2], s.lastParams[3]); });
+
+    // Device keys are exposed as (src_addr: int, device_id: int) tuples.
+    py::class_<MdllDaq>(m, "MdllDaq",
+                        "MDLL readout/replay with listfile writing, per device stats and "
+                        "histograms. No python code runs in the data path.")
+        .def(py::init<u16>(), py::arg("listen_port") = McpdDefaultPort)
+        .def("start_readout", &MdllDaq::startReadout, py::arg("listfile") = std::string(),
+             py::arg("overwrite") = false, py::call_guard<py::gil_scoped_release>())
+        .def("start_replay", &MdllDaq::startReplay, py::arg("listfile"),
+             py::call_guard<py::gil_scoped_release>())
+        .def("stop", &MdllDaq::stop, py::call_guard<py::gil_scoped_release>())
+        .def("is_running", &MdllDaq::isRunning)
+        .def("has_exception", &MdllDaq::hasException)
+        .def("rethrow_exception", &MdllDaq::rethrowException)
+        .def_property_readonly("listen_port", &MdllDaq::listenPort)
+        .def_property_readonly("local_port", &MdllDaq::localPort)
+        .def_property_readonly("socket_receive_buffer_size", &MdllDaq::socketReceiveBufferSize)
+        .def("get_counters", &MdllDaq::getCounters, py::call_guard<py::gil_scoped_release>())
+        .def("get_device_stats", [](const MdllDaq &daq)
+            {
+                std::map<MdllDeviceKey, MdllDeviceStats> stats;
+                {
+                    py::gil_scoped_release release;
+                    stats = daq.getDeviceStats();
+                }
+                py::dict result;
+                for (const auto &[key, s]: stats)
+                    result[py::make_tuple(key.srcAddr, key.deviceId)] = s;
+                return result;
+            })
+        .def("get_histograms", [](const MdllDaq &daq, u32 srcAddr, u8 deviceId) -> py::object
+            {
+                std::optional<MdllHistograms> h;
+                {
+                    py::gil_scoped_release release;
+                    h = daq.getHistograms(MdllDeviceKey{srcAddr, deviceId});
+                }
+                if (!h)
+                    return py::none();
+
+                auto to_array = [](std::vector<u64> &&v, std::vector<py::ssize_t> shape)
+                {
+                    auto heap = new std::vector<u64>(std::move(v));
+                    py::capsule owner(heap, [](void *p) { delete static_cast<std::vector<u64> *>(p); });
+                    return py::array_t<u64>(shape, heap->data(), owner);
+                };
+
+                py::dict result;
+                result["amplitude"] = to_array(std::move(h->amplitude), {MdllHistograms::AmplitudeBins});
+                result["x"] = to_array(std::move(h->x), {MdllHistograms::XBins});
+                result["y"] = to_array(std::move(h->y), {MdllHistograms::YBins});
+                result["xy"] = to_array(std::move(h->xy), {MdllHistograms::YBins, MdllHistograms::XBins});
+                return result;
+            }, py::arg("src_addr"), py::arg("device_id"),
+            "Returns copies of the device histograms as a dict of numpy arrays "
+            "(amplitude, x, y, xy[y, x]) or None if the device is unknown.")
+        .def("clear_histograms", &MdllDaq::clearHistograms, py::call_guard<py::gil_scoped_release>())
+        .def("reset_stats", &MdllDaq::resetStats, py::call_guard<py::gil_scoped_release>())
+        .def("clear_devices", &MdllDaq::clearDevices, py::call_guard<py::gil_scoped_release>());
+
+    m.def("format_ipv4", &format_ipv4, py::arg("addr"), "Format a host byte order IPv4 address.");
 
     // Command/setup API: a thin, exception-based wrapper around the
     // mcpd_*/mdll_*/mpsd_*/mstd_* free functions, one verb per mcpd-cli

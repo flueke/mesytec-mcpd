@@ -39,7 +39,7 @@ generate_export_header(mesytec-mcpd)
 
 if (MCPD_ENABLE_PYTHON)
     find_package(pybind11 CONFIG QUIET)
-    add_library(mesytec-mcpd-python-bindings OBJECT mesytec_mcpd_py.cc mcpd_py_lib.cc mcpd_py_commands.cc)
+    add_library(mesytec-mcpd-python-bindings OBJECT mesytec_mcpd_py.cc mcpd_py_lib.cc mcpd_py_commands.cc mdll_daq.cc)
     target_link_libraries(mesytec-mcpd-python-bindings PRIVATE pybind11::module mesytec-mcpd spdlog::spdlog)
     set_target_properties(mesytec-mcpd-python-bindings PROPERTIES POSITION_INDEPENDENT_CODE ON CXX_VISIBILITY_PRESET hidden)
     if (MSYS OR NOT WIN32)
@@ -159,7 +159,7 @@ if (MCPD_BUILD_TESTS)
 
     if (MCPD_ENABLE_PYTHON AND pybind11_FOUND)
         add_gtest(test_mcpd_py_lib mcpd_py_lib.test.cc)
-        target_sources(test_mcpd_py_lib PRIVATE mesytec_mcpd_py.cc mcpd_py_lib.cc mcpd_py_commands.cc mcpd_py_embed.cc)
+        target_sources(test_mcpd_py_lib PRIVATE mesytec_mcpd_py.cc mcpd_py_lib.cc mcpd_py_commands.cc mdll_daq.cc mcpd_py_embed.cc)
         target_link_libraries(test_mcpd_py_lib PRIVATE pybind11::embed pybind11::module mesytec-mcpd spdlog::spdlog)
         if (MSYS OR NOT WIN32)
             target_compile_options(test_mcpd_py_lib PRIVATE -Wno-attributes) # see mesytec-mcpd-python-bindings above

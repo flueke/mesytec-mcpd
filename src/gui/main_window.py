@@ -1,562 +1,580 @@
+from __future__ import annotations
+
+import datetime
+import html
 import logging
-import queue
 import sys
-from time import perf_counter
+from pathlib import Path
+from time import monotonic
 from typing import Optional
 
-import boost_histogram as bh
 import mesytec_mcpd as mcpd
-import numpy as np
 import pyqtgraph as pg
 import pyqtgraph.console
 from pyqtgraph.dockarea.Dock import Dock
 from pyqtgraph.dockarea.DockArea import DockArea
-from pyqtgraph.parametertree import Parameter, ParameterTree
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 from pyqtgraph.Qt.QtCore import Signal, Slot
-from pyqtgraph.Qt.QtGui import QCloseEvent
-from rich.logging import RichHandler
 
+from .commands import format_result
+from .config import DeviceConfig, Setup
+from .device_panel import DevicePanel
+from .device_worker import DeviceWorkers
+from .histo_view import HistogramView
+from .stats import DeviceRow, StatsTracker
 
-# Taken from the pyqtgraph examples.utils file.
-class FrameCounter(QtCore.QObject):
-    sigFpsUpdate = QtCore.Signal(object)
+log = logging.getLogger("mdll_gui")
 
-    def __init__(self, interval=1000, parent=None):
-        super().__init__(parent)
-        self.count = 0
-        self.last_update = 0
-        self.interval = interval
+StatsInterval_ms = 500
+HistoInterval_ms = 250
+DrainDelay_ms = 300
 
-    def update(self, count=1):
-        self.count += count
 
-        if self.last_update == 0:
-            self.last_update = perf_counter()
-            self.startTimer(self.interval)
+def default_setup_path() -> Path:
+    import platformdirs
 
-    def timerEvent(self, evt):
-        now = perf_counter()
-        elapsed = now - self.last_update
-        fps = self.count / elapsed
-        self.last_update = now
-        self.count = 0
-        self.sigFpsUpdate.emit(fps)
+    return platformdirs.user_config_path("mesytec-mcpd") / "mdll_gui_setup.json"
 
 
-class ReadoutWorker(QtCore.QObject):
-    """
-    Wraps the c++ mcpd.Readout object in a QObject to be used in a dedicated
-    thread.  Polls for new packets in a tight loop and emits the 'new_packets'
-    signal when new data is available. Also emits 'started' and 'stopped'
-    signals when the readout is started and stopped.
-    """
+class LogEmitter(QtCore.QObject):
+    message = Signal(int, str)
 
-    new_packets = Signal(list)
-    started = Signal()
-    stopped = Signal()
 
-    def __init__(self, readout: mcpd.Readout):
-        super().__init__()
-        self.readout = readout
-        self.running = False
-
-    @Slot()
-    def run(self):
-        try:
-            self.running = True
-            logging.debug(
-                f"ReadoutWorker: calling readout.start(), thread={QtCore.QThread.currentThread()}"
-            )
-            self.readout.start()
-            self.started.emit()
-
-            input_queue = self.readout.get_queue()
-
-            logging.debug("ReadoutWorker: entering readout loop")
-
-            while self.running:
-                try:
-                    self.readout.rethrow_exception()
-                except Exception as e:
-                    logging.error(f"ReadoutWorker: exception in readout thread, stopping readout ({e=})")
-                    break
-
-                try:
-                    aug_packet = input_queue.get(timeout=10)
-                    self.new_packets.emit([aug_packet])
-                except queue.ShutDown:
-                    logging.info("ReadoutWorker: input queue shutdown, stopping readout")
-                    break
-
-            logging.debug("ReadoutWorker: left loop, stopping readout")
-
-        except Exception as e:
-            logging.error(f"ReadoutWorker: exception in readout thread, stopping readout (e={e})")
-        finally:
-            logging.info("ReadoutWorker: stopping readout in 'finally'")
-            self.readout.stop()
-            self.stopped.emit()
-
-    @Slot()
-    def stop(self):
-        logging.debug("ReadoutWorker: stop requested")
-        self.running = False
-
-
-class McpdHistos(QtCore.QObject):
-    show_histogram = Signal(bh.Histogram)
-
-    def __init__(self, device_name: str):
-        super().__init__()
-        self.device_name = device_name
-
-    def update_params(self):
-        pass
-
-    def process_packet(self, packet: mcpd.DataPacket):
-        pass
-
-
-class MDLLHistos(QtCore.QObject):
-    show_histogram = Signal(bh.Histogram)
-
-    def __init__(self, device_name: str):
-        super().__init__()
-        self.device_name = device_name
-
-        def make_axis(max_val):
-            return bh.axis.Regular(max_val, 0, max_val)
-
-        self.amp_hist = bh.Histogram(make_axis(mcpd.constants.mdll_neutron.amplitude_max))
-        self.x_pos_hist = bh.Histogram(make_axis(mcpd.constants.mdll_neutron.x_pos_max))
-        self.y_pos_hist = bh.Histogram(make_axis(mcpd.constants.mdll_neutron.y_pos_max))
-        self.xy_pos_hist = bh.Histogram(
-            make_axis(mcpd.constants.mdll_neutron.x_pos_max),
-            make_axis(mcpd.constants.mdll_neutron.y_pos_max),
-        )
-
-        def make_histo_params(name, histo):
-            ret = Parameter.create(name=name, type="group")
-            ret.addChildren(
-                [
-                    Parameter.create(name="Entries", type="int", readonly=True),
-                    Parameter.create(name="Open", type="action", value=histo),
-                ]
-            )
-            return ret
-
-        children = [
-            make_histo_params("Amplitude", self.amp_hist),
-            make_histo_params("X Position", self.x_pos_hist),
-            make_histo_params("Y Position", self.y_pos_hist),
-            make_histo_params("XY Position", self.xy_pos_hist),
-        ]
-
-        self.root_param = Parameter.create(
-            name=f"{device_name} Histograms", type="group", children=children
-        )
-
-        def on_child_activated(child):
-            if isinstance(child.value(), bh.Histogram):
-                self.show_histogram.emit(child.value())
-
-        def connect_sig_activated(param):
-            for child in param.children():
-                if hasattr(child, "sigActivated"):
-                    child.sigActivated.connect(on_child_activated)
-                connect_sig_activated(child)
-
-        connect_sig_activated(self.root_param)
-
-    def update_params(self):
-        self.root_param.child("Amplitude", "Entries").setValue(self.amp_hist.sum())
-        self.root_param.child("X Position", "Entries").setValue(self.x_pos_hist.sum())
-        self.root_param.child("Y Position", "Entries").setValue(self.y_pos_hist.sum())
-        self.root_param.child("XY Position", "Entries").setValue(self.xy_pos_hist.sum())
-
-    def process_packet(self, packet: mcpd.DataPacket):
-        if packet.buffer_type != mcpd.constants.buffer_types.MdllDataBufferType:
-            raise RuntimeError(f"Invalid packet type for MDLLHistos: {packet.buffer_type:#06x}")
-
-        for event in packet.get_decoded_events():
-            if neutron := event.mdll_neutron():
-                self.amp_hist.fill(neutron.amplitude)
-                self.x_pos_hist.fill(neutron.x_pos)
-                self.y_pos_hist.fill(neutron.y_pos)
-                self.xy_pos_hist.fill(neutron.x_pos, neutron.y_pos)
-
-
-class DeviceThing(QtCore.QObject):
-    show_histogram = Signal(bh.Histogram)
-
-    def __init__(self, name: str):
-        super().__init__()
-        self.packet_counter = FrameCounter(parent=self)
-        self.event_counter = FrameCounter(parent=self)
-        self.packets_per_second = 0
-        self.events_per_second = 0
-        self.root_param = self._make_params(name)
-
-        self.mdll_histos: Optional[MDLLHistos] = None
-        self.mcpd_histos: Optional[McpdHistos] = None
-
-        def update_packet_counter(fps):
-            self.packets_per_second = fps
-            self._update_params()  # TODO: maybe move this out so that fps update and gui update are decoupled
-
-        def update_event_counter(fps):
-            self.events_per_second = fps
-            self._update_params()  # TODO: maybe move this out so that fps update and gui update are decoupled
-
-        self.packet_counter.sigFpsUpdate.connect(update_packet_counter)
-        self.event_counter.sigFpsUpdate.connect(update_event_counter)
-
-    def _make_params(self, name: str) -> Parameter:
-        return Parameter.create(
-            name=name,
-            type="group",
-            children=[
-                Parameter.create(name="Packets/s", type="float", readonly=True),
-                Parameter.create(name="Events/s", type="float", readonly=True),
-            ],
-        )
-
-    def _update_params(self):
-        self.root_param.param("Packets/s").setValue(self.packets_per_second)
-        self.root_param.param("Events/s").setValue(self.events_per_second)
-        if self.mdll_histos is not None:
-            self.mdll_histos.update_params()
-        if self.mcpd_histos is not None:
-            self.mcpd_histos.update_params()
-
-    def process_packet(self, packet: mcpd.DataPacket):
-        self.packet_counter.update()
-        self.event_counter.update(packet.event_count())
-
-        if packet.buffer_type == mcpd.constants.buffer_types.McpdDataBufferType:
-            if self.mcpd_histos is None:
-                self.mcpd_histos = McpdHistos(self.root_param.name())
-                self.mcpd_histos.show_histogram.connect(self.show_histogram)
-                self.root_param.addChild(self.mcpd_histos.root_param)
-
-            self.mcpd_histos.process_packet(packet)
-
-        elif packet.buffer_type == mcpd.constants.buffer_types.MdllDataBufferType:
-            if self.mdll_histos is None:
-                self.mdll_histos = MDLLHistos(self.root_param.name())
-                self.mdll_histos.show_histogram.connect(self.show_histogram)
-                self.root_param.addChild(self.mdll_histos.root_param)
-
-            self.mdll_histos.process_packet(packet)
-
-
-class PacketProcessor(QtCore.QObject):
-    device_thing_added = Signal(object)
-
-    def __init__(self, readout_tree: ParameterTree):
-        super().__init__()
-
-        self.readout_tree = readout_tree
-        self.device_things = dict()  # device_id -> DeviceThing
-        self.packetCounter = FrameCounter()
-        self.eventCounter = FrameCounter()
-        self.packetsPerSecond = 0
-        self.eventsPerSecond = 0
-        self.totalPackets = 0
-        self.totalEvents = 0
-
-        def update_packet_counter(fps):
-            self.packetsPerSecond = fps
-
-        def update_event_counter(fps):
-            self.eventsPerSecond = fps
-
-        self.packetCounter.sigFpsUpdate.connect(update_packet_counter)
-        self.eventCounter.sigFpsUpdate.connect(update_event_counter)
-
-    @Slot()
-    def process_packets(self, packets: list[mcpd.AugmentedDataPacket]):
-
-        self.packetCounter.update(len(packets))
-
-        for aug_packet in packets:
-            packet = aug_packet.packet
-            self.eventCounter.update(packet.event_count())
-
-            if packet.device_id not in self.device_things:
-                # logging.info(f"{packet.buffer_type=:#06x}, {packet.device_id=}, {packet.device_status=}")
-                device_thing = None
-                if packet.buffer_type == 0x0001:  # MCPD
-                    device_thing = DeviceThing(name=f"MCPD {packet.device_id}")
-                elif packet.buffer_type == 0x0002:  # MDLL
-                    device_thing = DeviceThing(name=f"MDLL {packet.device_id}")
-
-                if device_thing is not None:
-                    self.device_things[packet.device_id] = device_thing
-                    self.readout_tree.addParameters(device_thing.root_param)
-                    self.device_thing_added.emit(device_thing)
-
-            device_thing = self.device_things.get(packet.device_id)
-            device_thing.process_packet(packet)
-
-
-class ReadoutControlWidget(QtWidgets.QWidget):
-    start = Signal()
-    stop = Signal()
-
+class QtLogHandler(logging.Handler):
     def __init__(self):
         super().__init__()
-        layout = QtWidgets.QVBoxLayout()
-        self.start_button = QtWidgets.QPushButton("Start Readout")
-        self.stop_button = QtWidgets.QPushButton("Stop Readout")
-        self.stop_button.setEnabled(False)
-        self.label_status = QtWidgets.QLabel("Status: Stopped")
-        self.label_stats = QtWidgets.QLabel("Stats: N/A")
-        layout.addWidget(self.start_button)
-        layout.addWidget(self.stop_button)
-        layout.addWidget(self.label_status)
-        layout.addWidget(self.label_stats)
-        self.setLayout(layout)
-        self.start_button.clicked.connect(self.start)
-        self.stop_button.clicked.connect(self.stop)
+        self.emitter = LogEmitter()
+        self.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s", "%H:%M:%S"))
+
+    def emit(self, record):
+        self.emitter.message.emit(record.levelno, self.format(record))
+
+
+class DaqPanel(QtWidgets.QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.spin_port = QtWidgets.QSpinBox()
+        self.spin_port.setRange(0, 65535)
+        self.cb_listfile = QtWidgets.QCheckBox("Write listfile")
+        self.le_listdir = QtWidgets.QLineEdit()
+        self.le_listdir.setPlaceholderText("listfile directory (default: current directory)")
+        self.pb_listdir = QtWidgets.QPushButton("...")
+        self.pb_listdir.setMaximumWidth(30)
+        self.spin_run_id = QtWidgets.QSpinBox()
+        self.spin_run_id.setRange(0, 65535)
+        self.cb_clear_on_start = QtWidgets.QCheckBox("Clear histograms on start")
+        self.cb_clear_on_start.setChecked(True)
+
+        self.pb_start_run = QtWidgets.QPushButton("Start Run")
+        self.pb_stop_run = QtWidgets.QPushButton("Stop Run")
+        self.pb_continue = QtWidgets.QPushButton("Continue")
+        self.pb_reset = QtWidgets.QPushButton("Reset DAQ")
+        self.pb_start_run.setToolTip(
+            "Start readout, send the run id to all enabled devices and start_daq to the timing master")
+        self.pb_stop_run.setToolTip("Send stop_daq to the timing master, then stop the readout")
+        self.pb_continue.setToolTip("Send continue_daq to the timing master")
+        self.pb_reset.setToolTip("Send reset_daq to all enabled devices")
+        self.pb_start_readout = QtWidgets.QPushButton("Start Readout Only")
+        self.pb_start_readout.setToolTip("Receive data without sending DAQ commands to devices")
+        self.pb_stop_readout = QtWidgets.QPushButton("Stop Readout")
+        self.pb_replay = QtWidgets.QPushButton("Replay...")
+        self.pb_clear = QtWidgets.QPushButton("Clear Histograms")
+
+        self.label_state = QtWidgets.QLabel("Idle")
+        self.label_counters = QtWidgets.QLabel()
+        self.label_counters.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+
+        listdir = QtWidgets.QHBoxLayout()
+        listdir.addWidget(self.le_listdir)
+        listdir.addWidget(self.pb_listdir)
+
+        form = QtWidgets.QFormLayout()
+        form.addRow("Data port", self.spin_port)
+        form.addRow(self.cb_listfile)
+        form.addRow(listdir)
+        form.addRow("Run id", self.spin_run_id)
+        form.addRow(self.cb_clear_on_start)
+
+        grid = QtWidgets.QGridLayout()
+        grid.addWidget(self.pb_start_run, 0, 0)
+        grid.addWidget(self.pb_stop_run, 0, 1)
+        grid.addWidget(self.pb_continue, 1, 0)
+        grid.addWidget(self.pb_reset, 1, 1)
+        grid.addWidget(self.pb_start_readout, 2, 0)
+        grid.addWidget(self.pb_stop_readout, 2, 1)
+        grid.addWidget(self.pb_replay, 3, 0)
+        grid.addWidget(self.pb_clear, 3, 1)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.addLayout(form)
+        layout.addLayout(grid)
+        layout.addWidget(self.label_state)
+        layout.addWidget(self.label_counters)
+        layout.addStretch(1)
+
+    def set_state(self, state: str):
+        idle = state == "idle"
+        self.pb_start_run.setEnabled(idle)
+        self.pb_start_readout.setEnabled(idle)
+        self.pb_replay.setEnabled(idle)
+        self.pb_stop_run.setEnabled(state == "readout")
+        self.pb_stop_readout.setEnabled(not idle)
+        self.spin_port.setEnabled(idle)
+        self.cb_listfile.setEnabled(idle)
+        self.le_listdir.setEnabled(idle)
+
+
+class StatsTable(QtWidgets.QTableWidget):
+    Columns = (
+        "Device", "Source", "Id", "Packets", "Packets/s", "Neutrons/s", "MB/s",
+        "Lost", "Lost/s", "Seq Jumps", "Triggers", "Run", "Status", "Buffer#", "Notes",
+    )
+
+    def __init__(self, parent=None):
+        super().__init__(0, len(self.Columns), parent)
+        self.setHorizontalHeaderLabels(self.Columns)
+        self.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.verticalHeader().hide()
+        self.horizontalHeader().setStretchLastSection(True)
+
+    def update_rows(self, rows: list[DeviceRow]):
+        self.setRowCount(len(rows))
+        warn = QtGui.QBrush(QtGui.QColor(255, 120, 120, 90))
+        for r, row in enumerate(rows):
+            st = row.stats
+            values = (
+                row.config.name if row.config else "?",
+                row.ip,
+                str(row.device_id),
+                str(st.packets),
+                f"{row.packet_rate:.0f}",
+                f"{row.event_rate:.0f}",
+                f"{row.byte_rate / 1e6:.2f}",
+                str(st.packets_lost),
+                f"{row.loss_rate:.0f}",
+                str(st.buffer_number_jumps),
+                str(st.trigger_events),
+                str(st.last_run_id),
+                f"{st.last_device_status:#04x}",
+                str(st.last_buffer_number),
+                "; ".join(row.notes),
+            )
+            for c, text in enumerate(values):
+                item = self.item(r, c)
+                if item is None:
+                    item = QtWidgets.QTableWidgetItem()
+                    self.setItem(r, c, item)
+                item.setText(text)
+                bad = (
+                    bool(row.notes)
+                    or (c in (7, 8) and st.packets_lost > 0)
+                    or (c == 9 and st.buffer_number_jumps > 0)
+                )
+                item.setBackground(warn if bad else QtGui.QBrush())
+        self.resizeColumnsToContents()
 
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, readout: mcpd.Readout):
+    def __init__(self, setup: Setup, setup_path: Optional[Path]):
         super().__init__()
-        self.readout = readout
-        self.setup_ui()
-        self.setup_readout()
+        self.setup = setup
+        self.setup_path = setup_path
+        self.daq = mcpd.MdllDaq(setup.data_port)
+        self.state = "idle"  # idle | readout | replay
+        self.stats_tracker = StatsTracker()
+        self.rows: list[DeviceRow] = []
+        self.workers = DeviceWorkers(self)
+        self.histo_views: list[tuple[Dock, HistogramView]] = []
+        self._pending_stop: set[int] = set()
+        self._current_listfile = ""
 
-    def setup_ui(self):
-        self.dockArea = DockArea()
-        self.setCentralWidget(self.dockArea)
+        self._setup_ui()
+        self._load_setup_into_ui()
+        self._set_state("idle")
+
+        self.workers.finished.connect(self._on_command_finished)
+
+        self.stats_timer = QtCore.QTimer(self)
+        self.stats_timer.timeout.connect(self._update_stats)
+        self.stats_timer.start(StatsInterval_ms)
+        self.histo_timer = QtCore.QTimer(self)
+        self.histo_timer.timeout.connect(self._update_histograms)
+        self.histo_timer.start(HistoInterval_ms)
+
+    # UI setup
+    def _setup_ui(self):
+        self.setWindowTitle("MDLL DAQ")
+        self.resize(1600, 1000)
+        self.dock_area = DockArea()
+        self.setCentralWidget(self.dock_area)
         self.setStatusBar(QtWidgets.QStatusBar())
-        self.setMenuBar(QtWidgets.QMenuBar())
 
-        menuFile = self.menuBar().addMenu("&File")
-        menuFile.addAction("E&xit", self.close, QtCore.Qt.CTRL | QtCore.Qt.Key_Q)
+        menu_file = self.menuBar().addMenu("&File")
+        menu_file.addAction("&Open Setup...", self._open_setup)
+        menu_file.addAction("&Save Setup", self._save_setup, QtGui.QKeySequence.StandardKey.Save)
+        menu_file.addAction("Save Setup &As...", self._save_setup_as)
+        menu_file.addSeparator()
+        menu_file.addAction("E&xit", self.close, QtGui.QKeySequence.StandardKey.Quit)
+        menu_view = self.menuBar().addMenu("&View")
+        menu_view.addAction("New &Histogram View", lambda: self._add_histo_view("xy"))
 
-        self.setWindowTitle("MPSD DAQ")
-        self.resize(800, 600)
+        self.daq_panel = DaqPanel()
+        self.device_panel = DevicePanel(self.setup, self.workers)
+        self.stats_table = StatsTable()
 
-        self.dock_readout_control = Dock("Readout Control")
-        self.dock_readout_devices = Dock("Readout Devices")
-        self.dock_plots = Dock("Plot")
-        self.dock_console = Dock("Console")
-        self.dock_log = Dock("Log")
+        self.log_view = QtWidgets.QPlainTextEdit()
+        self.log_view.setReadOnly(True)
+        self.log_view.setMaximumBlockCount(10000)
+        font = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont)
+        self.log_view.setFont(font)
+        self.log_handler = QtLogHandler()
+        self.log_handler.emitter.message.connect(self._append_log)
+        logging.getLogger().addHandler(self.log_handler)
 
-        self.dockArea.addDock(self.dock_readout_control, "left")
-        self.dockArea.addDock(self.dock_readout_devices, "bottom", self.dock_readout_control)
-        self.dockArea.addDock(self.dock_console, "bottom")
-        self.dockArea.addDock(self.dock_plots, "right")
-        self.dockArea.addDock(self.dock_log, "bottom", self.dock_plots)
-
-        self.readout_control_widget = ReadoutControlWidget()
-        self.dock_readout_control.addWidget(self.readout_control_widget)
-        self.readout_control_widget.start.connect(self.start_readout)
-        self.readout_control_widget.stop.connect(self.stop_readout)
-
-        self.readout_root = Parameter.create(name="Readout Devices", type="group", children=[])
-        self.readout_tree = ParameterTree()
-        self.readout_tree.setParameters(self.readout_root, showTop=False)
-        self.dock_readout_devices.addWidget(self.readout_tree)
-
-        self.console = pg.console.ConsoleWidget(
-            namespace={"readout": self.readout, "mainwin": self}
+        self.console = pyqtgraph.console.ConsoleWidget(
+            namespace={"mcpd": mcpd, "daq": self.daq, "mainwin": self, "setup": self.setup}
         )
+
+        self.dock_daq = Dock("DAQ", size=(350, 300))
+        self.dock_daq.addWidget(self.daq_panel)
+        self.dock_devices = Dock("Devices", size=(350, 700))
+        self.dock_devices.addWidget(self.device_panel)
+        self.dock_stats = Dock("Statistics", size=(1200, 200))
+        self.dock_stats.addWidget(self.stats_table)
+        self.dock_log = Dock("Log", size=(1200, 200))
+        self.dock_log.addWidget(self.log_view)
+        self.dock_console = Dock("Console", size=(1200, 200))
         self.dock_console.addWidget(self.console)
 
-        # log widget
-        self.log_widget = QtWidgets.QTextEdit()
-        self.log_widget.setReadOnly(True)
-        self.log_widget.document().setMaximumBlockCount(10000)
-        self.log_widget.setLineWrapMode(QtWidgets.QTextEdit.WidgetWidth)
-        log_font = QtGui.QFont("Roboto Mono", 8)
-        log_font.setStyleHint(QtGui.QFont.StyleHint.Monospace)
-        self.log_widget.setFont(log_font)
-        self.log_widget.append("Welcome to the MPSD DAQ application!")
+        self.dock_area.addDock(self.dock_daq, "left")
+        self.dock_area.addDock(self.dock_devices, "bottom", self.dock_daq)
+        self.dock_area.addDock(self.dock_stats, "right")
+        self.dock_area.addDock(self.dock_log, "above", self.dock_stats)
+        self.dock_area.addDock(self.dock_console, "above", self.dock_log)
+        self.dock_stats.raiseDock()
 
-        self.dock_log.addWidget(self.log_widget)
-        # end of log widget
+        self._add_histo_view("xy")
+        self._add_histo_view("amplitude", "right")
 
-        # Simple plot widget for 1d histograms
-        self.plot_widget = pg.PlotWidget()
+        dp = self.daq_panel
+        dp.pb_start_run.clicked.connect(self.start_run)
+        dp.pb_stop_run.clicked.connect(self.stop_run)
+        dp.pb_continue.clicked.connect(self.continue_run)
+        dp.pb_reset.clicked.connect(lambda: self._send_to_enabled("reset_daq"))
+        dp.pb_start_readout.clicked.connect(lambda: self.start_readout(write_listfile=False))
+        dp.pb_stop_readout.clicked.connect(self.stop_readout)
+        dp.pb_replay.clicked.connect(self._start_replay)
+        dp.pb_clear.clicked.connect(self._clear_histograms)
+        dp.pb_listdir.clicked.connect(self._choose_listdir)
+        dp.spin_port.valueChanged.connect(lambda v: setattr(self.setup, "data_port", v))
+        dp.cb_listfile.toggled.connect(lambda v: setattr(self.setup, "write_listfile", v))
+        dp.le_listdir.textChanged.connect(lambda v: setattr(self.setup, "listfile_dir", v))
 
-        # Separate widget for 2d histograms plotted into an ImageItem
-        self.plot_widget2d = pg.PlotWidget()
-        plot_item = self.plot_widget2d.getPlotItem()
-        plot_item.setLabel("bottom", "X")
-        plot_item.setLabel("left", "Y")
-        self.plt2d_img = pg.ImageItem()
-        self.plt2d_colorbar = pg.ColorBarItem(label="Counts", interactive=False, colorMap="viridis")
-        self.plt2d_colorbar.setImageItem(self.plt2d_img)
-        plot_item.addItem(self.plt2d_img)
-        plot_item.layout.addItem(self.plt2d_colorbar, 1, 2)
-
-        self.dock_plots.addWidget(self.plot_widget)
-        self.dock_plots.addWidget(self.plot_widget2d)
-        self.current_histo: Optional[bh.Histogram] = None
-        self.current_histo2d: Optional[bh.Histogram] = None
-        self.h1d_line = None  # type: Optional[pg.PlotDataItem]
-
-        logging.debug(f"MainWindow thread={QtCore.QThread.currentThread()}")
-
-    def setup_readout(self):
-        self.readout_worker = ReadoutWorker(self.readout)
-        self.readout_thread = QtCore.QThread()
-        self.readout_thread.setObjectName("ReadoutThread")
-        self.readout_worker.moveToThread(self.readout_thread)
-
-        self.readout_thread.started.connect(self.readout_worker.run)
-        self.readout_worker.stopped.connect(self.readout_thread.quit)
-
-        self.packet_processor = PacketProcessor(self.readout_tree)
-        self.readout_worker.new_packets.connect(self.packet_processor.process_packets)
-
-        def on_readout_started():
-            self.statusBar().showMessage("Readout started")
-            logging.info("Readout started")
-            self.readout_control_widget.label_status.setText("Status: Running")
-            self.readout_control_widget.start_button.setEnabled(False)
-            self.readout_control_widget.stop_button.setEnabled(True)
-
-        def on_readout_stopped():
-            self.statusBar().showMessage("Readout stopped")
-            logging.info("Readout stopped, stopping readout thread")
-            self.readout_control_widget.label_status.setText("Status: Stopped")
-            self.readout_control_widget.start_button.setEnabled(True)
-            self.readout_control_widget.stop_button.setEnabled(False)
-
-        self.readout_worker.started.connect(on_readout_started)
-        self.readout_worker.stopped.connect(on_readout_stopped)
-
-        def on_device_thing_added(device_thing):
-            logging.info(f"Device thing added: {device_thing.root_param.name()}")
-            device_thing.show_histogram.connect(self.show_histogram)
-
-        self.packet_processor.device_thing_added.connect(on_device_thing_added)
-
-    @Slot()
-    def start_readout(self):
-        if not self.readout_thread.isRunning():
-            self.readout_thread.start()
+    def _add_histo_view(self, histo_type: str, position: str = "bottom"):
+        view = HistogramView(histo_type)
+        n = len(self.histo_views)
+        dock = Dock(f"Histogram {n}", size=(800, 500), closable=n > 0)
+        dock.addWidget(view)
+        if self.histo_views:
+            self.dock_area.addDock(dock, position, self.histo_views[-1][0])
         else:
-            logging.warning("Readout thread is already running")
+            self.dock_area.addDock(dock, "top", self.dock_stats)
+        self.histo_views.append((dock, view))
+        dock.sigClosed.connect(self._on_histo_dock_closed)
+        view.set_devices(self._device_choices())
+        view.selection_changed.connect(self._update_histograms)
 
-    @Slot()
+    def _on_histo_dock_closed(self, dock):
+        self.histo_views = [(d, v) for d, v in self.histo_views if d is not dock]
+
+    def _load_setup_into_ui(self):
+        dp = self.daq_panel
+        dp.spin_port.setValue(self.setup.data_port)
+        dp.cb_listfile.setChecked(self.setup.write_listfile)
+        dp.le_listdir.setText(self.setup.listfile_dir)
+        self.device_panel.set_setup(self.setup)
+        self.console.localNamespace["setup"] = self.setup
+        self.setWindowTitle(f"MDLL DAQ - {self.setup_path}" if self.setup_path else "MDLL DAQ")
+
+    @Slot(int, str)
+    def _append_log(self, level: int, text: str):
+        if level >= logging.WARNING:
+            color = "#d03030" if level >= logging.ERROR else "#c08000"
+            self.log_view.appendHtml(f'<span style="color:{color}">{html.escape(text)}</span>')
+        else:
+            self.log_view.appendPlainText(text)
+
+    def _set_state(self, state: str):
+        self.state = state
+        self.daq_panel.set_state(state)
+        text = {"idle": "Idle", "readout": "Readout running", "replay": "Replay running"}[state]
+        if state == "readout" and self._current_listfile:
+            text += f"\nListfile: {self._current_listfile}"
+        self.daq_panel.label_state.setText(text)
+        self.statusBar().showMessage(text.splitlines()[0])
+
+    # Setup persistence
+    def _open_setup(self):
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open Setup", str(self.setup_path or ""), "Setup (*.json)")
+        if not path:
+            return
+        try:
+            self.setup = Setup.load(Path(path))
+        except Exception as e:
+            log.error(f"Failed to load setup {path}: {e}")
+            return
+        self.setup_path = Path(path)
+        self._load_setup_into_ui()
+        log.info(f"Loaded setup {path}")
+
+    def _save_setup(self):
+        if self.setup_path is None:
+            return self._save_setup_as()
+        try:
+            self.setup.save(self.setup_path)
+            log.info(f"Saved setup to {self.setup_path}")
+        except Exception as e:
+            log.error(f"Failed to save setup {self.setup_path}: {e}")
+
+    def _save_setup_as(self):
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save Setup", str(self.setup_path or ""), "Setup (*.json)")
+        if path:
+            self.setup_path = Path(path)
+            self._save_setup()
+            self._load_setup_into_ui()
+
+    def _choose_listdir(self):
+        path = QtWidgets.QFileDialog.getExistingDirectory(self, "Listfile Directory", self.setup.listfile_dir)
+        if path:
+            self.daq_panel.le_listdir.setText(path)
+
+    # Readout and run control
+    def _ensure_daq_port(self):
+        if self.daq.listen_port != self.setup.data_port:
+            self.daq = mcpd.MdllDaq(self.setup.data_port)
+            self.console.localNamespace["daq"] = self.daq
+            self.stats_tracker.reset()
+
+    def _make_listfile_path(self) -> str:
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        name = f"mdll_run{self.daq_panel.spin_run_id.value():05d}_{ts}.mcpdlst"
+        return str(Path(self.setup.listfile_dir or ".") / name)
+
+    def start_readout(self, write_listfile: bool) -> bool:
+        self._ensure_daq_port()
+        self._current_listfile = self._make_listfile_path() if write_listfile else ""
+        try:
+            self.daq.start_readout(self._current_listfile)
+        except Exception as e:
+            log.error(f"Failed to start readout: {e}")
+            self._current_listfile = ""
+            return False
+        log.info(f"Readout started on port {self.daq.local_port}"
+                 + (f", writing {self._current_listfile}" if self._current_listfile else ""))
+        self._set_state("readout")
+        return True
+
     def stop_readout(self):
-        self.readout_worker.stop()
-        if self.readout_thread.isRunning():
-            self.readout_thread.quit()
-            self.readout_thread.wait()
+        self.daq.stop()
+        log.info("Readout stopped" + (f", listfile {self._current_listfile}" if self._current_listfile else ""))
+        self._current_listfile = ""
+        self._set_state("idle")
+        self._update_stats()
+        self._update_histograms()
 
-    def closeEvent(self, event: QCloseEvent) -> None:
-        logging.debug("MainWindow: closeEvent called, stopping readout thread if running")
-        self.stop_readout()
-        super().closeEvent(event)
+    def _enabled_devices(self) -> list[DeviceConfig]:
+        return [d for d in self.setup.devices if d.enabled]
 
-    @Slot(object)
-    def periodic_update(self):
-        self.readout_control_widget.label_stats.setText(
-            f"Packets/s: {self.packet_processor.packetsPerSecond:.2f}, Events/s: {self.packet_processor.eventsPerSecond:.2f}"
-        )
-        self.replot()
+    def _send_to_enabled(self, method: str, *args, label: Optional[str] = None) -> list[DeviceConfig]:
+        devices = self._enabled_devices()
+        if not devices:
+            log.warning("No enabled devices")
+        for cfg in devices:
+            self.workers.submit(cfg, label or method, lambda conn, m=method: getattr(conn, m)(*args))
+        return devices
 
-    @Slot(bh.Histogram)
-    def show_histogram(self, histo: bh.Histogram):
-        logging.info(f"Show histogram: {repr(histo)}")
+    def _master_device(self) -> Optional[DeviceConfig]:
+        devices = self._enabled_devices()
+        masters = [d for d in devices if d.timing_role == "Master"]
+        if len(masters) != 1:
+            names = ", ".join(d.name for d in masters) or "none"
+            log.error(f"Need exactly one enabled timing master, have {len(masters)} ({names})")
+            return None
+        return masters[0]
 
-        if histo.ndim == 1:
-            self.current_histo = histo
-        elif histo.ndim == 2:
-            self.current_histo2d = histo
+    def _send_to_master(self, method: str, label: Optional[str] = None) -> Optional[DeviceConfig]:
+        if (master := self._master_device()) is not None:
+            self.workers.submit(master, label or method, lambda conn: getattr(conn, method)())
+        return master
 
-        self.replot()
+    def start_run(self):
+        if self._master_device() is None:
+            return
+        if not self.start_readout(self.setup.write_listfile):
+            return
+        self.daq.reset_stats()
+        self.stats_tracker.reset()
+        if self.daq_panel.cb_clear_on_start.isChecked():
+            self.daq.clear_histograms()
+        run_id = self.daq_panel.spin_run_id.value()
+        self._send_to_enabled("set_run_id", run_id, label=f"set_run_id({run_id})")
+        self._send_to_master("start_daq")
+
+    def continue_run(self):
+        if self._master_device() is None:
+            return
+        if self.state == "idle" and not self.start_readout(self.setup.write_listfile):
+            return
+        self._send_to_master("continue_daq")
+
+    def stop_run(self):
+        master = self._send_to_master("stop_daq", label="run:stop_daq")
+        self._pending_stop = {id(master)} if master is not None else set()
+        if not self._pending_stop:
+            self.stop_readout()
+
+    def _start_replay(self):
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Replay Listfile", self.setup.listfile_dir, "MCPD listfiles (*.mcpdlst);;All files (*)")
+        if not path:
+            return
+        self.daq.clear_devices()
+        self.daq.reset_stats()
+        self.stats_tracker.reset()
+        try:
+            self.daq.start_replay(path)
+        except Exception as e:
+            log.error(f"Failed to start replay: {e}")
+            return
+        log.info(f"Replaying {path}")
+        self._set_state("replay")
+
+    def _clear_histograms(self):
+        self.daq.clear_histograms()
+        self._update_histograms()
+
+    @Slot(object, str, object, object, object)
+    def _on_command_finished(self, cfg: DeviceConfig, label: str, result, error, on_success):
+        if error is not None:
+            log.error(f"{cfg.name}: {label}: {error}")
+        else:
+            log.info(f"{cfg.name}: {label}: {format_result(result)}")
+            if on_success is not None:
+                on_success(result)
+
+        if label == "run:stop_daq" and id(cfg) in self._pending_stop:
+            self._pending_stop.discard(id(cfg))
+            if not self._pending_stop and self.state == "readout":
+                QtCore.QTimer.singleShot(DrainDelay_ms, self.stop_readout)
+
+    # Periodic updates
+    def _device_choices(self) -> list[tuple[tuple[int, int], str]]:
+        return [(row.key, row.label) for row in self.rows]
 
     @Slot()
-    def replot(self):
-        for h in self.current_histo, self.current_histo2d:
-            if h is None:
+    def _update_stats(self):
+        if self.daq.has_exception():
+            try:
+                self.daq.rethrow_exception()
+            except Exception as e:
+                log.error(f"Readout error: {e}")
+            self.daq.stop()
+            self._set_state("idle")
+
+        if self.state == "replay" and not self.daq.is_running():
+            self.daq.stop()
+            log.info("Replay finished")
+            self._set_state("idle")
+
+        self.rows, new_notes = self.stats_tracker.update(
+            self.daq.get_device_stats(), self.setup.devices, monotonic()
+        )
+        for note in new_notes:
+            log.warning(note)
+        self.stats_table.update_rows(self.rows)
+
+        choices = self._device_choices()
+        for _, view in self.histo_views:
+            view.set_devices(choices)
+
+        c = self.daq.get_counters()
+        self.daq_panel.label_counters.setText(
+            f"packets: {c.packets}, invalid: {c.invalid_packets}, non-MDLL: {c.non_mdll_packets}\n"
+            f"received: {c.bytes / 1e6:.1f} MB, listfile: {c.listfile_bytes / 1e6:.1f} MB"
+        )
+
+    @Slot()
+    def _update_histograms(self):
+        cache = {}
+        for _, view in self.histo_views:
+            if not view.isVisible() or (key := view.device_key()) is None:
                 continue
+            if key not in cache:
+                cache[key] = self.daq.get_histograms(*key)
+            view.update_histograms(cache[key])
 
-            # logging.info(f"Replotting histogram: {repr(self.current_histo)}, {h.to_numpy()=}")
-
-            if h.ndim == 1:
-                self.h1d_line = self.plot_widget.plot(self.current_histo, clear=True)
-
-            elif h.ndim == 2:
-                values, xedges, yedges = h.to_numpy()
-
-                # Levels for the colobar. This goes from zero to max.
-                # Alternative: use the min and max values of the non-zeroes
-                # only: non_zero = values[~np.isnan(values)]
-                levels = (values.min(), values.max())
-
-                # Ensure float type, then replace all zeroes with NaNs so that
-                # pyqtgraph renders them transparently.
-                values = values.astype(float)
-                values[values == 0] = np.nan
-
-                # This was used with a QTransform to scale the image. But just
-                # using the native bin resolution seems fine to me for now.
-                # When using e.g. dx/2, dy/2 for the transform the axis
-                # coordinates will be half of the real resolution.
-                # dx = xedges[1] - xedges[0]
-                # dy = yedges[1] - yedges[0]
-
-                self.plt2d_img.setImage(values)
-                self.plt2d_img.setPos(xedges[0], yedges[0])  # bin origin
-                self.plt2d_colorbar.setLevels(levels)
+    def closeEvent(self, event: QtGui.QCloseEvent):
+        self.stats_timer.stop()
+        self.histo_timer.stop()
+        self.daq.stop()
+        self.workers.shutdown()
+        logging.getLogger().removeHandler(self.log_handler)
+        if self.setup_path is not None:
+            try:
+                self.setup.save(self.setup_path)
+            except Exception as e:
+                print(f"Failed to save setup {self.setup_path}: {e}", file=sys.stderr)
+        super().closeEvent(event)
 
 
 def add_qt_font(font_path: str) -> Optional[QtGui.QFont]:
+    f = QtCore.QFile(font_path)
     try:
-        f = QtCore.QFile(":/fonts/Roboto-VariableFont_wdth,wght.ttf")
-        f.open(QtCore.QIODevice.ReadOnly)
+        f.open(QtCore.QIODevice.OpenModeFlag.ReadOnly)
         if f.isOpen():
-            id = QtGui.QFontDatabase.addApplicationFontFromData(f.readAll())
-            if id >= 0:
-                return QtGui.QFont(QtGui.QFontDatabase.applicationFontFamilies(id)[0])
+            font_id = QtGui.QFontDatabase.addApplicationFontFromData(f.readAll())
+            if font_id >= 0:
+                return QtGui.QFont(QtGui.QFontDatabase.applicationFontFamilies(font_id)[0])
         return None
     finally:
         f.close()
 
 
 def main():
-    logging.basicConfig(
-        level="INFO",
-        format="%(name)s %(message)s",
-        datefmt="[%X]",
-        handlers=[RichHandler()],
-    )
+    import argparse
 
-    mcpd.set_log_level("info")
+    parser = argparse.ArgumentParser(description="mesytec MDLL DAQ GUI")
+    parser.add_argument("setup", nargs="?", help=f"setup file (default: {default_setup_path()})")
+    parser.add_argument("--log-level", default="info")
+    args = parser.parse_args()
 
-    app = pg.mkQApp("MPSD DAQ")
+    logging.basicConfig(level=args.log_level.upper(), format="%(name)s %(message)s")
+    mcpd.set_log_level(args.log_level)
+
+    app = pg.mkQApp("MDLL DAQ")
+
+    from . import resources  # noqa: F401  registers the embedded fonts
 
     roboto = add_qt_font(":/fonts/Roboto-VariableFont_wdth,wght.ttf")
     if roboto is not None:
         roboto.setPointSizeF(roboto.pointSizeF() * 0.8)
         app.setFont(roboto)
-    add_qt_font(":/fonts/RobotoMono-VariableFont_wght.ttf")
 
-    pg.setConfigOptions(
-        antialias=True, leftButtonPan=True, imageAxisOrder="row-major", crashWarning=False
-    )
+    pg.setConfigOptions(antialias=True, imageAxisOrder="row-major")
 
-    mainwin = MainWindow(mcpd.Readout())
+    setup_path = Path(args.setup) if args.setup else default_setup_path()
+    setup = Setup()
+    if setup_path.exists():
+        try:
+            setup = Setup.load(setup_path)
+        except Exception as e:
+            logging.error(f"Failed to load setup {setup_path}: {e}")
 
+    mainwin = MainWindow(setup, setup_path)
     mainwin.show()
-
-    update_timer = QtCore.QTimer()
-    update_timer.timeout.connect(mainwin.periodic_update)
-    update_timer.start(500)
-
-    ret = app.exec()
-    logging.debug(f"Qt event loop exited with code {ret}")
-    sys.exit(ret)
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
