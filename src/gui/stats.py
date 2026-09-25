@@ -1,4 +1,4 @@
-"""Rates and sanity checks computed from MdllDaq.get_device_stats() snapshots."""
+"""Rates and sanity checks computed from mcpd.Daq.get_source_stats() snapshots."""
 
 from __future__ import annotations
 
@@ -13,6 +13,11 @@ from .config import DeviceConfig
 
 DeviceKey = tuple[int, int]  # (src_addr, device_id), src_addr is 0 when replaying
 
+BUFFER_TYPE_NAMES = {
+    mcpd.constants.buffer_types.McpdDataBufferType: "MCPD",
+    mcpd.constants.buffer_types.MdllDataBufferType: "MDLL",
+}
+
 
 def resolve_ipv4(address: str) -> Optional[int]:
     try:
@@ -24,7 +29,7 @@ def resolve_ipv4(address: str) -> Optional[int]:
 @dataclass
 class DeviceRow:
     key: DeviceKey
-    stats: mcpd.MdllDeviceStats
+    stats: mcpd.SourceStats
     config: Optional[DeviceConfig] = None
     packet_rate: float = 0.0
     event_rate: float = 0.0
@@ -35,6 +40,14 @@ class DeviceRow:
     @property
     def ip(self) -> str:
         return mcpd.format_ipv4(self.key[0]) if self.key[0] else "replay"
+
+    @property
+    def type_name(self) -> str:
+        return BUFFER_TYPE_NAMES.get(self.stats.buffer_type, f"{self.stats.buffer_type:#06x}")
+
+    @property
+    def is_mdll(self) -> bool:
+        return self.stats.buffer_type == mcpd.constants.buffer_types.MdllDataBufferType
 
     @property
     def device_id(self) -> int:
@@ -48,7 +61,7 @@ class DeviceRow:
 
 class StatsTracker:
     def __init__(self):
-        self._prev: dict[DeviceKey, mcpd.MdllDeviceStats] = {}
+        self._prev: dict[DeviceKey, mcpd.SourceStats] = {}
         self._prev_time: Optional[float] = None
         self._reported: set[tuple[DeviceKey, str]] = set()
         self._resolved: dict[str, Optional[int]] = {}
@@ -64,7 +77,7 @@ class StatsTracker:
         return self._resolved[cfg.address]
 
     def update(
-        self, stats: dict[DeviceKey, mcpd.MdllDeviceStats], devices: Iterable[DeviceConfig], now: float
+        self, stats: dict[DeviceKey, mcpd.SourceStats], devices: Iterable[DeviceConfig], now: float
     ) -> tuple[list[DeviceRow], list[str]]:
         """Returns the table rows and notes that were not reported before."""
         devices = list(devices)

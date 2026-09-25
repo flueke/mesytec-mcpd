@@ -1,4 +1,4 @@
-"""Histogram display. Histograms are stored at native resolution by MdllDaq;
+"""Histogram display. Histograms are stored at native resolution by mcpd.Daq;
 pyqtgraph downsamples to screen resolution on the fly."""
 
 from __future__ import annotations

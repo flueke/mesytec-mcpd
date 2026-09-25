@@ -14,7 +14,7 @@ from pyqtgraph.Qt import QtWidgets  # noqa: E402
 
 import mesytec_mcpd as mcpd  # noqa: E402
 from fake_mcpd_device import FakeMcpdDevice  # noqa: E402
-from fake_mdll_data import MdllDataSender, mdll_neutron  # noqa: E402
+from fake_data import DataSender, mdll_neutron  # noqa: E402
 from mesytec_mcpd.gui.commands import COMMANDS, SETTINGS  # noqa: E402
 from mesytec_mcpd.gui.config import DeviceConfig, Setup  # noqa: E402
 from mesytec_mcpd.gui.main_window import MainWindow  # noqa: E402
@@ -82,9 +82,9 @@ def test_run_cycle(app, window, devices, tmp_path):
     assert b.daq_state == "idle"  # started by the master via the sync bus
 
     with (
-        MdllDataSender(port, "127.0.0.2") as sa,
-        MdllDataSender(port, "127.0.0.3") as sb,
-        MdllDataSender(port, "127.0.0.4") as sc,
+        DataSender(port, "127.0.0.2") as sa,
+        DataSender(port, "127.0.0.3") as sb,
+        DataSender(port, "127.0.0.4") as sc,
     ):
         sa.send([mdll_neutron(5, 10, 20)] * 3, device_id=0)
         sb.send([mdll_neutron(6, 11, 21)], device_id=0)
@@ -158,7 +158,7 @@ def test_stats_wrong_id_note():
 
     cfg = DeviceConfig("a", "127.0.0.2", mcpd_id=1)
     key = (0x7F000002, 0)
-    rows, notes = StatsTracker().update({key: mcpd.MdllDeviceStats()}, [cfg], 0.0)
+    rows, notes = StatsTracker().update({key: mcpd.SourceStats()}, [cfg], 0.0)
     assert rows[0].config is None
     assert rows[0].notes == ["configured with id 1 but sends id 0"]
     assert len(notes) == 1

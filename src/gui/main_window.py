@@ -128,7 +128,7 @@ class DaqPanel(QtWidgets.QWidget):
 
 class StatsTable(QtWidgets.QTableWidget):
     Columns = (
-        "Device", "Source", "Id", "Packets", "Packets/s", "Neutrons/s", "MB/s",
+        "Device", "Source", "Id", "Type", "Packets", "Packets/s", "Neutrons/s", "MB/s",
         "Lost", "Lost/s", "Seq Jumps", "Triggers", "Run", "Status", "Buffer#", "Notes",
     )
 
@@ -148,6 +148,7 @@ class StatsTable(QtWidgets.QTableWidget):
                 row.config.name if row.config else "?",
                 row.ip,
                 str(row.device_id),
+                row.type_name,
                 str(st.packets),
                 f"{row.packet_rate:.0f}",
                 f"{row.event_rate:.0f}",
@@ -169,8 +170,8 @@ class StatsTable(QtWidgets.QTableWidget):
                 item.setText(text)
                 bad = (
                     bool(row.notes)
-                    or (c in (7, 8) and st.packets_lost > 0)
-                    or (c == 9 and st.buffer_number_jumps > 0)
+                    or (c in (8, 9) and st.packets_lost > 0)
+                    or (c == 10 and st.buffer_number_jumps > 0)
                 )
                 item.setBackground(warn if bad else QtGui.QBrush())
         self.resizeColumnsToContents()
@@ -181,7 +182,7 @@ class MainWindow(QtWidgets.QMainWindow):
         super().__init__()
         self.setup = setup
         self.setup_path = setup_path
-        self.daq = mcpd.MdllDaq(setup.data_port)
+        self.daq = mcpd.Daq(setup.data_port)
         self.state = "idle"  # idle | readout | replay
         self.stats_tracker = StatsTracker()
         self.rows: list[DeviceRow] = []
@@ -353,7 +354,7 @@ class MainWindow(QtWidgets.QMainWindow):
     # Readout and run control
     def _ensure_daq_port(self):
         if self.daq.listen_port != self.setup.data_port:
-            self.daq = mcpd.MdllDaq(self.setup.data_port)
+            self.daq = mcpd.Daq(self.setup.data_port)
             self.console.localNamespace["daq"] = self.daq
             self.stats_tracker.reset()
 
@@ -440,7 +441,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self, "Replay Listfile", self.setup.listfile_dir, "MCPD listfiles (*.mcpdlst);;All files (*)")
         if not path:
             return
-        self.daq.clear_devices()
+        self.daq.clear_sources()
         self.daq.reset_stats()
         self.stats_tracker.reset()
         try:
@@ -471,7 +472,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # Periodic updates
     def _device_choices(self) -> list[tuple[tuple[int, int], str]]:
-        return [(row.key, row.label) for row in self.rows]
+        return [(row.key, row.label) for row in self.rows if row.is_mdll]
 
     @Slot()
     def _update_stats(self):
@@ -489,7 +490,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._set_state("idle")
 
         self.rows, new_notes = self.stats_tracker.update(
-            self.daq.get_device_stats(), self.setup.devices, monotonic()
+            self.daq.get_source_stats(), self.setup.devices, monotonic()
         )
         for note in new_notes:
             log.warning(note)
@@ -501,7 +502,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         c = self.daq.get_counters()
         self.daq_panel.label_counters.setText(
-            f"packets: {c.packets}, invalid: {c.invalid_packets}, non-MDLL: {c.non_mdll_packets}\n"
+            f"packets: {c.packets}, invalid: {c.invalid_packets}, timeouts: {c.timeouts}\n"
             f"received: {c.bytes / 1e6:.1f} MB, listfile: {c.listfile_bytes / 1e6:.1f} MB"
         )
 
@@ -512,7 +513,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if not view.isVisible() or (key := view.device_key()) is None:
                 continue
             if key not in cache:
-                cache[key] = self.daq.get_histograms(*key)
+                cache[key] = self.daq.get_mdll_histograms(*key)
             view.update_histograms(cache[key])
 
     def closeEvent(self, event: QtGui.QCloseEvent):

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import queue
 import time
 
 import click
@@ -22,34 +21,37 @@ from .util import handle_mcpd_errors
 @handle_mcpd_errors
 def replay(listfile, report_interval_s):
     """DAQ replay from a listfile."""
-    rp = mcpd.Replay(filename=str(listfile))
-    rp.start()
+    daq = mcpd.Daq()
+
+    try:
+        daq.start_replay(str(listfile))
+    except RuntimeError as e:
+        raise click.ClickException(str(e)) from e
 
     t_report = time.monotonic()
 
     click.echo(f"Replaying from {listfile}")
 
     try:
-        while rp.is_running() or not rp.get_queue().empty():
-            try:
-                rp.get_queue().get(timeout=0.5)
-            except queue.Empty:
-                continue
-
+        while daq.is_running():
+            time.sleep(0.1)
             now = time.monotonic()
 
             if report_interval_s > 0 and now - t_report >= report_interval_s:
-                _print_counters(rp.get_counters(), "replay")
+                _print_counters(daq, "replay")
                 t_report = now
     except KeyboardInterrupt:
         pass
     finally:
-        rp.stop()
+        daq.stop()
 
-    _print_counters(rp.get_counters(), "replay (full run)")
+    _print_counters(daq, "replay (full run)")
 
 
-def _print_counters(counters: mcpd.Counters, title: str) -> None:
+def _print_counters(daq: mcpd.Daq, title: str) -> None:
+    c = daq.get_counters()
+    stats = daq.get_source_stats().values()
     click.echo(
-        f"{title}: packets={counters.packets}, events={counters.events}, bytes={counters.bytes}"
+        f"{title}: packets={c.packets}, packetsLost={sum(s.packets_lost for s in stats)}, "
+        f"events={sum(s.events for s in stats)}, bytes={c.bytes}, sources={len(stats)}"
     )

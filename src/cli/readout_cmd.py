@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pathlib
-import queue
 import time
 
 import click
@@ -45,34 +44,31 @@ def readout(
     if listfile is None and not no_listfile:
         raise click.UsageError("no listfile name given (use --no-listfile to ignore)")
 
-    listfile_handle = None
+    listfile_path = ""
 
     if listfile is not None and not no_listfile:
         if listfile.exists() and not overwrite_listfile:
             raise click.UsageError(f"output listfile '{listfile}' already exists")
-        listfile_handle = open(listfile, "wb")
+        listfile_path = str(listfile)
 
-    if not no_start_daq:
-        ctx.connection.start_daq()
-
-    rdo = mcpd.Readout(listenPort=dataport)
-    rdo.start()
-
-    t_start = time.monotonic()
-    t_report = t_start
-
-    click.echo("readout: entering readout loop, press ctrl-c to quit")
+    daq = mcpd.Daq(listen_port=dataport)
 
     try:
-        while True:
-            try:
-                packet = rdo.get_queue().get(timeout=0.5).packet
-            except queue.Empty:
-                pass
-            else:
-                if listfile_handle is not None:
-                    listfile_handle.write(packet.get_raw_words().tobytes())
+        daq.start_readout(listfile_path, overwrite=overwrite_listfile)
+    except (RuntimeError, OSError) as e:
+        raise click.ClickException(str(e)) from e
 
+    try:
+        if not no_start_daq:
+            ctx.connection.start_daq()
+
+        t_start = time.monotonic()
+        t_report = t_start
+
+        click.echo("readout: entering readout loop, press ctrl-c to quit")
+
+        while daq.is_running():
+            time.sleep(0.1)
             now = time.monotonic()
 
             if duration_s > 0 and now - t_start >= duration_s:
@@ -80,20 +76,27 @@ def readout(
                 break
 
             if report_interval_s > 0 and now - t_report >= report_interval_s:
-                _print_counters(rdo.get_counters(), "readout")
+                _print_counters(daq, "readout")
                 t_report = now
     except KeyboardInterrupt:
         pass
     finally:
-        rdo.stop()
-        if listfile_handle is not None:
-            listfile_handle.close()
+        daq.stop()
 
-    _print_counters(rdo.get_counters(), "readout (full run)")
+    if daq.has_exception():
+        try:
+            daq.rethrow_exception()
+        except Exception as e:
+            raise click.ClickException(f"readout error: {e}") from e
+
+    _print_counters(daq, "readout (full run)")
 
 
-def _print_counters(counters: mcpd.Counters, title: str) -> None:
+def _print_counters(daq: mcpd.Daq, title: str) -> None:
+    c = daq.get_counters()
+    stats = daq.get_source_stats().values()
     click.echo(
-        f"{title}: packets={counters.packets}, packetsLost={counters.packets_lost}, "
-        f"events={counters.events}, bytes={counters.bytes}, timeouts={counters.timeouts}"
+        f"{title}: packets={c.packets}, packetsLost={sum(s.packets_lost for s in stats)}, "
+        f"events={sum(s.events for s in stats)}, bytes={c.bytes}, timeouts={c.timeouts}, "
+        f"invalid={c.invalid_packets}, sources={len(stats)}"
     )
