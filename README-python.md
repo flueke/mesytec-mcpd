@@ -22,6 +22,7 @@
   fail.
 
 # Notes
+
 - To use clang-cl set CMAKE_GENERATOR=Ninja and set both CC and CXX to the full path to clang-cl, e.g.
   set CMAKE_GENERATOR=Ninja
   set CXX=C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\bin\clang-cl.exe
@@ -39,3 +40,12 @@
 
 - To generate uv.lock: run `uv lock` from the projects root
 - To install from lock file: `uv sync --extra gui --extra dev`
+
+# Packaging for (test)pypi
+
+    cibuildwheel
+    python3 -m twine upload --repository testpypi wheelhouse/*
+
+# Installation from testpypi
+
+    pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ mesytec-mcpd[gui]
