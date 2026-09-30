@@ -1,5 +1,5 @@
 """Histogram display. Histograms are stored at native resolution by mcpd.Daq;
-pyqtgraph downsamples to screen resolution on the fly."""
+pyqtgraph downsamples 2D histograms to screen resolution on the fly."""
 
 from __future__ import annotations
 
@@ -49,8 +49,8 @@ class HistogramView(QtWidgets.QWidget):
         self.curve = self.plot1d.plot(
             stepMode="center", fillLevel=0, brush=(60, 120, 200, 100), pen=pg.mkPen((60, 120, 200), width=1)
         )
-        self.curve.setDownsampling(auto=True, method="peak")
-        self.curve.setClipToView(True)
+        # No clipToView/downsampling: PlotDataItem applies them to x and y alike,
+        # breaking the len(x) == len(y) + 1 requirement of stepMode="center".
 
         self.plot2d = pg.PlotWidget()
         pi2d = self.plot2d.getPlotItem()
