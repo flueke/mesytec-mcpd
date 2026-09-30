@@ -374,11 +374,11 @@ namespace event_constants
         static const std::size_t AmplitudeMask = (1u << AmplitudeBits) -1;
 
         static const std::size_t xPosBits = 10u;
-        static const std::size_t xPosShift = 29u;
+        static const std::size_t xPosShift = 19u;
         static const std::size_t xPosMask = (1u << xPosBits) - 1;
 
         static const std::size_t yPosBits = 10u;
-        static const std::size_t yPosShift = 19u;
+        static const std::size_t yPosShift = 29u;
         static const std::size_t yPosMask = (1u << yPosBits) -1;
     }
 
