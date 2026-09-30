@@ -76,6 +76,9 @@ class DevicePanel(QtWidgets.QWidget):
             buttons.addWidget(b)
 
         self.tree = ParameterTree(showHeader=False)
+        self.le_filter = QtWidgets.QLineEdit()
+        self.le_filter.setPlaceholderText("Filter...")
+        self.le_filter.setClearButtonEnabled(True)
 
         splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
         top = QtWidgets.QWidget()
@@ -84,7 +87,12 @@ class DevicePanel(QtWidgets.QWidget):
         top_layout.addWidget(self.table)
         top_layout.addLayout(buttons)
         splitter.addWidget(top)
-        splitter.addWidget(self.tree)
+        bottom = QtWidgets.QWidget()
+        bottom_layout = QtWidgets.QVBoxLayout(bottom)
+        bottom_layout.setContentsMargins(0, 0, 0, 0)
+        bottom_layout.addWidget(self.le_filter)
+        bottom_layout.addWidget(self.tree)
+        splitter.addWidget(bottom)
         splitter.setStretchFactor(1, 3)
 
         layout = QtWidgets.QVBoxLayout(self)
@@ -96,6 +104,7 @@ class DevicePanel(QtWidgets.QWidget):
         self.pb_apply.clicked.connect(self._apply_selected)
         self.pb_apply_all.clicked.connect(self.apply_all)
         self.table.itemSelectionChanged.connect(self._on_selection_changed)
+        self.le_filter.textChanged.connect(self._apply_filter)
 
         self.refresh()
 
@@ -180,6 +189,31 @@ class DevicePanel(QtWidgets.QWidget):
             return
         self._tree_root = self._build_tree(cfg)
         self.tree.setParameters(self._tree_root, showTop=False)
+        self._apply_filter()
+
+    # Shows parameters whose name or title contains the filter text, plus their
+    # ancestors and descendants. Groups containing matches are expanded.
+    def _apply_filter(self):
+        if self._tree_root is None:
+            return
+        text = self.le_filter.text().strip().lower()
+
+        def matches(p: Parameter) -> bool:
+            return p.name() != ActionName and (text in p.name().lower() or text in p.title().lower())
+
+        def update(p: Parameter, parent_matched: bool) -> bool:
+            matched = parent_matched or matches(p)
+            child_visible = [update(c, matched) for c in p.children()]
+            visible = matched or any(child_visible)
+            p.show(visible)
+            if visible and (action := p.names.get(ActionName)) is not None:
+                action.show(True)
+            if text and p.hasChildren() and any(child_visible):
+                p.setOpts(expanded=True)
+            return visible
+
+        for c in self._tree_root.children():
+            update(c, not text)
 
     def _build_tree(self, cfg: DeviceConfig) -> Parameter:
         cmd_values = self._command_values.setdefault(id(cfg), {c.key: c.defaults() for c in COMMANDS})
