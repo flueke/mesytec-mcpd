@@ -547,10 +547,16 @@ class MainWindow(QtWidgets.QMainWindow):
             self.daq.stop()
             self._set_state("idle")
 
-        if self.state == "replay" and not self.daq.is_running():
+        # Sync with the daq state, which may also be changed from the console.
+        running = self.daq.is_running()
+        if self.state != "idle" and not running:
             self.daq.stop()
-            log.info("Replay finished")
+            log.info("Replay finished" if self.state == "replay" else "Readout stopped")
+            self._current_listfile = ""
             self._set_state("idle")
+        elif self.state == "idle" and running:
+            self._current_listfile = ""
+            self._set_state("readout" if self.daq.local_port else "replay")
 
         self.rows, new_notes = self.stats_tracker.update(
             self.daq.get_source_stats(), self.setup.devices, monotonic()
