@@ -230,6 +230,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.log_view.setMaximumBlockCount(10000)
         font = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont)
         self.log_view.setFont(font)
+        self.log_view.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self.log_view.customContextMenuRequested.connect(self._log_context_menu)
         self.log_handler = QtLogHandler()
         self.log_handler.emitter.message.connect(self._append_log)
         logging.getLogger().addHandler(self.log_handler)
@@ -307,6 +309,12 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.log_view.appendPlainText(text)
 
+    def _log_context_menu(self, pos: QtCore.QPoint):
+        menu = self.log_view.createStandardContextMenu()
+        menu.addSeparator()
+        menu.addAction("Clear", self.log_view.clear)
+        menu.exec(self.log_view.mapToGlobal(pos))
+
     def _set_state(self, state: str):
         self.state = state
         self.daq_panel.set_state(state)
@@ -317,10 +325,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.statusBar().showMessage(text.splitlines()[0])
 
     # Setup persistence
+    def _setup_dialog_dir(self) -> str:
+        d = QtCore.QSettings().value("last_setup_dir", "")
+        if d and Path(d).is_dir():
+            return d
+        return QtCore.QStandardPaths.writableLocation(QtCore.QStandardPaths.StandardLocation.DocumentsLocation)
+
+    def _remember_setup_dir(self, path: str):
+        QtCore.QSettings().setValue("last_setup_dir", str(Path(path).parent))
+
     def _open_setup(self):
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open Setup", str(self.setup_path or ""), "Setup (*.json)")
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open Setup", self._setup_dialog_dir(), "Setup (*.json)")
         if not path:
             return
+        self._remember_setup_dir(path)
         try:
             self.setup = Setup.load(Path(path))
         except Exception as e:
@@ -340,8 +358,9 @@ class MainWindow(QtWidgets.QMainWindow):
             log.error(f"Failed to save setup {self.setup_path}: {e}")
 
     def _save_setup_as(self):
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save Setup", str(self.setup_path or ""), "Setup (*.json)")
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save Setup", self._setup_dialog_dir(), "Setup (*.json)")
         if path:
+            self._remember_setup_dir(path)
             self.setup_path = Path(path)
             self._save_setup()
             self._load_setup_into_ui()
@@ -555,6 +574,7 @@ def main():
     mcpd.set_log_level(args.log_level)
 
     app = pg.mkQApp("MDLL DAQ")
+    app.setOrganizationName("mesytec")
 
     from . import resources  # noqa: F401  registers the embedded fonts
 
