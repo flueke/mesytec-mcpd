@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import html
+import json
 import logging
 import sys
 from pathlib import Path
@@ -192,6 +193,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._current_listfile = ""
 
         self._setup_ui()
+        self._restore_ui_state()
         self._load_setup_into_ui()
         self._set_state("idle")
 
@@ -220,6 +222,8 @@ class MainWindow(QtWidgets.QMainWindow):
         menu_file.addAction("E&xit", self.close, QtGui.QKeySequence.StandardKey.Quit)
         menu_view = self.menuBar().addMenu("&View")
         menu_view.addAction("New &Histogram View", lambda: self._add_histo_view("xy"))
+        menu_view.addSeparator()
+        menu_view.addAction("&Reset UI to Defaults", self._reset_ui)
 
         self.daq_panel = DaqPanel()
         self.device_panel = DevicePanel(self.setup, self.workers)
@@ -251,15 +255,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dock_console = Dock("Console", size=(1200, 200))
         self.dock_console.addWidget(self.console)
 
-        self.dock_area.addDock(self.dock_daq, "left")
-        self.dock_area.addDock(self.dock_devices, "bottom", self.dock_daq)
-        self.dock_area.addDock(self.dock_stats, "right")
-        self.dock_area.addDock(self.dock_log, "above", self.dock_stats)
-        self.dock_area.addDock(self.dock_console, "above", self.dock_log)
-        self.dock_stats.raiseDock()
-
-        self._add_histo_view("xy")
-        self._add_histo_view("amplitude", "right")
+        self._build_default_layout()
 
         dp = self.daq_panel
         dp.pb_start_run.clicked.connect(self.start_run)
@@ -275,10 +271,23 @@ class MainWindow(QtWidgets.QMainWindow):
         dp.cb_listfile.toggled.connect(lambda v: setattr(self.setup, "write_listfile", v))
         dp.le_listdir.textChanged.connect(lambda v: setattr(self.setup, "listfile_dir", v))
 
-    def _add_histo_view(self, histo_type: str, position: str = "bottom"):
+    def _build_default_layout(self):
+        self.dock_area.addDock(self.dock_daq, "left")
+        self.dock_area.addDock(self.dock_devices, "bottom", self.dock_daq)
+        self.dock_area.addDock(self.dock_stats, "right")
+        self.dock_area.addDock(self.dock_log, "above", self.dock_stats)
+        self.dock_area.addDock(self.dock_console, "above", self.dock_log)
+        self.dock_stats.raiseDock()
+
+        self._add_histo_view("xy")
+        self._add_histo_view("amplitude", "right")
+
+    def _add_histo_view(self, histo_type: str, position: str = "bottom", name: Optional[str] = None):
         view = HistogramView(histo_type)
-        n = len(self.histo_views)
-        dock = Dock(f"Histogram {n}", size=(800, 500), closable=n > 0)
+        if name is None:
+            used = {d.name() for d, _ in self.histo_views}
+            name = next(f"Histogram {i}" for i in range(len(used) + 1) if f"Histogram {i}" not in used)
+        dock = Dock(name, size=(800, 500), closable=bool(self.histo_views))
         dock.addWidget(view)
         if self.histo_views:
             self.dock_area.addDock(dock, position, self.histo_views[-1][0])
@@ -288,9 +297,44 @@ class MainWindow(QtWidgets.QMainWindow):
         dock.sigClosed.connect(self._on_histo_dock_closed)
         view.set_devices(self._device_choices())
         view.selection_changed.connect(self._update_histograms)
+        return view
 
     def _on_histo_dock_closed(self, dock):
         self.histo_views = [(d, v) for d, v in self.histo_views if d is not dock]
+
+    # UI state persistence
+    def _save_ui_state(self):
+        state = dict(
+            geometry=bytes(self.saveGeometry().toBase64()).decode(),
+            histograms=[dict(name=d.name(), **v.save_state()) for d, v in self.histo_views],
+            docks=self.dock_area.saveState(),
+        )
+        QtCore.QSettings().setValue("ui_state", json.dumps(state))
+
+    def _restore_ui_state(self):
+        text = QtCore.QSettings().value("ui_state", "")
+        if not text:
+            return
+        try:
+            state = json.loads(text)
+            self._close_histo_views()
+            for h in state["histograms"]:
+                self._add_histo_view(h["type"], name=h["name"]).restore_state(h)
+            self.dock_area.restoreState(state["docks"], missing="ignore")
+            self.restoreGeometry(QtCore.QByteArray.fromBase64(state["geometry"].encode()))
+        except Exception as e:
+            log.warning(f"Failed to restore ui state, using defaults: {e}")
+            self._reset_ui()
+
+    def _close_histo_views(self):
+        for dock, _ in list(self.histo_views):
+            dock.close()
+        self.histo_views.clear()
+
+    def _reset_ui(self):
+        self._close_histo_views()
+        self._build_default_layout()
+        self.resize(1600, 1000)
 
     def _load_setup_into_ui(self):
         dp = self.daq_panel
@@ -541,6 +585,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.daq.stop()
         self.workers.shutdown()
         logging.getLogger().removeHandler(self.log_handler)
+        self._save_ui_state()
         if self.setup_path is not None:
             try:
                 self.setup.save(self.setup_path)

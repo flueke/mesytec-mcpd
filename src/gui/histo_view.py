@@ -24,6 +24,8 @@ class HistogramView(QtWidgets.QWidget):
     def __init__(self, histo_type: str = "xy", parent=None):
         super().__init__(parent)
         self._data: Optional[np.ndarray] = None
+        # Device to select once it shows up in set_devices(), e.g. after restoring the ui state.
+        self._wanted_device = None
 
         self.combo_device = QtWidgets.QComboBox()
         self.combo_device.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContents)
@@ -69,7 +71,7 @@ class HistogramView(QtWidgets.QWidget):
         layout.addWidget(self.stack, 1)
         layout.addWidget(self.label_cursor)
 
-        self.combo_device.currentIndexChanged.connect(self._on_selection_changed)
+        self.combo_device.currentIndexChanged.connect(self._on_device_changed)
         self.combo_type.currentIndexChanged.connect(self._on_selection_changed)
         self.cb_log.toggled.connect(self._on_log_toggled)
         self.plot1d.scene().sigMouseMoved.connect(self._on_mouse_moved_1d)
@@ -92,11 +94,24 @@ class HistogramView(QtWidgets.QWidget):
     def select_device(self, key):
         self.combo_device.setCurrentIndex(max(self.find_device(key), 0))
 
+    def save_state(self) -> dict:
+        key = self._wanted_device or self.device_key()
+        return dict(type=self.histo_type(), log=self.cb_log.isChecked(), device=list(key) if key else None)
+
+    def restore_state(self, state: dict):
+        if (t := state.get("type")) in HISTO_TYPES:
+            self.combo_type.setCurrentIndex(list(HISTO_TYPES).index(t))
+        self.cb_log.setChecked(bool(state.get("log", False)))
+        if dev := state.get("device"):
+            self._wanted_device = tuple(dev)
+
     def set_devices(self, devices: list[tuple[tuple[int, int], str]]):
-        current = self.device_key()
+        current = prev = self.device_key()
+        if self._wanted_device is not None and any(k == self._wanted_device for k, _ in devices):
+            current, self._wanted_device = self._wanted_device, None
         known = [self.combo_device.itemData(i) for i in range(self.combo_device.count())]
         labels = [self.combo_device.itemText(i) for i in range(self.combo_device.count())]
-        if known == [k for k, _ in devices] and labels == [lbl for _, lbl in devices]:
+        if current == prev and known == [k for k, _ in devices] and labels == [lbl for _, lbl in devices]:
             return
         self.combo_device.blockSignals(True)
         self.combo_device.clear()
@@ -104,8 +119,12 @@ class HistogramView(QtWidgets.QWidget):
             self.combo_device.addItem(label, key)
         self.combo_device.setCurrentIndex(max(self.find_device(current), 0))
         self.combo_device.blockSignals(False)
-        if self.device_key() != current:
+        if self.device_key() != prev:
             self._on_selection_changed()
+
+    def _on_device_changed(self):
+        self._wanted_device = None
+        self._on_selection_changed()
 
     def _on_selection_changed(self):
         self.stack.setCurrentWidget(self.plot2d if self.histo_type() == "xy" else self.plot1d)
