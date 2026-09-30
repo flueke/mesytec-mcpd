@@ -17,7 +17,7 @@ _HEADER = struct.Struct("<HHHHHBB3H12H")
 
 
 def mdll_neutron(amplitude, x, y, timestamp=0):
-    return (amplitude & 0xFF) << 39 | (x & 0x3FF) << 29 | (y & 0x3FF) << 19 | (timestamp & 0x7FFFF)
+    return (amplitude & 0xFF) << 39 | (y & 0x3FF) << 29 | (x & 0x3FF) << 19 | (timestamp & 0x7FFFF)
 
 
 def mpsd_neutron(mpsd_id, channel, amplitude, position, timestamp=0):
