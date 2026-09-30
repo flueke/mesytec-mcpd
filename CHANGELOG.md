@@ -1,5 +1,32 @@
 # Changelog for mesytec-mcpd
 
+## v0.9-rc
+
+- MDLL: fix swapped x/y position fields when decoding neutron events. Decoded
+  data and histograms from earlier versions have x and y swapped.
+
+- MDLL: `mdll_set_spectrum()` now takes 16 bit shift and offset values for the
+  upcoming FW0106. Incompatible with MDLL_v1 and MDLL_v2 < FW0106.
+
+- New readout and processing core shared by mcpd-cli and the python bindings:
+  `Daq` class (readout/replay, listfile writing, per source stats, MDLL and
+  MCPD histograms) and a `PacketConsumer` interface. mcpd-cli was refactored to
+  use it.
+
+- New python GUI `mesytec-mcpd-gui` (install with `mesytec-mcpd[gui]`):
+  - run control, listfile writing and replay
+  - per source stats table and histogram views
+  - device parameter tree with a text filter
+  - embedded python console, GUI state follows DAQ changes made from it
+  - setup save/load, restores the last used setup and the UI layout on start
+
+- New python port of mcpd-cli: `mcpd-cli-py`.
+
+- Python packaging:
+  - numpy and click are now regular dependencies, the `[cli]` extra is gone
+  - version scheme changed to `no-guess-dev`, versions map directly to git commits
+  - wheels are built via cibuildwheel, Windows wheel fixes
+
 ## v0.8
 
 - Improved mcpd-cli: more stats, better reporting, improved error handling
