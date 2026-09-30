@@ -378,6 +378,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def _remember_setup_dir(self, path: str):
         QtCore.QSettings().setValue("last_setup_dir", str(Path(path).parent))
 
+    def _remember_setup_path(self):
+        QtCore.QSettings().setValue("last_setup_path", str(self.setup_path))
+
     def _open_setup(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open Setup", self._setup_dialog_dir(), "Setup (*.json)")
         if not path:
@@ -389,6 +392,7 @@ class MainWindow(QtWidgets.QMainWindow):
             log.error(f"Failed to load setup {path}: {e}")
             return
         self.setup_path = Path(path)
+        self._remember_setup_path()
         self._load_setup_into_ui()
         log.info(f"Loaded setup {path}")
 
@@ -397,6 +401,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return self._save_setup_as()
         try:
             self.setup.save(self.setup_path)
+            self._remember_setup_path()
             log.info(f"Saved setup to {self.setup_path}")
         except Exception as e:
             log.error(f"Failed to save setup {self.setup_path}: {e}")
@@ -617,7 +622,8 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="mesytec MDLL DAQ GUI")
-    parser.add_argument("setup", nargs="?", help=f"setup file (default: {default_setup_path()})")
+    parser.add_argument("setup", nargs="?",
+                        help=f"setup file (default: last used setup or {default_setup_path()})")
     parser.add_argument("--log-level", default="info")
     args = parser.parse_args()
 
@@ -636,7 +642,11 @@ def main():
 
     pg.setConfigOptions(antialias=True, imageAxisOrder="row-major")
 
-    setup_path = Path(args.setup) if args.setup else default_setup_path()
+    if args.setup:
+        setup_path = Path(args.setup)
+    else:
+        last = QtCore.QSettings().value("last_setup_path", "")
+        setup_path = Path(last) if last and Path(last).exists() else default_setup_path()
     setup = Setup()
     if setup_path.exists():
         try:
