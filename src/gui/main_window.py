@@ -344,7 +344,7 @@ class MainWindow(QtWidgets.QMainWindow):
         dp.le_listdir.setText(self.setup.listfile_dir)
         self.device_panel.set_setup(self.setup)
         self.console.localNamespace["setup"] = self.setup
-        self.setWindowTitle(f"MCPD DAQ - {self.setup_path}" if self.setup_path else "MCPD DAQ")
+        self.setWindowTitle(f"MPSD DAQ GUI - {self.setup_path}" if self.setup_path else "MPSD DAQ GUI")
 
     @Slot(int, str)
     def _append_log(self, level: int, text: str):
@@ -634,7 +634,7 @@ def add_qt_font(font_path: str) -> Optional[QtGui.QFont]:
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="mesytec MCPD/MDLL DAQ GUI")
+    parser = argparse.ArgumentParser(description="mesytec MPSD DAQ GUI")
     parser.add_argument("setup", nargs="?",
                         help=f"setup file (default: last used setup or {default_setup_path()})")
     parser.add_argument("--log-level", default="info")
@@ -643,7 +643,7 @@ def main():
     logging.basicConfig(level=args.log_level.upper(), format="%(name)s %(message)s")
     mcpd.set_log_level(args.log_level)
 
-    app = pg.mkQApp("MDLL DAQ")
+    app = pg.mkQApp("MPSD DAQ")
     app.setOrganizationName("mesytec")
 
     from . import resources  # noqa: F401  registers the embedded fonts
