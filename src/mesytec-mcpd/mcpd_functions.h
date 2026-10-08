@@ -77,6 +77,14 @@ std::vector<u16> packet_to_data(const Packet &packet)
 std::error_code MESYTEC_MCPD_EXPORT mcpd_get_version(int sock, u8 mcpdId, McpdVersionInfo &vi);
 std::error_code MESYTEC_MCPD_EXPORT mcpd_set_id(int sock, u8 mcpdId, u8 newId);
 
+// Set Protocol Parameters (cmd 5). For MCPD-8_v1:
+// - mcpd ip: no change if the first octet is 0.
+// - data dest and cmd dest ip: no change if only the first octet is 0. If the
+//   first and second octets are 0 (e.g. 0.0.0.0) the ip of the pc sending the
+//   command is used.
+// - ports: no change if 0.
+// Changes are written to the flash of MCPD-8_v1 modules. MCPD-8_v2 only
+// evaluates the data dest port.
 std::error_code MESYTEC_MCPD_EXPORT mcpd_set_network_parameters(
     int sock, u8 mcpdId,
     const std::array<u8, 4> &mcpdIpAddress,
@@ -110,13 +118,17 @@ std::error_code MESYTEC_MCPD_EXPORT mcpd_set_network_parameters(
     const std::string &dataDestAddress,
     u16 dataDestPort);
 
-// Only changes the ip address of the mcpd, leaves other network settings unchanged.
+// Changes the ip address of the mcpd. Also sets the data and cmd dest ip addresses
+// to the ip of the calling pc.
 std::error_code MESYTEC_MCPD_EXPORT mcpd_set_ip_address(int sock, u8 mcpdId, const std::string &address);
 
-// Only changes the data dest port, leaves other network settings unchanged.
+// Changes the data dest port. Also sets the data and cmd dest ip addresses to the
+// ip of the calling pc.
 std::error_code MESYTEC_MCPD_EXPORT mcpd_set_data_dest_port(int sock, u8 mcpdId, u16 dataDestPort);
 
-// Changes only the mcpd ip address and data destination address and port.
+// Changes the mcpd ip address and data destination address and port. Also sets the
+// cmd dest ip address to the ip of the calling pc. Use "0.0.0.0" as the mcpd
+// address to keep the current address.
 std::error_code MESYTEC_MCPD_EXPORT mcpd_set_ip_address_and_data_dest(
     int sock, u8 mcpdId, const std::string &address,
     const std::string &dataDestAddress, u16 dataDestPort);

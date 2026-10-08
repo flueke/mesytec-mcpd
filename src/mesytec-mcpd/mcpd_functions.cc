@@ -311,9 +311,9 @@ std::error_code mcpd_set_ip_address(
     return mcpd_set_network_parameters(
         sock, mcpdId,
         address, // mcpdAddress
-        "0.0.0.0", // cmdDestAddress (no change)
+        "0.0.0.0", // cmdDestAddress: "this computer"
         0, // cmdDestPort (no change)
-        "0.0.0.0", // dataDestAddress (no change)
+        "0.0.0.0", // dataDestAddress: "this computer"
         0); // dataDestPort (no change)
 };
 
@@ -322,9 +322,9 @@ std::error_code mcpd_set_data_dest_port(int sock, u8 mcpdId, u16 dataDestPort)
     return mcpd_set_network_parameters(
         sock, mcpdId,
         "0.0.0.0", // mcpdAddress: "no change"
-        "0.0.0.0", // cmdDestAddress (no change)
+        "0.0.0.0", // cmdDestAddress: "this computer"
         0, // cmdDestPort (no change)
-        "0.0.0.0", // dataDestAddress (no change)
+        "0.0.0.0", // dataDestAddress: "this computer"
         dataDestPort);
 }
 
@@ -335,7 +335,7 @@ std::error_code mcpd_set_ip_address_and_data_dest(
     return mcpd_set_network_parameters(
         sock, mcpdId,
         address, // mcpdAddress
-        "0.0.0.0", // cmdDestAddress (no change)
+        "0.0.0.0", // cmdDestAddress: "this computer"
         0, // cmdDestPort (no change)
         dataDestAddress, // data destination address
         dataDestPort);
