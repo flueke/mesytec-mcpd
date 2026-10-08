@@ -643,7 +643,7 @@ def main():
     logging.basicConfig(level=args.log_level.upper(), format="%(name)s %(message)s")
     mcpd.set_log_level(args.log_level)
 
-    app = pg.mkQApp("MPSD DAQ")
+    app = pg.mkQApp("mesytec-mpsd-gui")
     app.setOrganizationName("mesytec")
 
     from . import resources  # noqa: F401  registers the embedded fonts
