@@ -24,7 +24,7 @@ from .device_worker import DeviceWorkers
 from .histo_view import HistogramView
 from .stats import DeviceRow, StatsTracker
 
-log = logging.getLogger("mdll_gui")
+log = logging.getLogger("mpsd_gui")
 
 StatsInterval_ms = 500
 HistoInterval_ms = 250
@@ -34,7 +34,7 @@ DrainDelay_ms = 300
 def default_setup_path() -> Path:
     import platformdirs
 
-    return platformdirs.user_config_path("mesytec-mcpd") / "mdll_gui_setup.json"
+    return platformdirs.user_config_path("mesytec-mcpd") / "mpsd_gui_setup.json"
 
 
 class LogEmitter(QtCore.QObject):
@@ -208,7 +208,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # UI setup
     def _setup_ui(self):
-        self.setWindowTitle("MDLL DAQ")
+        self.setWindowTitle("MPSD DAQ GUI")
         self.resize(1600, 1000)
         self.dock_area = DockArea()
         self.setCentralWidget(self.dock_area)
@@ -222,7 +222,7 @@ class MainWindow(QtWidgets.QMainWindow):
         menu_file.addSeparator()
         menu_file.addAction("E&xit", self.close, QtGui.QKeySequence.StandardKey.Quit)
         menu_view = self.menuBar().addMenu("&View")
-        menu_view.addAction("New &Histogram View", lambda: self._add_histo_view("xy"))
+        menu_view.addAction("New &Histogram View", lambda: self._add_histo_view())
         menu_view.addSeparator()
         menu_view.addAction("&Reset UI to Defaults", self._reset_ui)
 
@@ -280,11 +280,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dock_area.addDock(self.dock_console, "above", self.dock_log)
         self.dock_stats.raiseDock()
 
-        self._add_histo_view("xy")
-        self._add_histo_view("amplitude", "right")
+        self._add_histo_view().restore_state(dict(type="xy", mode="bus"))
+        self._add_histo_view("right").restore_state(dict(type="amplitude", mode="overview"))
 
-    def _add_histo_view(self, histo_type: str, position: str = "bottom", name: Optional[str] = None):
-        view = HistogramView(histo_type)
+    def _add_histo_view(self, position: str = "bottom", name: Optional[str] = None):
+        view = HistogramView()
         if name is None:
             used = {d.name() for d, _ in self.histo_views}
             name = next(f"Histogram {i}" for i in range(len(used) + 1) if f"Histogram {i}" not in used)
@@ -320,7 +320,7 @@ class MainWindow(QtWidgets.QMainWindow):
             state = json.loads(text)
             self._close_histo_views()
             for h in state["histograms"]:
-                self._add_histo_view(h["type"], name=h["name"]).restore_state(h)
+                self._add_histo_view(name=h["name"]).restore_state(h)
             self.dock_area.restoreState(state["docks"], missing="ignore")
             self.restoreGeometry(QtCore.QByteArray.fromBase64(state["geometry"].encode()))
         except Exception as e:
@@ -344,7 +344,7 @@ class MainWindow(QtWidgets.QMainWindow):
         dp.le_listdir.setText(self.setup.listfile_dir)
         self.device_panel.set_setup(self.setup)
         self.console.localNamespace["setup"] = self.setup
-        self.setWindowTitle(f"MDLL DAQ - {self.setup_path}" if self.setup_path else "MDLL DAQ")
+        self.setWindowTitle(f"MCPD DAQ - {self.setup_path}" if self.setup_path else "MCPD DAQ")
 
     @Slot(int, str)
     def _append_log(self, level: int, text: str):
@@ -435,7 +435,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _make_listfile_path(self) -> str:
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        name = f"mdll_run{self.daq_panel.spin_run_id.value():05d}_{ts}.mcpdlst"
+        name = f"run{self.daq_panel.spin_run_id.value():05d}_{ts}.mcpdlst"
         return str(Path(self.setup.listfile_dir or ".") / name)
 
     def start_readout(self, write_listfile: bool) -> bool:
@@ -546,8 +546,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 QtCore.QTimer.singleShot(DrainDelay_ms, self.stop_readout)
 
     # Periodic updates
-    def _device_choices(self) -> list[tuple[tuple[int, int], str]]:
-        return [(row.key, row.label) for row in self.rows if row.is_mdll]
+    def _device_choices(self) -> list[tuple[tuple[int, int], str, str]]:
+        return [
+            (row.key, row.label, "mdll" if row.is_mdll else "mcpd")
+            for row in self.rows
+            if row.is_mdll or row.is_mcpd
+        ]
 
     @Slot()
     def _update_stats(self):
@@ -593,9 +597,11 @@ class MainWindow(QtWidgets.QMainWindow):
         for _, view in self.histo_views:
             if not view.isVisible() or (key := view.device_key()) is None:
                 continue
-            if key not in cache:
-                cache[key] = self.daq.get_mdll_histograms(*key)
-            view.update_histograms(cache[key])
+            kind = view.device_kind()
+            if (kind, key) not in cache:
+                get = self.daq.get_mdll_histograms if kind == "mdll" else self.daq.get_mcpd_histograms
+                cache[(kind, key)] = get(*key)
+            view.update_histograms(cache[(kind, key)])
 
     def closeEvent(self, event: QtGui.QCloseEvent):
         self.stats_timer.stop()
@@ -628,7 +634,7 @@ def add_qt_font(font_path: str) -> Optional[QtGui.QFont]:
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="mesytec MDLL DAQ GUI")
+    parser = argparse.ArgumentParser(description="mesytec MCPD/MDLL DAQ GUI")
     parser.add_argument("setup", nargs="?",
                         help=f"setup file (default: last used setup or {default_setup_path()})")
     parser.add_argument("--log-level", default="info")

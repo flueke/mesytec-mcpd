@@ -6,7 +6,17 @@ from pyqtgraph.parametertree import Parameter, ParameterTree
 from pyqtgraph.Qt import QtCore, QtWidgets
 from pyqtgraph.Qt.QtCore import Signal
 
-from .commands import COMMANDS, SETTINGS, Arg, Command
+from .commands import (
+    MPSD_COMMANDS,
+    MPSD_SETTINGS,
+    DeviceTypes,
+    McpdBusCount,
+    ScanBusses,
+    Arg,
+    Command,
+    commands_for,
+    settings_for,
+)
 from .config import DeviceConfig, Setup
 from .device_worker import DeviceWorkers
 
@@ -33,27 +43,45 @@ def _command_group(cmd: Command, values: dict, action_title: str) -> dict:
 
 
 def submit_command(
-    workers: DeviceWorkers, cfg: DeviceConfig, cmd: Command, values: dict, on_success=None
+    workers: DeviceWorkers,
+    cfg: DeviceConfig,
+    cmd: Command,
+    values: dict,
+    on_success=None,
+    fixed: Optional[dict] = None,
 ):
     values = dict(values)
-    workers.submit(cfg, cmd.describe(values), lambda conn: cmd.call(conn, values), on_success)
+    workers.submit(cfg, cmd.describe(values, fixed), lambda conn: cmd.call(conn, values, fixed), on_success)
 
 
 def apply_settings(workers: DeviceWorkers, cfg: DeviceConfig):
-    for cmd in SETTINGS:
+    for cmd in settings_for(cfg.device_type):
         submit_command(workers, cfg, cmd, cfg.settings[cmd.key])
+    for bus, mpsd in enumerate(cfg.mpsds):
+        if mpsd.present:
+            for cmd in MPSD_SETTINGS:
+                submit_command(workers, cfg, cmd, mpsd.settings[cmd.key], fixed={"mpsd_id": bus})
+
+
+def present_busses(cfg: DeviceConfig) -> str:
+    return " ".join(str(bus) for bus, m in enumerate(cfg.mpsds) if m.present)
+
+
+def bus_title(cfg: DeviceConfig, bus: int) -> str:
+    return f"Bus {bus}" + (" (present)" if cfg.mpsds[bus].present else "")
 
 
 class DevicePanel(QtWidgets.QWidget):
     devices_changed = Signal()
 
-    Columns = ("On", "Name", "Address", "Id", "Port", "Timing")
+    Columns = ("On", "Name", "Type", "Address", "Id", "Port", "Timing", "Busses")
 
     def __init__(self, setup: Setup, workers: DeviceWorkers, parent=None):
         super().__init__(parent)
         self.setup = setup
         self.workers = workers
-        self._command_values: dict[int, dict[str, dict]] = {}
+        # id(cfg) -> scope ("device" or "busN") -> command key -> values
+        self._command_values: dict[int, dict[str, dict[str, dict]]] = {}
         self._tree_root: Optional[Parameter] = None
         self._tree_cfg: Optional[DeviceConfig] = None
 
@@ -130,10 +158,12 @@ class DevicePanel(QtWidgets.QWidget):
             values = (
                 "✓" if cfg.enabled else "",
                 cfg.name,
+                cfg.device_type,
                 cfg.address,
                 str(cfg.mcpd_id),
                 str(cfg.port),
                 cfg.timing_role,
+                present_busses(cfg),
             )
             for col, text in enumerate(values):
                 item = self.table.item(row, col)
@@ -152,7 +182,7 @@ class DevicePanel(QtWidgets.QWidget):
 
     def _add_device(self):
         n = len(self.setup.devices)
-        cfg = DeviceConfig(name=f"mdll{n}", address=f"192.168.168.{121 + n}")
+        cfg = DeviceConfig(name=f"mcpd{n}", address=f"192.168.168.{121 + n}")
         if any(d.timing_role == "Master" for d in self.setup.devices):
             cfg.settings["timing"]["role"] = "Slave"
         self.setup.devices.append(cfg)
@@ -216,7 +246,10 @@ class DevicePanel(QtWidgets.QWidget):
             update(c, not text)
 
     def _build_tree(self, cfg: DeviceConfig) -> Parameter:
-        cmd_values = self._command_values.setdefault(id(cfg), {c.key: c.defaults() for c in COMMANDS})
+        cmd_values = self._command_values.setdefault(id(cfg), {})
+
+        def values_for(scope: str, cmd: Command) -> dict:
+            return cmd_values.setdefault(scope, {}).setdefault(cmd.key, cmd.defaults())
 
         connection = dict(
             name="connection",
@@ -224,6 +257,7 @@ class DevicePanel(QtWidgets.QWidget):
             type="group",
             children=[
                 dict(name="name", type="str", value=cfg.name),
+                dict(name="device_type", title="type", type="list", limits=list(DeviceTypes), value=cfg.device_type),
                 dict(name="address", type="str", value=cfg.address),
                 dict(name="mcpd_id", title="id", type="int", value=cfg.mcpd_id, limits=(0, 255)),
                 dict(name="port", type="int", value=cfg.port, limits=(1, 65535)),
@@ -234,27 +268,63 @@ class DevicePanel(QtWidgets.QWidget):
             name="settings",
             title="Settings",
             type="group",
-            children=[_command_group(c, cfg.settings[c.key], "Apply") for c in SETTINGS],
+            children=[_command_group(c, cfg.settings[c.key], "Apply") for c in settings_for(cfg.device_type)],
         )
         commands = dict(
             name="commands",
             title="Commands",
             type="group",
             expanded=False,
-            children=[_command_group(c, cmd_values[c.key], "Run") for c in COMMANDS],
+            children=[_command_group(c, values_for("device", c), "Run") for c in commands_for(cfg.device_type)],
         )
-        root = Parameter.create(name="root", type="group", children=[connection, settings, commands])
+        groups = [connection, settings, commands]
 
-        for section, cmds, store in (
-            ("settings", SETTINGS, lambda c: cfg.settings[c.key]),
-            ("commands", COMMANDS, lambda c: cmd_values[c.key]),
-        ):
-            for cmd in cmds:
-                values = store(cmd)
-                action = root.child(section, cmd.key, ActionName)
-                action.sigActivated.connect(
-                    lambda _p, cmd=cmd, values=values: self._run_command(cfg, cmd, values)
-                )
+        if cfg.device_type == "mcpd":
+            busses = [dict(name=ActionName, title=ScanBusses.title, type="action")]
+            for bus, mpsd in enumerate(cfg.mpsds):
+                scope = f"bus{bus}"
+                busses.append(dict(
+                    name=scope,
+                    title=bus_title(cfg, bus),
+                    type="group",
+                    expanded=False,
+                    children=[
+                        dict(name="present", type="bool", value=mpsd.present),
+                        dict(
+                            name="settings",
+                            title="Settings",
+                            type="group",
+                            children=[_command_group(c, mpsd.settings[c.key], "Apply") for c in MPSD_SETTINGS],
+                        ),
+                        dict(
+                            name="commands",
+                            title="Commands",
+                            type="group",
+                            children=[_command_group(c, values_for(scope, c), "Run") for c in MPSD_COMMANDS],
+                        ),
+                    ],
+                ))
+            groups.append(dict(name="busses", title="Busses (MPSD)", type="group", children=busses))
+
+        root = Parameter.create(name="root", type="group", children=groups)
+
+        def connect(path: tuple, cmd: Command, values: dict, fixed: Optional[dict] = None):
+            root.child(*path, ActionName).sigActivated.connect(
+                lambda _p: self._run_command(cfg, cmd, values, fixed)
+            )
+
+        for cmd in settings_for(cfg.device_type):
+            connect(("settings", cmd.key), cmd, cfg.settings[cmd.key])
+        for cmd in commands_for(cfg.device_type):
+            connect(("commands", cmd.key), cmd, values_for("device", cmd))
+        if cfg.device_type == "mcpd":
+            connect(("busses",), ScanBusses, {})
+            for bus, mpsd in enumerate(cfg.mpsds):
+                fixed = {"mpsd_id": bus}
+                for cmd in MPSD_SETTINGS:
+                    connect(("busses", f"bus{bus}", "settings", cmd.key), cmd, mpsd.settings[cmd.key], fixed)
+                for cmd in MPSD_COMMANDS:
+                    connect(("busses", f"bus{bus}", "commands", cmd.key), cmd, values_for(f"bus{bus}", cmd), fixed)
 
         def on_changed(_root, changes):
             for param, change, data in changes:
@@ -263,6 +333,9 @@ class DevicePanel(QtWidgets.QWidget):
                 path = root.childPath(param)
                 if path[0] == "connection":
                     setattr(cfg, path[1], data)
+                    if path[1] == "device_type":
+                        cfg.normalize()
+                        QtCore.QTimer.singleShot(0, self.rebuild_tree)
                     self.refresh()
                     self.devices_changed.emit()
                 elif path[0] == "settings":
@@ -270,23 +343,45 @@ class DevicePanel(QtWidgets.QWidget):
                     if path[1] == "timing":
                         self.refresh()
                 elif path[0] == "commands":
-                    cmd_values[path[1]][path[2]] = data
+                    cmd_values["device"][path[1]][path[2]] = data
+                elif path[0] == "busses":
+                    bus = int(path[1].removeprefix("bus"))
+                    if path[2] == "present":
+                        cfg.mpsds[bus].present = data
+                        root.child("busses", path[1]).setOpts(title=bus_title(cfg, bus))
+                        self.refresh()
+                    elif path[2] == "settings":
+                        cfg.mpsds[bus].settings[path[3]][path[4]] = data
+                    elif path[2] == "commands":
+                        cmd_values[path[1]][path[3]][path[4]] = data
 
         root.sigTreeStateChanged.connect(on_changed)
         return root
 
-    def _run_command(self, cfg: DeviceConfig, cmd: Command, values: dict):
+    def _run_command(self, cfg: DeviceConfig, cmd: Command, values: dict, fixed: Optional[dict] = None):
         on_success = None
         if cmd.on_success is not None:
             snapshot = dict(values)
 
-            def on_success(_result):
-                cmd.on_success(cfg, snapshot)
+            def on_success(result):
+                cmd.on_success(cfg, snapshot, result)
                 self.refresh()
-                self.rebuild_tree()
+                if cmd is ScanBusses:
+                    self._sync_busses(cfg)
+                else:
+                    self.rebuild_tree()
                 self.devices_changed.emit()
 
-        submit_command(self.workers, cfg, cmd, values, on_success)
+        submit_command(self.workers, cfg, cmd, values, on_success, fixed)
+
+    # Updates the bus parameters in place to keep the tree's expansion state.
+    def _sync_busses(self, cfg: DeviceConfig):
+        if cfg is not self._tree_cfg or self._tree_root is None or cfg.device_type != "mcpd":
+            return
+        for bus in range(McpdBusCount):
+            group = self._tree_root.child("busses", f"bus{bus}")
+            group.child("present").setValue(cfg.mpsds[bus].present)
+            group.setOpts(title=bus_title(cfg, bus))
 
     def rebuild_tree(self):
         self._tree_root = None

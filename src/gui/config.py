@@ -4,13 +4,28 @@ import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from .commands import SETTINGS
+from .commands import MPSD_SETTINGS, McpdBusCount, Command, settings_for
 
 DefaultPort = 54321
 
 
-def default_settings() -> dict[str, dict]:
-    return {c.key: c.defaults() for c in SETTINGS}
+# Returns the defaults of the given commands updated with the known keys of 'values'.
+def merge_settings(commands: tuple[Command, ...], values: dict) -> dict[str, dict]:
+    result = {c.key: c.defaults() for c in commands}
+    for key, v in values.items():
+        if key in result:
+            result[key].update({k: x for k, x in v.items() if k in result[key]})
+    return result
+
+
+@dataclass(eq=False)
+class MpsdConfig:
+    present: bool = False
+    settings: dict[str, dict] = field(default_factory=lambda: merge_settings(MPSD_SETTINGS, {}))
+
+    @classmethod
+    def from_dict(cls, d: dict) -> MpsdConfig:
+        return cls(present=bool(d.get("present", False)), settings=merge_settings(MPSD_SETTINGS, d.get("settings", {})))
 
 
 @dataclass(eq=False)
@@ -20,7 +35,21 @@ class DeviceConfig:
     mcpd_id: int = 0
     port: int = DefaultPort
     enabled: bool = True
-    settings: dict[str, dict] = field(default_factory=default_settings)
+    device_type: str = "mcpd"  # mcpd | mdll
+    settings: dict[str, dict] = field(default_factory=dict)
+    # One entry per MCPD bus. Empty for MDLL devices.
+    mpsds: list[MpsdConfig] = field(default_factory=list)
+
+    def __post_init__(self):
+        self.normalize()
+
+    # Adapts settings and mpsds to the device type, keeping existing values.
+    def normalize(self):
+        self.settings = merge_settings(settings_for(self.device_type), self.settings)
+        if self.device_type == "mcpd":
+            self.mpsds = (self.mpsds + [MpsdConfig() for _ in range(McpdBusCount)])[:McpdBusCount]
+        else:
+            self.mpsds = []
 
     @property
     def timing_role(self) -> str:
@@ -31,17 +60,15 @@ class DeviceConfig:
 
     @classmethod
     def from_dict(cls, d: dict) -> DeviceConfig:
-        settings = default_settings()
-        for key, values in d.get("settings", {}).items():
-            if key in settings:
-                settings[key].update({k: v for k, v in values.items() if k in settings[key]})
         return cls(
             name=d["name"],
             address=d["address"],
             mcpd_id=int(d.get("mcpd_id", 0)),
             port=int(d.get("port", DefaultPort)),
             enabled=bool(d.get("enabled", True)),
-            settings=settings,
+            device_type=d.get("device_type", "mcpd"),
+            settings=d.get("settings", {}),
+            mpsds=[MpsdConfig.from_dict(m) for m in d.get("mpsds", [])],
         )
 
 

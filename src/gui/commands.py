@@ -40,18 +40,25 @@ class Command:
     title: str
     method: str
     args: tuple[Arg, ...] = ()
-    # Called with (device_config, values) after the command succeeded.
-    on_success: Optional[Callable[[Any, dict], None]] = field(default=None, compare=False)
+    # Called with (device_config, values, result) after the command succeeded.
+    on_success: Optional[Callable[[Any, dict, Any], None]] = field(default=None, compare=False)
+    # Replaces the plain method call: invoked with (conn, **kwargs).
+    caller: Optional[Callable[..., Any]] = field(default=None, compare=False)
 
     def defaults(self) -> dict:
         return {a.name: a.default for a in self.args}
 
-    def call(self, conn: mcpd.McpdConnection, values: dict):
-        kwargs = {a.name: a.convert(values.get(a.name, a.default)) for a in self.args}
+    # 'fixed' holds arguments not shown to the user, e.g. the mpsd_id of a bus.
+    def call(self, conn: mcpd.McpdConnection, values: dict, fixed: Optional[dict] = None):
+        kwargs = {**(fixed or {}), **{a.name: a.convert(values.get(a.name, a.default)) for a in self.args}}
+        if self.caller is not None:
+            return self.caller(conn, **kwargs)
         return getattr(conn, self.method)(**kwargs)
 
-    def describe(self, values: dict) -> str:
-        return f"{self.method}({', '.join(f'{a.name}={values.get(a.name, a.default)}' for a in self.args)})"
+    def describe(self, values: dict, fixed: Optional[dict] = None) -> str:
+        parts = [f"{k}={v}" for k, v in (fixed or {}).items()]
+        parts += [f"{a.name}={values.get(a.name, a.default)}" for a in self.args]
+        return f"{self.method}({', '.join(parts)})"
 
 
 def u8(name, default=0, title=None):
@@ -66,14 +73,20 @@ def enum(name, enum_type, default, title=None):
     return Arg(name, "enum", default, enum=enum_type, title=title)
 
 
-# Persistent per-device settings. Applied individually or all at once, in this order.
+DeviceTypes = ("mcpd", "mdll")
+McpdBusCount = 8
+MpsdChannelCount = 8
+
+# Persistent per-device settings. Applied individually or all at once, in this order:
+# common settings, device type specific settings, then the settings of each MPSD
+# present on the MCPD busses.
 # NOTE: the default values are placeholders (zero where no better value was known)
-# and must be revisited once proper MDLL defaults are established.
+# and must be revisited once proper defaults are established.
 #
 # The timing role determines which device receives the DAQ start/stop/continue
 # commands: exactly one enabled device must be Master, it relays the commands to
 # the Slaves via the sync bus.
-SETTINGS: tuple[Command, ...] = (
+COMMON_SETTINGS: tuple[Command, ...] = (
     Command("data_dest_port", "Data Destination Port", "set_data_dest_port", (u16("port", 54321),)),
     Command(
         "timing",
@@ -85,6 +98,9 @@ SETTINGS: tuple[Command, ...] = (
             Arg("ext_sync", "bool", False),
         ),
     ),
+)
+
+MDLL_SETTINGS: tuple[Command, ...] = (
     Command(
         "thresholds",
         "Thresholds",
@@ -126,19 +142,56 @@ SETTINGS: tuple[Command, ...] = (
     ),
 )
 
+MCPD_SETTINGS: tuple[Command, ...] = ()
+
+
+# Sends a single command using channel 8 (= all channels) if all gains are equal.
+def _set_gains(conn: mcpd.McpdConnection, mpsd_id: int, **gains):
+    values = [gains[f"gain{ch}"] for ch in range(MpsdChannelCount)]
+    if len(set(values)) == 1:
+        conn.mpsd_set_gain(mpsd_id=mpsd_id, channel=MpsdChannelCount, gain=values[0])
+    else:
+        for ch, gain in enumerate(values):
+            conn.mpsd_set_gain(mpsd_id=mpsd_id, channel=ch, gain=gain)
+
+
+# Persistent per-MPSD settings. mpsd_id is the bus number and passed as a fixed argument.
+MPSD_SETTINGS: tuple[Command, ...] = (
+    Command(
+        "gain",
+        "Gain",
+        "mpsd_set_gain",
+        tuple(u8(f"gain{ch}", title=f"channel {ch}") for ch in range(MpsdChannelCount)),
+        caller=_set_gains,
+    ),
+    Command("threshold", "Threshold", "mpsd_set_threshold", (u8("threshold"),)),
+    Command("mode", "Mode", "mpsd_set_mode", (enum("mode", mcpd.MpsdMode, "Position"),)),
+    Command("tx_format", "TX Format", "mpsd_set_tx_format", (Arg("tx_format", "hex", "0x0000"),)),
+)
+
+SETTINGS: tuple[Command, ...] = COMMON_SETTINGS + MDLL_SETTINGS + MCPD_SETTINGS
 SETTINGS_BY_KEY = {c.key: c for c in SETTINGS}
 
 
-def _update_id(cfg, values):
+def settings_for(device_type: str) -> tuple[Command, ...]:
+    return COMMON_SETTINGS + (MDLL_SETTINGS if device_type == "mdll" else MCPD_SETTINGS)
+
+
+def _update_id(cfg, values, _result):
     cfg.mcpd_id = int(values["new_id"])
 
 
-def _update_address(cfg, values):
+def _update_address(cfg, values, _result):
     cfg.address = values["address"]
 
 
+def _update_present_mpsds(cfg, _values, result):
+    for mpsd, bus_id in zip(cfg.mpsds, result, strict=True):
+        mpsd.present = bus_id != 0
+
+
 # One-shot commands. Not persisted.
-COMMANDS: tuple[Command, ...] = (
+COMMON_COMMANDS: tuple[Command, ...] = (
     Command("get_version", "Get Version", "get_version"),
     Command("get_all_parameters", "Get Parameters", "get_all_parameters"),
     Command("read_register", "Read Register", "read_register", (Arg("address", "hex", "0x0000"),)),
@@ -173,7 +226,6 @@ COMMANDS: tuple[Command, ...] = (
         (Arg("param", "int", 0, (0, 3)), enum("source", mcpd.DataSource, "Monitor0")),
     ),
     Command("set_dac_output", "Set DAC Output", "set_dac_output_values", (u16("dac0_value"), u16("dac1_value"))),
-    Command("set_tx_data_set", "Set TX Data Set", "mdll_set_tx_data_set", (enum("data_set", mcpd.MdllTxDataSet, "Default"),)),
     Command("set_id", "Set Id", "set_id", (u8("new_id"),), on_success=_update_id),
     Command("set_ip_address", "Set IP Address (MCPD/MDLL v0/v1 only)", "set_ip_address", (Arg("address", "str", "192.168.168.121"),), on_success=_update_address),
     Command(
@@ -193,6 +245,48 @@ COMMANDS: tuple[Command, ...] = (
     Command("continue_daq", "Continue DAQ", "continue_daq"),
 )
 
+MDLL_COMMANDS: tuple[Command, ...] = (
+    Command("set_tx_data_set", "Set TX Data Set", "mdll_set_tx_data_set", (enum("data_set", mcpd.MdllTxDataSet, "Default"),)),
+)
+
+ScanBusses = Command("scan_busses", "Scan Busses", "scan_busses", on_success=_update_present_mpsds)
+
+MCPD_COMMANDS: tuple[Command, ...] = (ScanBusses,)
+
+# One-shot per-MPSD commands. mpsd_id is passed as a fixed argument.
+MPSD_COMMANDS: tuple[Command, ...] = (
+    Command(
+        "pulser",
+        "Pulser",
+        "mpsd_set_pulser",
+        (
+            Arg("channel", "int", 0, (0, MpsdChannelCount - 1)),
+            enum("position", mcpd.ChannelPosition, "Center"),
+            u8("amplitude"),
+            enum("state", mcpd.PulserState, "Off"),
+        ),
+    ),
+    Command("get_params", "Get Parameters", "mpsd_get_params"),
+    Command(
+        "read_register",
+        "Read Register",
+        "read_peripheral_register",
+        (u16("register_number"),),
+    ),
+    Command(
+        "write_register",
+        "Write Register",
+        "write_peripheral_register",
+        (u16("register_number"), Arg("register_value", "hex", "0x0000")),
+    ),
+)
+
+COMMANDS: tuple[Command, ...] = COMMON_COMMANDS + MDLL_COMMANDS + MCPD_COMMANDS
+
+
+def commands_for(device_type: str) -> tuple[Command, ...]:
+    return COMMON_COMMANDS + (MDLL_COMMANDS if device_type == "mdll" else MCPD_COMMANDS)
+
 
 def format_result(result) -> str:
     if result is None:
@@ -204,6 +298,13 @@ def format_result(result) -> str:
             f"adc={result.adc}, dac={result.dac}, ttl_out={result.ttl_out:#x}, "
             f"ttl_in={result.ttl_in:#x}, event_counters={result.event_counters}, params={result.params}"
         )
+    if isinstance(result, mcpd.MpsdParameters):
+        return (
+            f"mpsd_id={result.mpsd_id}, bus_tx_caps={result.bus_tx_caps:#x}, "
+            f"tx_format={result.tx_format:#x}, firmware_revision={result.firmware_revision:#x}"
+        )
+    if isinstance(result, list):
+        return "[" + ", ".join(f"{v:#x}" if isinstance(v, int) else str(v) for v in result) + "]"
     if isinstance(result, int):
         return f"{result} ({result:#x})"
     return str(result)

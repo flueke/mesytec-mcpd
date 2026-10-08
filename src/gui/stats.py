@@ -50,6 +50,10 @@ class DeviceRow:
         return self.stats.buffer_type == mcpd.constants.buffer_types.MdllDataBufferType
 
     @property
+    def is_mcpd(self) -> bool:
+        return self.stats.buffer_type == mcpd.constants.buffer_types.McpdDataBufferType
+
+    @property
     def device_id(self) -> int:
         return self.key[1]
 

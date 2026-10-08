@@ -32,7 +32,11 @@ CMD_STOP_DAQ = 2
 CMD_CONTINUE_DAQ = 3
 CMD_SET_ID = 4
 CMD_GET_PARAMS = 12
+CMD_SET_GAIN = 13
+CMD_SET_THRESHOLD = 14
 CMD_GET_BUS_CAPABILITIES = 22
+CMD_GET_MPSD_PARAMS = 24
+CMD_READ_IDS = 36
 CMD_SET_BUS_CAPABILITIES = 23
 CMD_GET_VERSION = 51
 CMD_WRITE_REGISTER = 80
@@ -111,8 +115,12 @@ class FakeMcpdDevice:
         self.bus_capabilities = (0x07, 0x01)
         self.registers = {}
         self.daq_state = "idle"
+        # Values returned by scan_busses, non-zero if a module is present on the bus.
+        self.bus_ids = [0] * 8
         # command number -> data words of the last request with that command
         self.last_request = {}
+        # (command number, data words) of all requests
+        self.requests = []
 
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._sock.bind((host, port))
@@ -158,6 +166,7 @@ class FakeMcpdDevice:
         device_id = header["device_id"]
         # The data words include the trailing BUFFER_TERMINATOR.
         self.last_request[cmd] = data[: header["buffer_length"] - header["header_length"] - 1]
+        self.requests.append((cmd, self.last_request[cmd]))
 
         if self.enforce_id and device_id != self.mcpd_id:
             return _encode(cmd, self.mcpd_id, [], error=ID_MISMATCH_ERROR)
@@ -205,6 +214,12 @@ class FakeMcpdDevice:
 
         if cmd == CMD_GET_PARAMS:
             return _encode(cmd, device_id, [])
+
+        if cmd == CMD_READ_IDS:
+            return _encode(cmd, device_id, self.bus_ids)
+
+        if cmd == CMD_GET_MPSD_PARAMS:
+            return _encode(cmd, device_id, [data[0], 0, 0, 0])
 
         # Generic ack for everything else (mdll_set_*, mpsd_set_*, setup_cell,
         # set_param_source, set_dac_output_values, set_timing_options, ...):
