@@ -251,7 +251,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dock_devices.addWidget(self.device_panel)
         self.dock_stats = Dock("Statistics", size=(1200, 200))
         self.dock_stats.addWidget(self.stats_table)
-        self.dock_log = Dock("Log", size=(1200, 200))
+        self.dock_log = Dock("Log", size=(600, 200), autoOrientation=False)
         self.dock_log.addWidget(self.log_view)
         self.dock_console = Dock("Console", size=(1200, 200))
         self.dock_console.addWidget(self.console)
@@ -276,12 +276,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dock_area.addDock(self.dock_daq, "left")
         self.dock_area.addDock(self.dock_devices, "bottom", self.dock_daq)
         self.dock_area.addDock(self.dock_stats, "right")
-        self.dock_area.addDock(self.dock_log, "above", self.dock_stats)
-        self.dock_area.addDock(self.dock_console, "above", self.dock_log)
+        self.dock_area.addDock(self.dock_console, "above", self.dock_stats)
         self.dock_stats.raiseDock()
 
         self._add_histo_view().restore_state(dict(type="xy", mode="bus"))
         self._add_histo_view("right").restore_state(dict(type="amplitude", mode="overview"))
+        self.dock_area.addDock(self.dock_log, "right", self.dock_stats)
 
     def _add_histo_view(self, position: str = "bottom", name: Optional[str] = None):
         view = HistogramView()
