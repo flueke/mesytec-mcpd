@@ -215,6 +215,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setStatusBar(QtWidgets.QStatusBar())
 
         menu_file = self.menuBar().addMenu("&File")
+        menu_file.addAction("&New Setup", self._new_setup, QtGui.QKeySequence.StandardKey.New)
         menu_file.addAction("&Open Setup...", self._open_setup)
         menu_file.addAction("&Save Setup", self._save_setup, QtGui.QKeySequence.StandardKey.Save)
         menu_file.addAction("Save Setup &As...", self._save_setup_as)
@@ -380,6 +381,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _remember_setup_path(self):
         QtCore.QSettings().setValue("last_setup_path", str(self.setup_path))
+
+    def _new_setup(self):
+        self.setup = Setup()
+        self.setup_path = None
+        self._load_setup_into_ui()
+        log.info("Created new setup")
 
     def _open_setup(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open Setup", self._setup_dialog_dir(), "Setup (*.json)")
