@@ -12,8 +12,8 @@ Components:
   Optionally writes ROOT histograms and runs user python scripts.
 - **mesytec_mcpd**: python bindings for the library (`pip install mesytec-mcpd`).
 - **mcpd-cli-py**: python port of mcpd-cli, installed with the python package.
-- **mesytec-mcpd-gui**: DAQ GUI with run control, stats, histograms and an embedded
-  python console (`pip install 'mesytec-mcpd[gui]'`). Currently targeted at the MDLL.
+- **mesytec-mpsd-gui**: DAQ GUI with run control, stats, histograms and an embedded
+  python console (`pip install 'mesytec-mcpd[gui]'`). Supports MCPD-8 with MPSD-8+ and MDLL.
 
 Supported hardware:
 
@@ -66,7 +66,7 @@ conn = mcpd.McpdConnection("192.168.168.121", mcpd_id=0)
 print(conn.get_version())
 ```
 
-Start the GUI with `mesytec-mcpd-gui`, the python CLI with `mcpd-cli-py --help`.
+Start the GUI with `mesytec-mpsd-gui`, the python CLI with `mcpd-cli-py --help`.
 
 # Device network setup
 
@@ -377,20 +377,23 @@ Library log messages are forwarded to the python `logging` module. Use
 
 ```shell
 pip install 'mesytec-mcpd[gui]'
-mesytec-mcpd-gui [setup.json]
+mesytec-mpsd-gui [setup.json]
 ```
 
-The GUI is currently targeted at MDLL setups:
+The GUI supports MCPD-8 (v1 and v2) with up to 8 MPSD-8+ modules and MDLL setups:
 
 - run control, listfile writing and replay
 - per source stats table
+- MPSD histogram views (position, amplitude): channels of a bus stacked or
+  overlaid, all channels as a 2D image
 - MDLL histogram views (xy, x, y, amplitude)
-- device parameter tree with a text filter
+- device parameter tree with a text filter, per bus MPSD settings and commands,
+  bus scanning
 - embedded python console
 
 Setups are stored as json files. Without an argument the last used setup is
 loaded, otherwise the default setup file in the users config directory
-(`mesytec-mcpd/mdll_gui_setup.json`). The window layout is restored on start.
+(`mesytec-mcpd/mpsd_gui_setup.json`). The window layout is restored on start.
 
 The console namespace contains `mcpd` (the module), `daq` (the `Daq` instance
 used by the GUI), `setup` and `mainwin`. Readouts started or stopped from the
