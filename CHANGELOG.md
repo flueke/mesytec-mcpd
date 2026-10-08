@@ -14,9 +14,14 @@
   use it.
 
 - New python GUI `mesytec-mpsd-gui` (install with `mesytec-mcpd[gui]`):
+  - supports MCPD-8 (v1 and v2) with up to 8 MPSD-8+ modules and MDLL setups
   - run control, listfile writing and replay
   - per source stats table and histogram views
+  - MPSD histograms: channels of a bus stacked or overlaid, all channels as a
+    2D image
   - device parameter tree with a text filter
+  - MCPD bus scanning, persistent per bus MPSD settings (gain, threshold, mode,
+    tx format) and MPSD commands (pulser, parameters, peripheral registers)
   - embedded python console, GUI state follows DAQ changes made from it
   - setup save/load, restores the last used setup and the UI layout on start
 

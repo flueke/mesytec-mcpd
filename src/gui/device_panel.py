@@ -56,11 +56,13 @@ def submit_command(
 
 def apply_settings(workers: DeviceWorkers, cfg: DeviceConfig):
     for cmd in settings_for(cfg.device_type):
-        submit_command(workers, cfg, cmd, cfg.settings[cmd.key])
+        if cmd.apply_all:
+            submit_command(workers, cfg, cmd, cfg.settings[cmd.key])
     for bus, mpsd in enumerate(cfg.mpsds):
         if mpsd.present:
             for cmd in MPSD_SETTINGS:
-                submit_command(workers, cfg, cmd, mpsd.settings[cmd.key], fixed={"mpsd_id": bus})
+                if cmd.apply_all:
+                    submit_command(workers, cfg, cmd, mpsd.settings[cmd.key], fixed={"mpsd_id": bus})
 
 
 def present_busses(cfg: DeviceConfig) -> str:
@@ -96,9 +98,9 @@ class DevicePanel(QtWidgets.QWidget):
         self.pb_add = QtWidgets.QPushButton("Add")
         self.pb_remove = QtWidgets.QPushButton("Remove")
         self.pb_apply = QtWidgets.QPushButton("Apply Settings")
-        self.pb_apply.setToolTip("Send all settings to the selected device")
+        self.pb_apply.setToolTip("Send all settings except Data Destination to the selected device")
         self.pb_apply_all = QtWidgets.QPushButton("Apply To All")
-        self.pb_apply_all.setToolTip("Send all settings to all enabled devices")
+        self.pb_apply_all.setToolTip("Send all settings except Data Destination to all enabled devices")
         buttons = QtWidgets.QHBoxLayout()
         for b in (self.pb_add, self.pb_remove, self.pb_apply, self.pb_apply_all):
             buttons.addWidget(b)

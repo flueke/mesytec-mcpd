@@ -44,6 +44,9 @@ class Command:
     on_success: Optional[Callable[[Any, dict, Any], None]] = field(default=None, compare=False)
     # Replaces the plain method call: invoked with (conn, **kwargs).
     caller: Optional[Callable[..., Any]] = field(default=None, compare=False)
+    # Settings only: sent by "Apply Settings"/"Apply To All". If False the setting is
+    # only sent via its own Apply button.
+    apply_all: bool = True
 
     def defaults(self) -> dict:
         return {a.name: a.default for a in self.args}
@@ -77,9 +80,22 @@ DeviceTypes = ("mcpd", "mdll")
 McpdBusCount = 8
 MpsdChannelCount = 8
 
+# Set Protocol Parameters (cmd 5, MCPD-8_v1): an MCPD ip of 0.0.0.0 keeps the current
+# address. Data sink and cmd pc ips of 0.0.0.0 are replaced by the ip of the sending pc.
+NoChangeAddress = "0.0.0.0"
+SenderAddress = "0.0.0.0"
+
+
+# Sends the MCPD ip address as 0.0.0.0 so the device keeps its current address.
+def _set_data_dest(conn: mcpd.McpdConnection, address: str, port: int):
+    conn.set_ip_address_and_data_dest(
+        address=NoChangeAddress, data_dest_address=address, data_dest_port=port
+    )
+
+
 # Persistent per-device settings. Applied individually or all at once, in this order:
 # common settings, device type specific settings, then the settings of each MPSD
-# present on the MCPD busses.
+# present on the MCPD busses. Settings with apply_all=False are only sent individually.
 # NOTE: the default values are placeholders (zero where no better value was known)
 # and must be revisited once proper defaults are established.
 #
@@ -87,7 +103,15 @@ MpsdChannelCount = 8
 # commands: exactly one enabled device must be Master, it relays the commands to
 # the Slaves via the sync bus.
 COMMON_SETTINGS: tuple[Command, ...] = (
-    Command("data_dest_port", "Data Destination Port", "set_data_dest_port", (u16("port", 54321),)),
+    # Writes the flash of v1 devices, not part of "Apply Settings".
+    Command(
+        "data_dest",
+        "Data Destination (own Apply only)",
+        "set_ip_address_and_data_dest",
+        (Arg("address", "str", SenderAddress, title="address (0.0.0.0 = this pc)"), u16("port", 54321)),
+        caller=_set_data_dest,
+        apply_all=False,
+    ),
     Command(
         "timing",
         "Timing Options",
@@ -182,7 +206,8 @@ def _update_id(cfg, values, _result):
 
 
 def _update_address(cfg, values, _result):
-    cfg.address = values["address"]
+    if values["address"] != NoChangeAddress:
+        cfg.address = values["address"]
 
 
 def _update_present_mpsds(cfg, _values, result):
@@ -227,14 +252,14 @@ COMMON_COMMANDS: tuple[Command, ...] = (
     ),
     Command("set_dac_output", "Set DAC Output", "set_dac_output_values", (u16("dac0_value"), u16("dac1_value"))),
     Command("set_id", "Set Id", "set_id", (u8("new_id"),), on_success=_update_id),
-    Command("set_ip_address", "Set IP Address (MCPD/MDLL v0/v1 only)", "set_ip_address", (Arg("address", "str", "192.168.168.121"),), on_success=_update_address),
+    Command("set_ip_address", "Set IP Address (MCPD/MDLL v0/v1 only)", "set_ip_address", (Arg("address", "str", NoChangeAddress, title="address (0.0.0.0 = no change)"),), on_success=_update_address),
     Command(
         "set_ip_and_data_dest",
         "Set IP And Data Destination (MCPD/MDLL v0/v1 only)",
         "set_ip_address_and_data_dest",
         (
-            Arg("address", "str", "192.168.168.121"),
-            Arg("data_dest_address", "str", "0.0.0.0"),
+            Arg("address", "str", NoChangeAddress, title="address (0.0.0.0 = no change)"),
+            Arg("data_dest_address", "str", SenderAddress, title="data_dest_address (0.0.0.0 = this pc)"),
             u16("data_dest_port", 54321),
         ),
         on_success=_update_address,

@@ -20,6 +20,7 @@ from mesytec_mcpd.gui.commands import (  # noqa: E402
     MPSD_COMMANDS,
     MPSD_SETTINGS,
     SETTINGS,
+    SETTINGS_BY_KEY,
     ScanBusses,
 )
 from mesytec_mcpd.gui.config import DeviceConfig, Setup  # noqa: E402
@@ -144,6 +145,29 @@ def test_apply_settings_and_set_id(app, window, devices):
     panel._run_command(cfg, cmd, {"new_id": 5})
     wait_until(app, lambda: cfg.mcpd_id == 5)
     assert panel.table.item(0, 4).text() == "5"
+
+
+def test_data_dest_only_sent_individually(app, window, devices):
+    a, _ = devices
+    panel = window.device_panel
+    cfg = window.setup.devices[0]
+    panel.apply_all()
+    wait_until(app, lambda: 65 in a.last_request)  # mdll_set_pulser, the last setting
+    assert 5 not in a.last_request  # Set Protocol Parameters
+
+    cmd = SETTINGS_BY_KEY["data_dest"]
+    panel._run_command(cfg, cmd, {"address": "10.1.2.3", "port": 4711})
+    wait_until(app, lambda: 5 in a.last_request)
+    # mcpd ip (0 = no change), data sink ip, cmd port, data port, cmd pc ip
+    assert a.last_request[5] == [0, 0, 0, 0, 10, 1, 2, 3, 0, 4711, 0, 0, 0, 0]
+
+    finished = []
+    window.workers.finished.connect(lambda *args: finished.append(args[1]))
+    cmd = next(c for c in COMMANDS if c.key == "set_ip_address")
+    panel._run_command(cfg, cmd, cmd.defaults())
+    wait_until(app, lambda: finished)
+    assert a.last_request[5][:4] == [0, 0, 0, 0]
+    assert cfg.address == "127.0.0.2"
 
 
 def test_scan_busses_and_apply_mpsd_settings(app, window, devices):
