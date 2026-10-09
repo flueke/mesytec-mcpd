@@ -38,6 +38,7 @@ MCPD_MODES = {
 KindRole = QtCore.Qt.ItemDataRole.UserRole + 1
 FillBrush = (60, 120, 200, 100)
 FillPen = (60, 120, 200)
+BusSeparatorPen = (255, 255, 255, 120)
 
 
 def _combo(items: dict, current: str) -> QtWidgets.QComboBox:
@@ -129,6 +130,12 @@ class HistogramView(QtWidgets.QWidget):
         pi2d.addItem(self.image)
         self.colorbar = pg.ColorBarItem(colorMap="viridis", interactive=False)
         self.colorbar.setImageItem(self.image, insert_in=pi2d)
+        self.bus_separators = [
+            pg.InfiniteLine(pos=bus * MpsdChannelCount, angle=0, pen=pg.mkPen(BusSeparatorPen, width=1))
+            for bus in range(1, McpdBusCount)
+        ]
+        for line in self.bus_separators:
+            pi2d.addItem(line)
 
         # One plot per channel of a bus, stacked vertically with linked x axes.
         self.stacked = pg.GraphicsLayoutWidget()
@@ -267,11 +274,15 @@ class HistogramView(QtWidgets.QWidget):
             pi2d.setLabel("bottom", "X")
             pi2d.setLabel("left", "Y")
             pi2d.getAxis("left").setTicks(None)
+            for line in self.bus_separators:
+                line.setVisible(False)
             page = self.plot2d if self.histo_type() == "xy" else self.plot1d
         else:
             pi2d.setLabel("bottom", "Bin")
             pi2d.setLabel("left", "Bus / Channel")
             pi2d.getAxis("left").setTicks(_overview_ticks())
+            for line in self.bus_separators:
+                line.setVisible(True)
             page = {"bus": self.stacked, "overlay": self.plot1d, "overview": self.plot2d}[mode]
         self.stack.setCurrentWidget(page)
 
