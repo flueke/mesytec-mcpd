@@ -57,6 +57,20 @@ def _channel_color(ch: int):
     return pg.intColor(ch, MpsdChannelCount, maxValue=220)
 
 
+# Overview y axis ticks: bus numbers at the center of each bus block, channel
+# numbers at the center of each row.
+def _overview_ticks() -> list[list[tuple[float, str]]]:
+    major = [
+        (bus * MpsdChannelCount + MpsdChannelCount / 2, f"bus {bus}") for bus in range(McpdBusCount)
+    ]
+    minor = [
+        (bus * MpsdChannelCount + ch + 0.5, str(ch))
+        for bus in range(McpdBusCount)
+        for ch in range(MpsdChannelCount)
+    ]
+    return [major, minor]
+
+
 class HistogramView(QtWidgets.QWidget):
     selection_changed = Signal()
 
@@ -252,10 +266,12 @@ class HistogramView(QtWidgets.QWidget):
         if mdll:
             pi2d.setLabel("bottom", "X")
             pi2d.setLabel("left", "Y")
+            pi2d.getAxis("left").setTicks(None)
             page = self.plot2d if self.histo_type() == "xy" else self.plot1d
         else:
             pi2d.setLabel("bottom", "Bin")
-            pi2d.setLabel("left", "Bus * 8 + Channel")
+            pi2d.setLabel("left", "Bus / Channel")
+            pi2d.getAxis("left").setTicks(_overview_ticks())
             page = {"bus": self.stacked, "overlay": self.plot1d, "overview": self.plot2d}[mode]
         self.stack.setCurrentWidget(page)
 
