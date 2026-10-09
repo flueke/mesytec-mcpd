@@ -25,6 +25,9 @@ log = logging.getLogger(__name__)
 LabelPrefix = "pulser_test:"
 OffLabel = LabelPrefix + "off"
 
+# Shorter dwell times make MCPD-8_v1 stop working until it is rebooted.
+MinDwell_ms = 250
+
 Positions = (mcpd.ChannelPosition.Left, mcpd.ChannelPosition.Right, mcpd.ChannelPosition.Center)
 
 
@@ -36,7 +39,7 @@ class PulserTest(QtCore.QObject):
         self.workers = workers
         self.devices = devices
         self.amplitudes: tuple[int, ...] = (50, 90)
-        self.dwell_ms = 110
+        self.dwell_ms = MinDwell_ms
         self.on_status: Optional[Callable[[str], None]] = None
         self._steps: list[tuple[int, mcpd.ChannelPosition, int]] = []
         self._step_label = ""
@@ -144,7 +147,7 @@ class PulserTest(QtCore.QObject):
             return
         self._pending -= 1
         if self._pending == 0 and self._running:
-            self._timer.start(self.dwell_ms)
+            self._timer.start(max(self.dwell_ms, MinDwell_ms))
 
     def _status(self, text: str):
         if self.on_status is not None:
@@ -178,7 +181,7 @@ class PulserTestPanel(QtWidgets.QWidget):
                     title="dwell [ms]",
                     type="int",
                     value=test.dwell_ms,
-                    limits=(10, 600000),
+                    limits=(MinDwell_ms, 600000),
                 ),
             ],
         )
