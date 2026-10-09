@@ -27,7 +27,7 @@ from .pulser_test import LabelPrefix as PulserTestLabelPrefix
 from .pulser_test import PulserTest, PulserTestPanel
 from .stats import DeviceRow, StatsTracker
 
-log = logging.getLogger("mpsd_gui")
+log = logging.getLogger("mcpd_gui")
 
 StatsInterval_ms = 500
 HistoInterval_ms = 250
@@ -38,7 +38,7 @@ SigintPollInterval_ms = 200
 def default_setup_path() -> Path:
     import platformdirs
 
-    return platformdirs.user_config_path("mesytec-mcpd") / "mpsd_gui_setup.json"
+    return platformdirs.user_config_path("mesytec-mcpd") / "mcpd_gui_setup.json"
 
 
 class LogEmitter(QtCore.QObject):
@@ -671,7 +671,7 @@ def main():
     logging.basicConfig(level=args.log_level.upper(), format="%(name)s %(message)s")
     mcpd.set_log_level(args.log_level)
 
-    app = pg.mkQApp("mesytec-mpsd-gui")
+    app = pg.mkQApp("mesytec-mcpd-gui")
     app.setOrganizationName("mesytec")
 
     from . import resources  # noqa: F401  registers the embedded fonts

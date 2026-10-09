@@ -32,7 +32,7 @@ gui = ["pyqtgraph", "PySide6", "platformdirs"]
 dev = ["pre-commit", "scikit-build-core>=0.12", "setuptools-scm", "pybind11-stubgen", "ruff", "pytest"]
 
 [project.gui-scripts]
-mesytec-mpsd-gui = "mesytec_mcpd.gui:main"
+mesytec-mcpd-gui = "mesytec_mcpd.gui:main"
 
 [project.scripts]
 mcpd-cli-py = "mesytec_mcpd.cli.main:main"

@@ -13,7 +13,7 @@
   MCPD histograms) and a `PacketConsumer` interface. mcpd-cli was refactored to
   use it.
 
-- New python GUI `mesytec-mpsd-gui` (install with `mesytec-mcpd[gui]`):
+- New python GUI `mesytec-mcpd-gui` (install with `mesytec-mcpd[gui]`):
   - supports MCPD-8 (v1 and v2) with up to 8 MPSD-8+ modules and MDLL setups
   - run control, listfile writing and replay
   - per source stats table and histogram views
