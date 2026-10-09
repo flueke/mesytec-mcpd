@@ -4,6 +4,7 @@ import datetime
 import html
 import json
 import logging
+import signal
 import sys
 from pathlib import Path
 from time import monotonic
@@ -31,6 +32,7 @@ log = logging.getLogger("mpsd_gui")
 StatsInterval_ms = 500
 HistoInterval_ms = 250
 DrainDelay_ms = 300
+SigintPollInterval_ms = 200
 
 
 def default_setup_path() -> Path:
@@ -695,6 +697,14 @@ def main():
 
     mainwin = MainWindow(setup, setup_path)
     mainwin.show()
+
+    # Ctrl-C closes the window, running the regular shutdown. The timer returns control
+    # to the interpreter periodically, otherwise python signal handlers never run.
+    signal.signal(signal.SIGINT, lambda *_: mainwin.close())
+    sigint_timer = QtCore.QTimer()
+    sigint_timer.timeout.connect(lambda: None)
+    sigint_timer.start(SigintPollInterval_ms)
+
     sys.exit(app.exec())
 
 
