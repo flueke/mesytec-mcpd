@@ -10,7 +10,7 @@ pytest.importorskip("PySide6")
 pytest.importorskip("pyqtgraph")
 
 import numpy as np  # noqa: E402
-from pyqtgraph.Qt import QtWidgets  # noqa: E402
+from pyqtgraph.Qt import QtCore, QtWidgets  # noqa: E402
 
 import mesytec_mcpd as mcpd  # noqa: E402
 from fake_mcpd_device import FakeMcpdDevice  # noqa: E402
@@ -24,12 +24,22 @@ from mesytec_mcpd.gui.commands import (  # noqa: E402
     ScanBusses,
 )
 from mesytec_mcpd.gui.config import DeviceConfig, Setup  # noqa: E402
+from mesytec_mcpd.gui.histo_view import MCPD_MODES, HistogramView  # noqa: E402
 from mesytec_mcpd.gui.main_window import MainWindow  # noqa: E402
 
 
 @pytest.fixture(scope="module")
 def app():
     return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+
+# Delete widgets while the interpreter is alive. Otherwise PySide destroys them at
+# exit and pyqtgraph's Python boundingRect() overrides get called on half torn down
+# objects, segfaulting.
+def delete_widget(app, w):
+    w.close()
+    w.deleteLater()
+    app.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
 
 
 def wait_until(app, cond, timeout=3.0):
@@ -62,7 +72,14 @@ def window(app, devices, tmp_path):
     w = MainWindow(setup, tmp_path / "setup.json")
     w.show()
     yield w
-    w.close()
+    delete_widget(app, w)
+
+
+@pytest.fixture
+def histo_view(app):
+    w = HistogramView()
+    yield w
+    delete_widget(app, w)
 
 
 def test_command_specs_match_bindings():
@@ -192,10 +209,8 @@ def test_scan_busses_and_apply_mpsd_settings(app, window, devices):
     assert [data[0] for cmd, data in b.requests if cmd == 14] == [1, 4]
 
 
-def test_histogram_view_log_and_types(app):
-    from mesytec_mcpd.gui.histo_view import HistogramView
-
-    view = HistogramView()
+def test_histogram_view_log_and_types(histo_view):
+    view = histo_view
     view.restore_state(dict(type="amplitude"))
     view.set_devices([((1, 0), "dev", "mdll")])
     histos = {
@@ -213,10 +228,8 @@ def test_histogram_view_log_and_types(app):
     assert view.label_info.text() == "Entries: 7"
 
 
-def test_histogram_view_keeps_selection(app):
-    from mesytec_mcpd.gui.histo_view import HistogramView
-
-    view = HistogramView()
+def test_histogram_view_keeps_selection(histo_view):
+    view = histo_view
     view.set_devices([((1, 0), "a", "mdll"), ((2, 0), "b", "mcpd")])
     view.select_device((2, 0))
     assert view.device_kind() == "mcpd"
@@ -225,10 +238,8 @@ def test_histogram_view_keeps_selection(app):
     assert view.device_kind() == "mcpd"
 
 
-def test_histogram_view_mcpd_modes(app):
-    from mesytec_mcpd.gui.histo_view import MCPD_MODES, HistogramView
-
-    view = HistogramView()
+def test_histogram_view_mcpd_modes(histo_view):
+    view = histo_view
     view.set_devices([((1, 0), "dev", "mcpd")])
     position = np.zeros((8, 32, 1024), dtype=np.uint64)
     position[3, 2, 100] = 5
