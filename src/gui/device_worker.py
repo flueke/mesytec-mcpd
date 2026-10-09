@@ -25,6 +25,7 @@ class DeviceWorker(QtCore.QObject):
     # device config, label, result, exception, on_success callback
     finished = Signal(object, str, object, object, object)
     _job = Signal(object)
+    _quit = Signal()
 
     def __init__(self, cfg: DeviceConfig):
         super().__init__()
@@ -32,6 +33,7 @@ class DeviceWorker(QtCore.QObject):
         self._conn: Optional[mcpd.McpdConnection] = None
         self._conn_target = None
         self._job.connect(self._run)
+        self._quit.connect(self._on_quit)
 
     def submit(self, label: str, job: Job, on_success=None):
         self._job.emit((label, job, self.cfg.target(), on_success))
@@ -52,6 +54,13 @@ class DeviceWorker(QtCore.QObject):
             self.finished.emit(self.cfg, label, result, None, on_success)
         except Exception as e:
             self.finished.emit(self.cfg, label, None, e, None)
+
+    def quit_after_jobs(self):
+        self._quit.emit()
+
+    @Slot()
+    def _on_quit(self):
+        QtCore.QThread.currentThread().quit()
 
     @Slot()
     def close(self):
@@ -88,9 +97,13 @@ class DeviceWorkers(QtCore.QObject):
             thread.quit()
             thread.wait()
 
-    def shutdown(self):
-        for thread, _ in self._workers.values():
-            thread.quit()
+    # With drain=True all submitted jobs are executed before the threads exit.
+    def shutdown(self, drain: bool = False):
+        for thread, worker in self._workers.values():
+            if drain:
+                worker.quit_after_jobs()
+            else:
+                thread.quit()
         for thread, _ in self._workers.values():
             thread.wait()
         self._workers.clear()

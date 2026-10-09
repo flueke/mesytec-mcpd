@@ -22,6 +22,8 @@ from .config import DeviceConfig, Setup
 from .device_panel import DevicePanel
 from .device_worker import DeviceWorkers
 from .histo_view import HistogramView
+from .pulser_test import LabelPrefix as PulserTestLabelPrefix
+from .pulser_test import PulserTest, PulserTestPanel
 from .stats import DeviceRow, StatsTracker
 
 log = logging.getLogger("mpsd_gui")
@@ -178,6 +180,18 @@ class StatsTable(QtWidgets.QTableWidget):
         self.resizeColumnsToContents()
 
 
+# Returns the names of the docks in a DockArea.saveState() result.
+def _saved_dock_names(state: dict) -> set[str]:
+    def walk(node) -> set[str]:
+        kind, content, _ = node
+        if kind == "dock":
+            return {content}
+        return set().union(*(walk(c) for c in content))
+
+    roots = ([state["main"]] if state["main"] is not None else []) + [f[0]["main"] for f in state["float"]]
+    return set().union(*(walk(r) for r in roots if r is not None))
+
+
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, setup: Setup, setup_path: Optional[Path]):
         super().__init__()
@@ -228,6 +242,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.daq_panel = DaqPanel()
         self.device_panel = DevicePanel(self.setup, self.workers)
+        self.pulser_test = PulserTest(self.workers, lambda: self.setup.devices, self)
+        self.pulser_test_panel = PulserTestPanel(self.pulser_test)
         self.stats_table = StatsTable()
 
         self.log_view = QtWidgets.QPlainTextEdit()
@@ -249,6 +265,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dock_daq.addWidget(self.daq_panel)
         self.dock_devices = Dock("Devices", size=(350, 700))
         self.dock_devices.addWidget(self.device_panel)
+        self.dock_pulser_test = Dock("Pulser Test", size=(350, 150))
+        self.dock_pulser_test.addWidget(self.pulser_test_panel)
         self.dock_stats = Dock("Statistics", size=(1200, 200))
         self.dock_stats.addWidget(self.stats_table)
         self.dock_log = Dock("Log", size=(600, 200), autoOrientation=False)
@@ -275,6 +293,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _build_default_layout(self):
         self.dock_area.addDock(self.dock_daq, "left")
         self.dock_area.addDock(self.dock_devices, "bottom", self.dock_daq)
+        self.dock_area.addDock(self.dock_pulser_test, "bottom", self.dock_devices)
         self.dock_area.addDock(self.dock_stats, "right")
         self.dock_area.addDock(self.dock_console, "above", self.dock_stats)
         self.dock_stats.raiseDock()
@@ -322,6 +341,9 @@ class MainWindow(QtWidgets.QMainWindow):
             for h in state["histograms"]:
                 self._add_histo_view(name=h["name"]).restore_state(h)
             self.dock_area.restoreState(state["docks"], missing="ignore")
+            # Docks not in the saved state end up at the bottom spanning the whole width.
+            if self.dock_pulser_test.name() not in _saved_dock_names(state["docks"]):
+                self.dock_area.moveDock(self.dock_pulser_test, "bottom", self.dock_devices)
             self.restoreGeometry(QtCore.QByteArray.fromBase64(state["geometry"].encode()))
         except Exception as e:
             log.warning(f"Failed to restore ui state, using defaults: {e}")
@@ -338,6 +360,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.resize(1600, 1000)
 
     def _load_setup_into_ui(self):
+        self.pulser_test_panel.stop()
         dp = self.daq_panel
         dp.spin_port.setValue(self.setup.data_port)
         dp.cb_listfile.setChecked(self.setup.write_listfile)
@@ -536,7 +559,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if error is not None:
             log.error(f"{cfg.name}: {label}: {error}")
         else:
-            log.info(f"{cfg.name}: {label}: {format_result(result)}")
+            level = logging.DEBUG if label.startswith(PulserTestLabelPrefix) else logging.INFO
+            log.log(level, f"{cfg.name}: {label}: {format_result(result)}")
             if on_success is not None:
                 on_success(result)
 
@@ -607,7 +631,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.stats_timer.stop()
         self.histo_timer.stop()
         self.daq.stop()
-        self.workers.shutdown()
+        pulser_test_running = self.pulser_test.is_running()
+        self.pulser_test.stop()
+        self.workers.shutdown(drain=pulser_test_running)
         logging.getLogger().removeHandler(self.log_handler)
         self._save_ui_state()
         if self.setup_path is not None:
