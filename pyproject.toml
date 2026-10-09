@@ -28,7 +28,7 @@ classifiers = [
 dependencies = ["numpy", "click"]
 
 [project.optional-dependencies]
-gui = ["pyqtgraph", "PySide6", "hist[plot,fit]", "rich", "awkward", "numba", "platformdirs"]
+gui = ["pyqtgraph", "PySide6", "platformdirs"]
 dev = ["pre-commit", "scikit-build-core>=0.12", "setuptools-scm", "pybind11-stubgen", "ruff", "pytest"]
 
 [project.gui-scripts]
